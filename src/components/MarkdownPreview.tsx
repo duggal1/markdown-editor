@@ -7,9 +7,8 @@ import { Icon } from './Icons';
 const aliases: Record<string, string> = {
   js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
   py: 'python', sh: 'bash', shell: 'bash', rs: 'rust', yml: 'yaml',
-  html: 'xml', svg: 'xml', c++: 'cpp', c#: 'csharp', md: 'markdown',
+  html: 'xml', svg: 'xml', 'c++': 'cpp', 'c#': 'csharp', md: 'markdown',
 };
-const BACKTICK = String.fromCharCode(96);
 function escapeHtml(value: string) {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
