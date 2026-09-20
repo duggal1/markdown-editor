@@ -350,3 +350,9 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline-color: var(
   .cm-content { padding: 0 20px 50px !important; }
   .editor-area.mode-split .preview-pane { border-left: 0; }
 }
+
+/* Ordinary prose has no gutter; raw pasted source opts into code line numbers. */
+.cm-editor:not(.raw-code) .cm-gutters { display: none !important; }
+.cm-editor .cm-foldGutter { display: none !important; }
+.cm-editor:not(.raw-code) .cm-content { max-width: 1050px; }
+.cm-editor.raw-code .cm-gutters { display: flex; }
