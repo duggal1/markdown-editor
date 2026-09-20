@@ -1,23 +1,5 @@
 import { useDeferredValue, useEffect, useRef, useState, type ChangeEvent, type DragEvent, type KeyboardEvent } from 'react';
-import { HugeiconsIcon } from '@hugeicons/react';
-import CheckmarkCircle02Icon from '@hugeicons/core-free-icons/CheckmarkCircle02Icon';
-import Download04Icon from '@hugeicons/core-free-icons/Download04Icon';
-import EyeIcon from '@hugeicons/core-free-icons/EyeIcon';
-import FileAddIcon from '@hugeicons/core-free-icons/FileAddIcon';
-import Moon02Icon from '@hugeicons/core-free-icons/Moon02Icon';
-import PencilEdit02Icon from '@hugeicons/core-free-icons/PencilEdit02Icon';
-import Sun03Icon from '@hugeicons/core-free-icons/Sun03Icon';
-import Upload04Icon from '@hugeicons/core-free-icons/Upload04Icon';
-import TextBoldIcon from '@hugeicons/core-free-icons/TextBoldIcon';
-import TextItalicIcon from '@hugeicons/core-free-icons/TextItalicIcon';
-import Heading02Icon from '@hugeicons/core-free-icons/Heading02Icon';
-import Link01Icon from '@hugeicons/core-free-icons/Link01Icon';
-import SourceCodeIcon from '@hugeicons/core-free-icons/SourceCodeIcon';
-import QuoteUpIcon from '@hugeicons/core-free-icons/QuoteUpIcon';
-import ArrowDown01Icon from '@hugeicons/core-free-icons/ArrowDown01Icon';
-import { Columns, PencilSimple } from '@phosphor-icons/react';
 import MarkdownPreview from './components/MarkdownPreview';
-import IconButton from './components/IconButton';
 import { STORAGE_KEY, countWords, downloadMarkdown, restoreDocument } from './lib/document';
 import { applyFormat, type Format } from './lib/format';
 
@@ -29,7 +11,7 @@ export default function App() {
   const [content, setContent] = useState(initial.markdown);
   const deferredContent = useDeferredValue(content);
   const [theme, setTheme] = useState<'light' | 'dark'>(initial.theme);
-  const [mode, setMode] = useState<Mode>(() => window.matchMedia('(max-width: 760px)').matches ? 'write' : 'split');
+  const [mode, setMode] = useState<Mode>(() => 'write');
   const [status, setStatus] = useState('Saved locally');
   const [notice, setNotice] = useState('');
   const editorRef = useRef<HTMLTextAreaElement>(null);
@@ -117,7 +99,7 @@ export default function App() {
   }, [content, title]);
   function newDocument() {
     if (content && !window.confirm('Create a new document? This replaces the current document in this browser. Download a copy first if you want to keep it.')) return;
-    setTitle('Untitled document'); setContent(''); setMode('write');
+    setTitle('Untitled'); setContent(''); setMode('write');
     if (editorRef.current) editorRef.current.value = '';
     window.requestAnimationFrame(() => titleRef.current?.focus());
     setNotice('New document');
@@ -125,60 +107,62 @@ export default function App() {
 
   return <div className="app-shell" onDragOver={event => event.preventDefault()} onDrop={onDrop}>
     <header className="topbar">
-      <div className="brand" aria-label="Plain Markdown editor"><span className="brand-mark">p<span>.</span></span><span className="brand-word">plain</span><span className="brand-extension">.md</span></div>
-      <span className="topbar-center">A little space to think.</span>
+      <div className="document-identity">
+        <span className="wordmark">Plain</span>
+        <span className="identity-divider" aria-hidden="true" />
+        <input ref={titleRef} aria-label="Document title" className="document-title" value={title}
+          onChange={event => setTitle(event.target.value)} placeholder="Untitled" spellCheck={false} />
+      </div>
       <div className="topbar-actions">
-        <IconButton icon={FileAddIcon} title="New document" onClick={newDocument} />
-        <IconButton icon={Upload04Icon} title="Import Markdown" onClick={() => fileRef.current?.click()} />
-        <IconButton icon={Download04Icon} title="Download Markdown (⌘S)" onClick={exportFile} />
-        <span className="vertical-rule" />
-        <IconButton icon={theme === 'light' ? Moon02Icon : Sun03Icon} title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'} onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} />
-        <input ref={fileRef} type="file" hidden accept=".md,.markdown,.txt,text/markdown,text/plain" onChange={onFileSelected} aria-label="Import Markdown file" />
+        <button type="button" title="New document" onClick={newDocument}>New</button>
+        <button type="button" title="Import Markdown" onClick={() => fileRef.current?.click()}>Open</button>
+        <button type="button" title="Download Markdown (⌘S)" onClick={exportFile}>Export</button>
+        <span className="action-divider" aria-hidden="true" />
+        <button type="button" title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+          onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>{theme === 'light' ? 'Dark' : 'Light'}</button>
+        <input ref={fileRef} type="file" hidden accept=".md,.markdown,.txt,text/markdown,text/plain"
+          onChange={onFileSelected} aria-label="Import Markdown file" />
       </div>
     </header>
-
     <main className="workspace">
-      <div className="document-heading">
-        <div className="eyebrow"><span className="eyebrow-square" /> YOUR WORKSPACE <span className="eyebrow-separator">/</span> DOCUMENT 01</div>
-        <div className="title-line">
-          <input aria-label="Document title" className="document-title" ref={titleRef} value={title} onChange={event => setTitle(event.target.value)} placeholder="Untitled document" spellCheck={false} />
-          <span className="file-suffix">.md</span>
-        </div>
-        <div className="heading-meta"><span className="status-dot" /><span>{status}</span><span className="meta-divider">·</span><span>{countWords(content).toLocaleString()} words</span><span className="meta-divider">·</span><span>{content.length.toLocaleString()} characters</span></div>
-      </div>
-
-      <section className="editor-card" aria-label="Markdown editor">
+      <section className="editor" aria-label="Markdown editor">
         <div className="editor-toolbar">
           <div className="formatting-actions" aria-label="Formatting">
-            <IconButton icon={TextBoldIcon} title="Bold (⌘B)" onClick={() => insertFormat('bold')} />
-            <IconButton icon={TextItalicIcon} title="Italic (⌘I)" onClick={() => insertFormat('italic')} />
-            <IconButton icon={Heading02Icon} title="Heading" onClick={() => insertFormat('heading')} />
-            <span className="toolbar-rule" />
-            <IconButton icon={Link01Icon} title="Insert link (⌘K)" onClick={() => insertFormat('link')} />
-            <IconButton icon={SourceCodeIcon} title="Insert code (⌘E)" onClick={() => insertFormat('code')} />
-            <IconButton icon={QuoteUpIcon} title="Blockquote" onClick={() => insertFormat('quote')} />
+            <button type="button" className="format-bold" title="Bold (⌘B)" aria-label="Bold" onClick={() => insertFormat('bold')}>B</button>
+            <button type="button" className="format-italic" title="Italic (⌘I)" aria-label="Italic" onClick={() => insertFormat('italic')}>I</button>
+            <button type="button" title="Heading" onClick={() => insertFormat('heading')}>H</button>
+            <span className="toolbar-divider" aria-hidden="true" />
+            <button type="button" title="Insert link (⌘K)" onClick={() => insertFormat('link')}>Link</button>
+            <button type="button" title="Insert code (⌘E)" onClick={() => insertFormat('code')}>Code</button>
+            <button type="button" title="Blockquote" onClick={() => insertFormat('quote')}>Quote</button>
           </div>
           <div className="mode-toggle" aria-label="View mode">
-            <button className={mode === 'write' ? 'selected' : ''} aria-pressed={mode === 'write'} onClick={() => changeMode('write')} type="button"><PencilSimple size={15} weight="regular" /> <span>Write</span></button>
-            <button className={mode === 'split' ? 'selected' : ''} aria-pressed={mode === 'split'} onClick={() => changeMode('split')} type="button"><Columns size={15} weight="regular" /> <span>Split</span></button>
-            <button className={mode === 'preview' ? 'selected' : ''} aria-pressed={mode === 'preview'} onClick={() => changeMode('preview')} type="button"><HugeiconsIcon icon={EyeIcon} size={15} strokeWidth={1.6} /> <span>Preview</span></button>
+            <button className={mode === 'write' ? 'selected' : ''} aria-pressed={mode === 'write'}
+              onClick={() => changeMode('write')} type="button">Write</button>
+            <button className={mode === 'split' ? 'selected' : ''} aria-pressed={mode === 'split'}
+              onClick={() => changeMode('split')} type="button">Split</button>
+            <button className={mode === 'preview' ? 'selected' : ''} aria-pressed={mode === 'preview'}
+              onClick={() => changeMode('preview')} type="button">Preview</button>
           </div>
         </div>
         <div className={'editor-body mode-' + mode}>
           <div className="write-pane">
-            <div className="pane-label"><HugeiconsIcon icon={PencilEdit02Icon} size={13} strokeWidth={1.7} /> MARKDOWN <span className="pane-hint">RAW TEXT</span></div>
-            <textarea ref={editorRef} className="markdown-input" aria-label="Write Markdown" defaultValue={initial.markdown}
-              spellCheck autoCapitalize="sentences" onChange={event => setContent(event.target.value)}
-              onKeyDown={onEditorKeyDown} placeholder="Start writing. The rest can wait." />
+            <textarea ref={editorRef} className="markdown-input" aria-label="Write Markdown"
+              defaultValue={initial.markdown} spellCheck autoCapitalize="sentences"
+              onChange={event => setContent(event.target.value)} onKeyDown={onEditorKeyDown}
+              placeholder="Write Markdown…" />
           </div>
           <div className="preview-pane">
-            <div className="pane-label"><HugeiconsIcon icon={EyeIcon} size={13} strokeWidth={1.7} /> PREVIEW <span className="pane-hint">LIVE RENDER</span></div>
             <div className="preview-scroll"><MarkdownPreview markdown={deferredContent} /></div>
           </div>
         </div>
-        <div className="editor-footer"><div><HugeiconsIcon icon={CheckmarkCircle02Icon} size={14} strokeWidth={1.7} /> <span>Private by design. Stored on this device.</span></div><span className="footer-hint">MARKDOWN <HugeiconsIcon icon={ArrowDown01Icon} size={12} strokeWidth={1.7} /></span></div>
       </section>
-      <div className="below-editor"><span>JUST WORDS, NOTHING ELSE.</span><span>⌘ S TO EXPORT <span className="below-separator">·</span> ⌘ ⇧ P TO PREVIEW</span></div>
+      <div className="status-line">
+        <span className={status.startsWith('Unable') ? 'save-error' : ''} role={status.startsWith('Unable') ? 'alert' : undefined}>
+          {status.startsWith('Unable') ? status : status === 'Saving' ? 'Saving…' : 'Saved'}
+        </span>
+        <span>{countWords(content).toLocaleString()} words</span>
+      </div>
       {notice && <div className="notice" role="status"><span>{notice}</span><button onClick={() => setNotice('')} aria-label="Dismiss notification" type="button">×</button></div>}
     </main>
   </div>;

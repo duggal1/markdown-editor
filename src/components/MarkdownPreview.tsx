@@ -10,9 +10,6 @@ import json from 'highlight.js/lib/languages/json';
 import css from 'highlight.js/lib/languages/css';
 import xml from 'highlight.js/lib/languages/xml';
 import rust from 'highlight.js/lib/languages/rust';
-import { HugeiconsIcon } from '@hugeicons/react';
-import Copy01Icon from '@hugeicons/core-free-icons/Copy01Icon';
-import CheckmarkCircle02Icon from '@hugeicons/core-free-icons/CheckmarkCircle02Icon';
 
 hljs.registerLanguage('javascript', javascript);
 hljs.registerLanguage('typescript', typescript);
@@ -47,7 +44,6 @@ function CodeBlock({ children }: { children: ReactNode }) {
   }
   return <div className="code-block">
     <div className="code-header"><span>{rawLanguage || 'plain text'}</span><button aria-label="Copy code" className="code-copy" type="button" onClick={() => void copy()}>
-      <HugeiconsIcon icon={copied ? CheckmarkCircle02Icon : Copy01Icon} size={15} strokeWidth={1.7} />
       <span>{copied ? 'Copied' : 'Copy'}</span>
     </button></div>
     <pre className="code-content" tabIndex={0}><span className="code-gutter" aria-hidden="true">{lines.map((_, index) => <span className="gutter-line" key={index}>{index + 1}</span>)}</span><code className="code-text" dangerouslySetInnerHTML={{ __html: highlightedHtml || ' ' }} /></pre>
@@ -58,6 +54,6 @@ export default function MarkdownPreview({ markdown }: { markdown: string }) {
     {markdown.trim() ? <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
       pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
       a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
-    }}>{markdown}</ReactMarkdown> : <p className="empty-preview">Your words will appear here.</p>}
+    }}>{markdown}</ReactMarkdown> : <p className="empty-preview">Nothing to preview.</p>}
   </article>;
 }
