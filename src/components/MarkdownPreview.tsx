@@ -31,13 +31,12 @@ function CodeBlock({ children }: { children: ReactNode }) {
   const code = String(child?.props.children ?? '').replace(/\n$/, '');
   const rawLanguage = /language-([\w-]+)/.exec(child?.props.className ?? '')?.[1] ?? '';
   const language = aliases[rawLanguage] ?? rawLanguage;
-  const highlighted = code.split('\n').map((line, index) => {
-    let html = escapeHtml(line);
-    if (language && hljs.getLanguage(language)) {
-      try { html = hljs.highlight(line, { language, ignoreIllegals: true }).value; } catch { /* escaped fallback */ }
-    }
-    return { number: index + 1, html: html || ' ' };
-  });
+  const lines = code.split('\n');
+  let highlightedHtml = escapeHtml(code);
+  if (language && hljs.getLanguage(language)) {
+    try { highlightedHtml = hljs.highlight(code, { language, ignoreIllegals: true }).value; }
+    catch { /* Keep escaped fallback for unrecognized grammar. */ }
+  }
   async function copy() {
     try {
       await navigator.clipboard.writeText(code);
@@ -50,9 +49,7 @@ function CodeBlock({ children }: { children: ReactNode }) {
       <HugeiconsIcon icon={copied ? CheckmarkCircle02Icon : Copy01Icon} size={15} strokeWidth={1.7} />
       <span>{copied ? 'Copied' : 'Copy'}</span>
     </button></div>
-    <pre className="code-content" tabIndex={0}><code>{highlighted.map(line =>
-      <span className="code-line" key={line.number}><span className="line-number" aria-hidden="true">{line.number}</span><span className="line-text" dangerouslySetInnerHTML={{ __html: line.html }} /></span>
-    )}</code></pre>
+    <pre className="code-content" tabIndex={0}><span className="code-gutter" aria-hidden="true">{lines.map((_, index) => <span className="gutter-line" key={index}>{index + 1}</span>)}</span><code className="code-text" dangerouslySetInnerHTML={{ __html: highlightedHtml || ' ' }} /></pre>
   </div>;
 }
 export default function MarkdownPreview({ markdown }: { markdown: string }) {
