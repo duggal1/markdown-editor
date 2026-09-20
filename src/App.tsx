@@ -1,11 +1,18 @@
-import { useDeferredValue, useEffect, useRef, useState, type ChangeEvent, type DragEvent, type KeyboardEvent } from 'react';
-import { HugeiconsIcon } from '@hugeicons/react';
-import {
-  CheckmarkCircle02Icon, Download04Icon, EyeIcon, FileAddIcon,
-  Moon02Icon, PencilEdit02Icon, Sun03Icon, Upload04Icon,
-  TextBoldIcon, TextItalicIcon, Heading02Icon, Link01Icon,
-  SourceCodeIcon, QuoteUpIcon, ArrowDown01Icon,
-} from '@hugeicons/core-free-icons';
+import CheckmarkCircle02Icon from '@hugeicons/core-free-icons/CheckmarkCircle02Icon';
+import Download04Icon from '@hugeicons/core-free-icons/Download04Icon';
+import EyeIcon from '@hugeicons/core-free-icons/EyeIcon';
+import FileAddIcon from '@hugeicons/core-free-icons/FileAddIcon';
+import Moon02Icon from '@hugeicons/core-free-icons/Moon02Icon';
+import PencilEdit02Icon from '@hugeicons/core-free-icons/PencilEdit02Icon';
+import Sun03Icon from '@hugeicons/core-free-icons/Sun03Icon';
+import Upload04Icon from '@hugeicons/core-free-icons/Upload04Icon';
+import TextBoldIcon from '@hugeicons/core-free-icons/TextBoldIcon';
+import TextItalicIcon from '@hugeicons/core-free-icons/TextItalicIcon';
+import Heading02Icon from '@hugeicons/core-free-icons/Heading02Icon';
+import Link01Icon from '@hugeicons/core-free-icons/Link01Icon';
+import SourceCodeIcon from '@hugeicons/core-free-icons/SourceCodeIcon';
+import QuoteUpIcon from '@hugeicons/core-free-icons/QuoteUpIcon';
+import ArrowDown01Icon from '@hugeicons/core-free-icons/ArrowDown01Icon';
 import { Columns, PencilSimple } from '@phosphor-icons/react';
 import MarkdownPreview from './components/MarkdownPreview';
 import IconButton from './components/IconButton';

@@ -11,7 +11,8 @@ import css from 'highlight.js/lib/languages/css';
 import xml from 'highlight.js/lib/languages/xml';
 import rust from 'highlight.js/lib/languages/rust';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { Copy01Icon, CheckmarkCircle02Icon } from '@hugeicons/core-free-icons';
+import Copy01Icon from '@hugeicons/core-free-icons/Copy01Icon';
+import CheckmarkCircle02Icon from '@hugeicons/core-free-icons/CheckmarkCircle02Icon';
 
 hljs.registerLanguage('javascript', javascript);
 hljs.registerLanguage('typescript', typescript);
