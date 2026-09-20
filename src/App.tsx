@@ -1,169 +1,431 @@
-import { useDeferredValue, useEffect, useRef, useState, type ChangeEvent, type DragEvent, type KeyboardEvent } from 'react';
-import MarkdownPreview from './components/MarkdownPreview';
-import { STORAGE_KEY, countWords, downloadMarkdown, restoreDocument } from './lib/document';
-import { applyFormat, type Format } from './lib/format';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
+import { motion, useReducedMotion } from 'motion/react';
+import type { EditorView } from '@codemirror/view';
+import MarkdownEditor, { formatEditor, type Format } from './components/MarkdownEditor';
+import { FlowMark, Icon, type IconName } from './components/Icons';
+import { downloadMarkdown } from './lib/document';
+import {
+  clearRecovery, inferTitle, loadWorkspace, readPrefs, removeDoc, removeWorkspace,
+  saveDoc, savePrefs, saveRecovery, saveWorkspace, uid, wordCount,
+  type FlowDocument, type Mode, type Theme, type Workspace,
+} from './lib/store';
 
-type Mode = 'write' | 'split' | 'preview';
-const maxFileSize = 2 * 1024 * 1024;
+const MarkdownPreview = lazy(() => import('./components/MarkdownPreview'));
+const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+const FORMATS: { name: Format; icon?: IconName; label: string; shortcut?: string }[] = [
+  { name: 'heading', label: 'Heading', shortcut: '#' },
+  { name: 'bold', label: 'Bold', shortcut: '⌘B' },
+  { name: 'italic', label: 'Italic', shortcut: '⌘I' },
+  { name: 'link', icon: 'link', label: 'Link', shortcut: '⌘K' },
+  { name: 'bullet', icon: 'list', label: 'List', shortcut: '-' },
+  { name: 'todo', icon: 'todo', label: 'Task', shortcut: '[ ]' },
+  { name: 'quote', icon: 'quote', label: 'Quote' },
+  { name: 'code', icon: 'code', label: 'Code', shortcut: '⌘E' },
+];
+
+function TerminalLoader({ loading }: { loading: boolean }) {
+  const [frame, setFrame] = useState(0);
+  useEffect(() => {
+    if (!loading) { setFrame(0); return; }
+    const interval = window.setInterval(() => setFrame(current => (current + 1) % SPINNER.length), 80);
+    return () => window.clearInterval(interval);
+  }, [loading]);
+  return <span className="terminal-loader" aria-hidden="true">{loading ? SPINNER[frame] : <Icon name="check" size={13} />}</span>;
+}
 export default function App() {
-  const [initial] = useState(restoreDocument);
-  const [title, setTitle] = useState(initial.title);
-  const [content, setContent] = useState(initial.markdown);
-  const deferredContent = useDeferredValue(content);
-  const [theme, setTheme] = useState<'light' | 'dark'>(initial.theme);
-  const [mode, setMode] = useState<Mode>(() => 'write');
-  const [status, setStatus] = useState('Saved locally');
+  const [loaded, setLoaded] = useState(false);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [docs, setDocs] = useState<FlowDocument[]>([]);
+  const live = useRef(new Map<string, FlowDocument>());
+  const [activeId, setActiveId] = useState('');
+  const activeIdRef = useRef('');
+  const [workspaceId, setWorkspaceId] = useState('');
+  const [theme, setTheme] = useState<Theme>('light');
+  const [mode, setMode] = useState<Mode>('write');
+  const modeRef = useRef<Mode>('write');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [recentIds, setRecentIds] = useState<string[]>([]);
+  const [query, setQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<string[]>([]);
+  const [creatingWorkspace, setCreatingWorkspace] = useState(false);
+  const [workspaceName, setWorkspaceName] = useState('');
+  const [previewText, setPreviewText] = useState('');
+  const [words, setWords] = useState(0);
+  const [saveState, setSaveState] = useState<'saving' | 'saved' | 'error'>('saved');
   const [notice, setNotice] = useState('');
-  const editorRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<EditorView | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const workerRef = useRef<Worker | null>(null);
+  const searchRequest = useRef(0);
+  const saveTimers = useRef(new Map<string, number>());
+  const visualTimers = useRef(new Map<string, number>());
+  const motionOff = useReducedMotion();
 
+  useEffect(() => {
+    let alive = true;
+    let worker: Worker | null = null;
+    try {
+      worker = new Worker(new URL('./workers/search.ts', import.meta.url), { type: 'module' });
+      worker.onmessage = (event: MessageEvent<{ type: string; requestId: number; ids: string[] }>) => {
+        if (event.data.type === 'result' && event.data.requestId === searchRequest.current) {
+          setSearchResults(event.data.ids);
+        }
+      };
+      workerRef.current = worker;
+    } catch { /* Title-only fallback is available without workers. */ }
+    void loadWorkspace().then(data => {
+      if (!alive) return;
+      live.current = new Map(data.documents.map(doc => [doc.id, doc]));
+      const prefs = readPrefs();
+      const first = data.documents.find(doc => doc.id === prefs.activeDocumentId) || data.documents[0];
+      const chosenWorkspace = data.workspaces.find(ws => ws.id === prefs.activeWorkspaceId) ||
+        data.workspaces.find(ws => ws.id === first.workspaceId) || data.workspaces[0];
+      const restoredMode = prefs.mode === 'preview' || prefs.mode === 'split' ? prefs.mode : 'write';
+      setDocs(data.documents);
+      setWorkspaces(data.workspaces);
+      activeIdRef.current = first.id;
+      setActiveId(first.id);
+      setWorkspaceId(chosenWorkspace.id);
+      setRecentIds(Array.isArray(prefs.recentIds) ? prefs.recentIds.filter(id => live.current.has(id)) : [first.id]);
+      setTheme(prefs.theme === 'dark' ? 'dark' : 'light');
+      setSidebarOpen(prefs.sidebarOpen !== false);
+      modeRef.current = restoredMode;
+      setMode(restoredMode);
+      setPreviewText(first.markdown);
+      setWords(wordCount(first.markdown));
+      worker?.postMessage({ type: 'index', documents: data.documents });
+      setLoaded(true);
+    }).catch(() => { if (alive) { setSaveState('error'); setNotice('Local storage could not be opened.'); } });
+    return () => {
+      alive = false;
+      worker?.terminate();
+      workerRef.current = null;
+      for (const timer of saveTimers.current.values()) clearTimeout(timer);
+      for (const timer of visualTimers.current.values()) clearTimeout(timer);
+    };
+  }, []);
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
   useEffect(() => {
-    setStatus('Saving');
-    const handle = window.setTimeout(() => {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ title, markdown: content, theme }));
-        setStatus('Saved locally');
-      } catch { setStatus('Unable to save · storage full or blocked'); }
-    }, 300);
-    return () => window.clearTimeout(handle);
-  }, [title, content, theme]);
+    if (!loaded) return;
+    savePrefs({ theme, mode, sidebarOpen, activeDocumentId: activeId,
+      activeWorkspaceId: workspaceId, recentIds });
+  }, [loaded, theme, mode, sidebarOpen, activeId, workspaceId, recentIds]);
+
+  const flush = useCallback((id: string) => {
+    const timer = saveTimers.current.get(id);
+    if (timer !== undefined) { clearTimeout(timer); saveTimers.current.delete(id); }
+    const doc = live.current.get(id);
+    if (!doc) return;
+    void saveDoc(doc).then(() => {
+      if (activeIdRef.current === id) setSaveState('saved');
+      clearRecovery(id);
+    }).catch(() => { if (activeIdRef.current === id) setSaveState('error'); });
+  }, []);
 
   useEffect(() => {
-    const saveOnExit = () => {
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ title, markdown: content, theme })); }
-      catch { /* The visible save indicator handles storage errors. */ }
+    const finish = () => {
+      const doc = live.current.get(activeIdRef.current);
+      if (doc) saveRecovery(doc);
+      for (const id of saveTimers.current.keys()) flush(id);
     };
-    window.addEventListener('pagehide', saveOnExit);
-    return () => window.removeEventListener('pagehide', saveOnExit);
-  }, [title, content, theme]);
+    window.addEventListener('pagehide', finish);
+    const onVisibility = () => { if (document.visibilityState === 'hidden') finish(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => { window.removeEventListener('pagehide', finish); document.removeEventListener('visibilitychange', onVisibility); };
+  }, [flush]);
 
-  function exportFile() { downloadMarkdown(content, title); setNotice('Markdown downloaded'); }
-  function changeMode(next: Mode) {
-    setMode(next);
-    if (next !== 'preview') window.requestAnimationFrame(() => editorRef.current?.focus());
+  const scheduleSave = useCallback((doc: FlowDocument) => {
+    live.current.set(doc.id, doc);
+    setSaveState('saving');
+    const old = saveTimers.current.get(doc.id);
+    if (old !== undefined) clearTimeout(old);
+    saveTimers.current.set(doc.id, window.setTimeout(() => flush(doc.id), 170));
+    const visual = visualTimers.current.get(doc.id);
+    if (visual !== undefined) clearTimeout(visual);
+    visualTimers.current.set(doc.id, window.setTimeout(() => {
+      const latest = live.current.get(doc.id);
+      if (!latest) return;
+      setDocs(current => current.map(item => item.id === latest.id ? latest : item));
+      workerRef.current?.postMessage({ type: 'upsert', document: latest });
+      if (activeIdRef.current === latest.id) {
+        if (modeRef.current !== 'write') setPreviewText(latest.markdown);
+        setWords(wordCount(latest.markdown));
+      }
+      visualTimers.current.delete(doc.id);
+    }, 360));
+  }, [flush]);
+
+  const onEditorChange = useCallback((value: string) => {
+    const id = activeIdRef.current;
+    const current = live.current.get(id);
+    if (!current || current.markdown === value) return;
+    const next: FlowDocument = {
+      ...current, markdown: value, updatedAt: Date.now(),
+      title: current.titleAuto ? inferTitle(value) : current.title,
+    };
+    scheduleSave(next);
+  }, [scheduleSave]);
+
+  const selectDocument = useCallback((id: string) => {
+    const doc = live.current.get(id);
+    if (!doc) return;
+    const previous = activeIdRef.current;
+    if (previous && previous !== id) flush(previous);
+    activeIdRef.current = id;
+    setActiveId(id);
+    setWorkspaceId(doc.workspaceId);
+    setDocs(current => current.map(item => live.current.get(item.id) || item));
+    setRecentIds(current => [id, ...current.filter(item => item !== id)].slice(0, 30));
+    setPreviewText(doc.markdown);
+    setWords(wordCount(doc.markdown));
+    setSaveState('saved');
+    if (window.innerWidth < 800) setSidebarOpen(false);
+  }, [flush]);
+
+  const makeDocument = useCallback((targetWorkspace?: string) => {
+    if (!workspaces.length) return;
+    const target = targetWorkspace || workspaceId || workspaces[0].id;
+    const stamp = Date.now();
+    const doc: FlowDocument = {
+      id: uid(), workspaceId: target, title: 'Untitled', titleAuto: true,
+      markdown: '', createdAt: stamp, updatedAt: stamp,
+    };
+    live.current.set(doc.id, doc);
+    setDocs(current => [doc, ...current]);
+    selectDocument(doc.id);
+    void saveDoc(doc).catch(() => setSaveState('error'));
+    window.requestAnimationFrame(() => editorRef.current?.focus());
+  }, [selectDocument, workspaceId, workspaces]);
+
+  async function addWorkspace() {
+    const name = workspaceName.trim();
+    if (!name) { setCreatingWorkspace(false); return; }
+    const ws: Workspace = { id: uid(), name: name.slice(0, 65), createdAt: Date.now() };
+    setWorkspaces(current => [...current, ws]);
+    setWorkspaceId(ws.id);
+    setCreatingWorkspace(false);
+    setWorkspaceName('');
+    try { await saveWorkspace(ws); }
+    catch { setNotice('Workspace could not be saved.'); }
+    makeDocument(ws.id);
   }
-  function insertFormat(format: Format) {
-    if (mode === 'preview') setMode('write');
-    window.requestAnimationFrame(() => {
-      if (editorRef.current) setContent(applyFormat(editorRef.current, format));
-    });
+  async function eraseDocument(doc: FlowDocument) {
+    if (!window.confirm('Delete "' + doc.title + '"? This cannot be undone.')) return;
+    const remaining = [...live.current.values()].filter(item => item.id !== doc.id);
+    live.current.delete(doc.id);
+    workerRef.current?.postMessage({ type: 'remove', id: doc.id });
+    setDocs(remaining);
+    setRecentIds(current => current.filter(id => id !== doc.id));
+    try { await removeDoc(doc.id); } catch { setNotice('Document deletion could not be saved.'); }
+    if (activeIdRef.current === doc.id) {
+      const other = remaining[0];
+      if (other) selectDocument(other.id);
+      else makeDocument(doc.workspaceId);
+    }
   }
+  async function eraseWorkspace(ws: Workspace) {
+    if (workspaces.length < 2) return;
+    const contents = [...live.current.values()].filter(doc => doc.workspaceId === ws.id);
+    if (!window.confirm('Delete "' + ws.name + '" and ' + contents.length + ' document(s)?')) return;
+    for (const doc of contents) {
+      live.current.delete(doc.id);
+      workerRef.current?.postMessage({ type: 'remove', id: doc.id });
+      try { await removeDoc(doc.id); } catch { setNotice('Some documents could not be deleted.'); }
+    }
+    try { await removeWorkspace(ws.id); } catch { setNotice('Workspace deletion could not be saved.'); }
+    setWorkspaces(current => current.filter(item => item.id !== ws.id));
+    const remaining = [...live.current.values()];
+    setDocs(remaining);
+    if (contents.some(doc => doc.id === activeIdRef.current)) {
+      const other = remaining[0];
+      if (other) selectDocument(other.id);
+      else makeDocument(workspaces.find(item => item.id !== ws.id)?.id);
+    }
+  }
+
   async function importFile(file?: File) {
     if (!file) return;
-    if (file.size > maxFileSize) { setNotice('Files must be smaller than 2 MB'); return; }
-    if (!/\.(md|markdown|txt)$/i.test(file.name)) { setNotice('Choose a .md, .markdown, or .txt file'); return; }
+    if (file.size > 15 * 1024 * 1024) { setNotice('Maximum file size: 15 MB'); return; }
+    if (!/\.(md|markdown|txt)$/i.test(file.name)) { setNotice('Choose a .md, .markdown or .txt file.'); return; }
     try {
-      const text = await file.text();
-      setContent(text);
-      if (editorRef.current) editorRef.current.value = text;
-      setTitle(file.name.replace(/\.(md|markdown|txt)$/i, '') || 'Untitled document');
-      setMode('write');
+      const markdown = await file.text();
+      const now = Date.now();
+      const doc: FlowDocument = {
+        id: uid(), workspaceId, markdown, title: file.name.replace(/\.(md|markdown|txt)$/i, ''),
+        titleAuto: false, createdAt: now, updatedAt: now,
+      };
+      live.current.set(doc.id, doc);
+      setDocs(current => [doc, ...current]);
+      selectDocument(doc.id);
+      await saveDoc(doc);
       setNotice('Imported ' + file.name);
-    } catch { setNotice('This file could not be opened'); }
+    } catch { setNotice('The file could not be imported.'); }
   }
   function onFileSelected(event: ChangeEvent<HTMLInputElement>) {
     void importFile(event.target.files?.[0]);
     event.target.value = '';
   }
-  function onDrop(event: DragEvent<HTMLDivElement>) {
+  function onDrop(event: DragEvent<HTMLElement>) {
     event.preventDefault();
     void importFile(event.dataTransfer.files?.[0]);
   }
-  function onEditorKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === 'Tab') {
-      event.preventDefault();
-      const area = event.currentTarget;
-      const start = area.selectionStart;
-      const end = area.selectionEnd;
-      area.setRangeText('  ', start, end, 'end');
-      setContent(area.value);
-      return;
-    }
-    if (!(event.metaKey || event.ctrlKey)) return;
-    const commands: Record<string, Format> = { b: 'bold', i: 'italic', k: 'link', e: 'code' };
-    const format = commands[event.key.toLowerCase()];
-    if (format) { event.preventDefault(); insertFormat(format); }
-  }
+  const active = live.current.get(activeId) || docs.find(doc => doc.id === activeId);
+  const matching = useMemo(() => query.trim()
+    ? searchResults.map(id => docs.find(doc => doc.id === id)).filter((doc): doc is FlowDocument => !!doc)
+    : docs.filter(doc => doc.workspaceId === workspaceId).sort((a, b) => b.updatedAt - a.updatedAt),
+    [docs, query, searchResults, workspaceId]);
   useEffect(() => {
-    const onShortcut = (event: globalThis.KeyboardEvent) => {
+    const requestId = ++searchRequest.current;
+    if (!query.trim()) { setSearchResults([]); return; }
+    const timer = window.setTimeout(() => {
+      if (workerRef.current) workerRef.current.postMessage({ type: 'query', query, requestId });
+      else setSearchResults(docs.filter(doc => doc.title.toLowerCase().includes(query.toLowerCase())).map(doc => doc.id));
+    }, 160);
+    return () => clearTimeout(timer);
+  }, [query, docs]);
+
+  useEffect(() => {
+    const handler = (event: globalThis.KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey)) return;
-      if (event.key.toLowerCase() === 's') { event.preventDefault(); downloadMarkdown(content, title); setNotice('Markdown downloaded'); }
-      if (event.shiftKey && event.key.toLowerCase() === 'p') {
-        event.preventDefault(); setMode(current => current === 'preview' ? 'write' : 'preview');
+      const key = event.key.toLowerCase();
+      if (key === 's') {
+        event.preventDefault();
+        const doc = live.current.get(activeIdRef.current);
+        if (doc) { flush(doc.id); downloadMarkdown(doc.markdown, doc.title); setNotice('Markdown exported'); }
+      } else if (key === 'k' && !event.shiftKey) {
+        event.preventDefault(); setSidebarOpen(true); window.requestAnimationFrame(() => searchRef.current?.focus());
+      } else if (key === 'p' && event.shiftKey) {
+        event.preventDefault();
+        setMode(current => {
+          const next = current === 'preview' ? 'write' : 'preview';
+          modeRef.current = next;
+          if (next !== 'write') setPreviewText(live.current.get(activeIdRef.current)?.markdown || '');
+          return next;
+        });
+      } else if ('biek'.includes(key) && key !== 'k' || key === 'k' && event.shiftKey) {
+        const format = key === 'b' ? 'bold' : key === 'i' ? 'italic' : key === 'e' ? 'code' : 'link';
+        event.preventDefault(); formatEditor(editorRef.current, format);
       }
     };
-    window.addEventListener('keydown', onShortcut);
-    return () => window.removeEventListener('keydown', onShortcut);
-  }, [content, title]);
-  function newDocument() {
-    if (content && !window.confirm('Create a new document? This replaces the current document in this browser. Download a copy first if you want to keep it.')) return;
-    setTitle('Untitled'); setContent(''); setMode('write');
-    if (editorRef.current) editorRef.current.value = '';
-    window.requestAnimationFrame(() => titleRef.current?.focus());
-    setNotice('New document');
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [flush]);
+
+  function changeMode(next: Mode) {
+    modeRef.current = next;
+    if (next !== 'write') setPreviewText(live.current.get(activeIdRef.current)?.markdown || '');
+    setMode(next);
+    if (next !== 'preview') window.requestAnimationFrame(() => editorRef.current?.focus());
+  }
+  function changeTitle(value: string) {
+    const current = live.current.get(activeIdRef.current);
+    if (!current) return;
+    const next = { ...current, title: value, titleAuto: false, updatedAt: Date.now() };
+    scheduleSave(next);
+    setDocs(docs => docs.map(doc => doc.id === next.id ? next : doc));
   }
 
-  return <div className="app-shell" onDragOver={event => event.preventDefault()} onDrop={onDrop}>
-    <header className="topbar">
-      <div className="document-identity">
-        <span className="wordmark">Plain</span>
-        <span className="identity-divider" aria-hidden="true" />
-        <input ref={titleRef} aria-label="Document title" className="document-title" value={title}
-          onChange={event => setTitle(event.target.value)} placeholder="Untitled" spellCheck={false} />
-      </div>
-      <div className="topbar-actions">
-        <button type="button" title="New document" onClick={newDocument}>New</button>
-        <button type="button" title="Import Markdown" onClick={() => fileRef.current?.click()}>Open</button>
-        <button type="button" title="Download Markdown (⌘S)" onClick={exportFile}>Export</button>
-        <span className="action-divider" aria-hidden="true" />
-        <button type="button" title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
-          onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>{theme === 'light' ? 'Dark' : 'Light'}</button>
-        <input ref={fileRef} type="file" hidden accept=".md,.markdown,.txt,text/markdown,text/plain"
-          onChange={onFileSelected} aria-label="Import Markdown file" />
-      </div>
-    </header>
-    <main className="workspace">
-      <section className="editor" aria-label="Markdown editor">
-        <div className="editor-toolbar">
-          <div className="formatting-actions" aria-label="Formatting">
-            <button type="button" className="format-bold" title="Bold (⌘B)" aria-label="Bold" onClick={() => insertFormat('bold')}>B</button>
-            <button type="button" className="format-italic" title="Italic (⌘I)" aria-label="Italic" onClick={() => insertFormat('italic')}>I</button>
-            <button type="button" title="Heading" onClick={() => insertFormat('heading')}>H</button>
-            <span className="toolbar-divider" aria-hidden="true" />
-            <button type="button" title="Insert link (⌘K)" onClick={() => insertFormat('link')}>Link</button>
-            <button type="button" title="Insert code (⌘E)" onClick={() => insertFormat('code')}>Code</button>
-            <button type="button" title="Blockquote" onClick={() => insertFormat('quote')}>Quote</button>
-          </div>
-          <div className="mode-toggle" aria-label="View mode">
-            <button className={mode === 'write' ? 'selected' : ''} aria-pressed={mode === 'write'}
-              onClick={() => changeMode('write')} type="button">Write</button>
-            <button className={mode === 'split' ? 'selected' : ''} aria-pressed={mode === 'split'}
-              onClick={() => changeMode('split')} type="button">Split</button>
-            <button className={mode === 'preview' ? 'selected' : ''} aria-pressed={mode === 'preview'}
-              onClick={() => changeMode('preview')} type="button">Preview</button>
-          </div>
+  if (!loaded) return <main className="boot"><FlowMark size={30} /><span>Opening workspace…</span></main>;
+  return <div className="flow-shell" onDragOver={event => event.preventDefault()} onDrop={onDrop}>
+    <motion.aside className={'sidebar' + (sidebarOpen ? ' is-open' : '')}
+      initial={false} animate={{ width: sidebarOpen ? 256 : 0 }}
+      transition={motionOff ? { duration: 0 } : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+      aria-label="Workspaces">
+      <div className="sidebar-inner">
+        <div className="sidebar-brand">
+          <div className="brand-lockup"><FlowMark size={23} /><span>Flow</span></div>
+          <button className="square-button" aria-label="Close sidebar" title="Close sidebar" onClick={() => setSidebarOpen(false)}><Icon name="sidebar" /></button>
         </div>
-        <div className={'editor-body mode-' + mode}>
-          <div className="write-pane">
-            <textarea ref={editorRef} className="markdown-input" aria-label="Write Markdown"
-              defaultValue={initial.markdown} spellCheck autoCapitalize="sentences"
-              onChange={event => setContent(event.target.value)} onKeyDown={onEditorKeyDown}
-              placeholder="Write Markdown…" />
-          </div>
-          <div className="preview-pane">
-            <div className="preview-scroll"><MarkdownPreview markdown={deferredContent} /></div>
-          </div>
+        <label className="search-field"><Icon name="search" size={16} />
+          <input ref={searchRef} value={query} onChange={event => setQuery(event.target.value)} placeholder="Search documents" aria-label="Search documents" />
+          <kbd>⌘K</kbd>
+        </label>
+        <div className="sidebar-heading"><span>WORKSPACES</span><button title="Add workspace" aria-label="Add workspace" onClick={() => setCreatingWorkspace(true)}><Icon name="plus" size={15} /></button></div>
+        <div className="workspace-list">
+          {workspaces.map(ws => <div className={'workspace-entry' + (workspaceId === ws.id ? ' active' : '')} key={ws.id}>
+            <button className="workspace-select" onClick={() => { setWorkspaceId(ws.id); setQuery(''); }}>
+              <Icon name="folder" size={15} /><span>{ws.name}</span>
+            </button>
+            {workspaces.length > 1 && <button className="row-delete" aria-label={'Delete workspace ' + ws.name} title="Delete workspace" onClick={() => void eraseWorkspace(ws)}><Icon name="trash" size={13} /></button>}
+          </div>)}
+          {creatingWorkspace && <input className="new-workspace-field" autoFocus value={workspaceName}
+            onChange={event => setWorkspaceName(event.target.value)} placeholder="Workspace name"
+            onKeyDown={event => { if (event.key === 'Enter') void addWorkspace(); if (event.key === 'Escape') setCreatingWorkspace(false); }}
+            onBlur={() => { if (workspaceName.trim()) void addWorkspace(); else setCreatingWorkspace(false); }} />}
         </div>
-      </section>
-      <div className="status-line">
-        <span className={status.startsWith('Unable') ? 'save-error' : ''} role={status.startsWith('Unable') ? 'alert' : undefined}>
-          {status.startsWith('Unable') ? status : status === 'Saving' ? 'Saving…' : 'Saved'}
-        </span>
-        <span>{countWords(content).toLocaleString()} words</span>
+        <div className="sidebar-heading documents-heading"><span>{query ? 'RESULTS' : 'DOCUMENTS'}</span>
+          <button title="New document" aria-label="New document" onClick={() => makeDocument()}><Icon name="plus" size={15} /></button>
+        </div>
+        <div className="document-list">
+          {matching.map(doc => <div key={doc.id} className={'document-entry' + (activeId === doc.id ? ' active' : '')}>
+            <button className="document-select" onClick={() => selectDocument(doc.id)}>
+              <Icon name="file" size={15} /><span className="document-label">{doc.title || 'Untitled'}</span>
+              <span className="md-tag">.md</span>
+            </button>
+            <button className="row-delete" aria-label={'Delete ' + doc.title} title="Delete document" onClick={() => void eraseDocument(doc)}><Icon name="trash" size={13} /></button>
+          </div>)}
+          {!matching.length && <span className="no-results">{query ? 'No documents found' : 'No documents yet'}</span>}
+        </div>
+        <div className="sidebar-bottom">
+          <button className="sidebar-bottom-action" onClick={() => makeDocument()}><Icon name="plus" size={16} /> New document</button>
+          <button className="sidebar-bottom-action" onClick={() => { if (recentIds[1]) selectDocument(recentIds[1]); }} disabled={!recentIds[1]}><Icon name="history" size={16} /> Previous document</button>
+        </div>
       </div>
-      {notice && <div className="notice" role="status"><span>{notice}</span><button onClick={() => setNotice('')} aria-label="Dismiss notification" type="button">×</button></div>}
-    </main>
+    </motion.aside>
+    {sidebarOpen && <button className="mobile-backdrop" aria-label="Close sidebar" onClick={() => setSidebarOpen(false)} />}
+    <div className="main-shell">
+      <header className="topbar">
+        <div className="document-meta">
+          <button className="square-button sidebar-toggle" title={sidebarOpen ? 'Hide sidebar' : 'Open sidebar'} aria-label={sidebarOpen ? 'Hide sidebar' : 'Open sidebar'}
+            onClick={() => setSidebarOpen(current => !current)}><Icon name="sidebar" size={18} /></button>
+          {!sidebarOpen && <FlowMark size={19} />}
+          <span className="meta-divider" />
+          <input ref={titleRef} className="document-title" aria-label="Document title" spellCheck={false}
+            value={active?.title || ''} onChange={event => changeTitle(event.target.value)} placeholder="Untitled" />
+          <span className="md-suffix"><span className="md-dot" />.md</span>
+          <span className="save-indicator" aria-label={saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : 'Save failed'} role="status">
+            <TerminalLoader loading={saveState === 'saving'} /> {saveState === 'error' ? 'Save failed' : saveState === 'saving' ? 'Saving' : 'Saved'}
+          </span>
+        </div>
+        <div className="header-actions">
+          <div className="mode-switch" role="group" aria-label="Editor mode">
+            {(['write', 'split', 'preview'] as const).map(item => <button key={item} type="button" aria-pressed={mode === item}
+              className={mode === item ? 'selected' : ''} onClick={() => changeMode(item)}>
+              {mode === item && <motion.span layoutId="mode-highlight" className="mode-highlight" transition={motionOff ? { duration: 0 } : { type: 'spring', stiffness: 550, damping: 42 }} />}
+              <span className="mode-label">{item.charAt(0).toUpperCase() + item.slice(1)}</span>
+            </button>)}
+          </div>
+          <button className="square-button" title={theme === 'light' ? 'Dark mode' : 'Light mode'} aria-label={theme === 'light' ? 'Dark mode' : 'Light mode'} onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} size={17} /></button>
+          <button className="export-button" onClick={() => { const doc = live.current.get(activeIdRef.current); if (doc) { flush(doc.id); downloadMarkdown(doc.markdown, doc.title); setNotice('Exported'); } }}><Icon name="download" size={15} /> <span>Export</span></button>
+          <input ref={fileRef} type="file" hidden accept=".md,.markdown,.txt,text/markdown,text/plain" onChange={onFileSelected} aria-label="Import Markdown file" />
+        </div>
+      </header>
+      <div className="subbar">
+        <div className="formatting-actions" role="toolbar" aria-label="Markdown formatting">
+          {FORMATS.map(format => <button key={format.name} type="button" title={format.label + (format.shortcut ? ' · ' + format.shortcut : '')} aria-label={format.label}
+            onClick={() => { if (mode === 'preview') changeMode('write'); window.requestAnimationFrame(() => formatEditor(editorRef.current, format.name)); }}>
+            {format.icon ? <Icon name={format.icon} size={16} /> : format.name === 'heading' ? <span className="format-heading">H<span>1</span></span>
+              : <span className={format.name === 'bold' ? 'format-bold' : 'format-italic'}>{format.name === 'bold' ? 'B' : 'I'}</span>}
+          </button>)}
+          <span className="format-divider" />
+          <button title="Import Markdown" aria-label="Import Markdown" onClick={() => fileRef.current?.click()}><Icon name="upload" size={16} /></button>
+        </div>
+        <span className="word-stat">{words.toLocaleString()} words</span>
+      </div>
+      <main className={'editor-area mode-' + mode} aria-label="Flow Markdown workspace">
+        <section className="editor-pane" aria-label="Write Markdown">
+          {active && <MarkdownEditor key={active.id} documentId={active.id} initialText={active.markdown}
+            viewRef={editorRef} onChange={onEditorChange} />}
+        </section>
+        <section className="preview-pane" aria-label="Markdown preview">
+          <div className="preview-scroll"><Suspense fallback={<div className="preview-loading">Rendering…</div>}>
+            {mode !== 'write' && <MarkdownPreview markdown={previewText} />}
+          </Suspense></div>
+        </section>
+      </main>
+      {notice && <div role="status" className="notice"><span>{notice}</span><button title="Dismiss" aria-label="Dismiss" onClick={() => setNotice('')}><Icon name="close" size={14} /></button></div>}
+    </div>
   </div>;
 }

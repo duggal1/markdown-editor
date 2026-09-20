@@ -1,20 +1,20 @@
-# Plain
+# Flow
 
-A quiet, local-first Markdown editor built with React 19, TypeScript and Vite 8.
+A local-first, multi-workspace Markdown editor built with React 19, TypeScript, Vite 8, CodeMirror 6, Motion, and Geist Sans.
 
 ## Features
 
-- Distraction-free writing, split view and rendered preview
-- GitHub-flavored Markdown: tables, task lists, links, blockquotes and fenced code
-- Syntax-colored code for JavaScript, TypeScript, Python, Bash, JSON, CSS, HTML/XML and Rust, with line numbers and copy
-- Light and dark themes, responsive layout, reduced-motion support
-- Autosave in browser localStorage; no account, database or data upload
-- Import .md/.markdown/.txt by file picker or drop; download .md
-- Format toolbar and keyboard shortcuts (Cmd/Ctrl+B, I, K, E; Cmd/Ctrl+S to download; Cmd/Ctrl+Shift+P to toggle preview)
+- Multiple named workspaces and Markdown documents, with local full-text search and recent-document navigation.
+- IndexedDB persistence for document bodies, localStorage for UI preferences and an emergency last-edit snapshot. No account or network sync.
+- CodeMirror editor with viewport rendering, fenced-language support, formatting shortcuts, and fast edits in long documents.
+- Write, Split, and Preview modes remembered across reloads; light/dark theme and sidebar state remembered.
+- GitHub-flavored Markdown, task lists, tables, code blocks with numbered lines and copy actions, plus sandboxed SVG code preview.
+- Custom SVG Flow identity and favicon, responsive sidebar and reduced-motion-aware UI transitions.
+- Import Markdown/text files and export Markdown locally.
 
-## Run
+## Develop
 
-Requires Node.js 22.12+ (or 20.19+).
+Requires Node 22.12+ (or 20.19+):
 
 ```bash
 npm install
@@ -22,12 +22,6 @@ npm run dev
 npm run build
 ```
 
-No secrets or back-end are required. Deploy as a static Vite project on Vercel with `npm run build` and output directory `dist`.
+## Privacy and durability
 
-## Design methodology
-
-Design adapted from [Appllama's app-design and usage skills](https://github.com/Appllama/appllama-skills): one neutral family; fixed spacing and radius rhythm; semantic light/dark colors; clear type hierarchy; native HTML controls; feedback without gratuitous motion; keyboard-first and responsive UX. Expo/iOS-specific implementation rules are not appropriate for a Vite web app.
-
-## Privacy
-
-Documents remain in the current browser's localStorage. They are not synced or backed up. Download a Markdown file for a durable copy. Opening a new document replaces the current locally saved document.
+Documents stay in this browser, not on a server. Browser storage is not a backup; export important documents regularly. For very large documents, CodeMirror virtualizes editor lines; rendering a full Markdown preview still depends on content complexity and device performance.
