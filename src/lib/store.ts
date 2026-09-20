@@ -23,7 +23,7 @@ export function uid(): string {
     ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2);
 }
 function database(): Promise<IDBDatabase> {
-  if (!dbPromise) dbPromise = new Promise((resolve, reject) => {
+  if (!dbPromise) dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DATABASE, 1);
     request.onupgradeneeded = () => {
       const db = request.result;
@@ -34,7 +34,7 @@ function database(): Promise<IDBDatabase> {
     request.onerror = () => reject(request.error || Error('IndexedDB unavailable'));
     request.onblocked = () => reject(Error('Another tab is blocking the document database'));
   }).catch(error => { dbPromise = undefined; throw error; });
-  return dbPromise;
+  return dbPromise!;
 }
 async function getAll<T>(store: 'documents' | 'workspaces'): Promise<T[]> {
   const db = await database();
