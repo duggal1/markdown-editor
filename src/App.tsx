@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
-import { motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import type { EditorView } from '@codemirror/view';
 import MarkdownEditor, { formatEditor, type Format } from './components/MarkdownEditor';
 import { FlowMark, Icon, type IconName } from './components/Icons';
@@ -44,6 +44,7 @@ export default function App() {
   const [mode, setMode] = useState<Mode>('write');
   const modeRef = useRef<Mode>('write');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [compact, setCompact] = useState(() => window.matchMedia('(max-width: 800px)').matches);
   const [recentIds, setRecentIds] = useState<string[]>([]);
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<string[]>([]);
@@ -108,6 +109,12 @@ export default function App() {
     };
   }, []);
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 800px)');
+    const update = () => setCompact(query.matches);
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
   useEffect(() => {
     if (!loaded) return;
     savePrefs({ theme, mode, sidebarOpen, activeDocumentId: activeId,
@@ -312,28 +319,33 @@ export default function App() {
     setDocs(docs => docs.map(doc => doc.id === next.id ? next : doc));
   }
 
+  const presentationMode: Mode = compact && mode === 'split' ? 'preview' : mode;
+  const gridColumns = presentationMode === 'split' ? 'minmax(0, 1fr) minmax(0, 1fr)'
+    : presentationMode === 'preview' ? 'minmax(0, 0fr) minmax(0, 1fr)'
+      : 'minmax(0, 1fr) minmax(0, 0fr)';
+  const pressMotion = motionOff ? {} : { whileHover: { scale: 1.035 }, whileTap: { scale: 0.965 } };
   if (!loaded) return <main className="boot"><FlowMark size={30} /><span>Opening workspace…</span></main>;
   return <div className="flow-shell" onDragOver={event => event.preventDefault()} onDrop={onDrop}>
     <motion.aside className={'sidebar' + (sidebarOpen ? ' is-open' : '')}
       initial={false} animate={{ width: sidebarOpen ? 256 : 0 }}
-      transition={motionOff ? { duration: 0 } : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+      transition={motionOff ? { duration: 0 } : { duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
       aria-label="Documents">
       <div className="sidebar-inner">
         <div className="sidebar-brand">
-          <div className="brand-lockup"><span className="brand-mark"><FlowMark size={18} /></span><span>Flow</span></div>
+          <motion.div className="brand-lockup" initial={false} animate={{ opacity: sidebarOpen ? 1 : 0, x: sidebarOpen ? 0 : -8 }} transition={motionOff ? { duration: 0 } : { duration: 0.18 }}><span className="brand-mark"><FlowMark size={18} /></span><span>Flow</span></motion.div>
         </div>
         <label className="search-field"><Icon name="search" size={16} />
           <input ref={searchRef} value={query} onChange={event => setQuery(event.target.value)} placeholder="Search documents" aria-label="Search documents" />
         </label>
         <div className="sidebar-heading documents-heading"><span>{query ? 'Results' : 'Documents'}</span>
-          <button title="New document" aria-label="New document" onClick={() => makeDocument()}><Icon name="plus" size={15} /></button>
+          <motion.button {...pressMotion} title="New document" aria-label="New document" onClick={() => makeDocument()}><Icon name="plus" size={15} /></motion.button>
         </div>
         <div className="document-list">
           {matching.map(doc => <div key={doc.id} className={'document-entry' + (activeId === doc.id ? ' active' : '')}>
-            <button className="document-select" onClick={() => selectDocument(doc.id)}>
+            <motion.button className="document-select" whileTap={motionOff ? undefined : { scale: 0.994 }} transition={{ duration: 0.12 }} onClick={() => selectDocument(doc.id)}>
               <Icon name="file" size={15} /><span className="document-label">{doc.title || 'Untitled'}</span>
               <span className="md-tag">.md</span>
-            </button>
+            </motion.button>
             <button className="row-delete" aria-label={'Delete ' + doc.title} title="Delete document" onClick={() => setPendingDelete({ id: doc.id, title: doc.title.trim() || 'Untitled' })}><Icon name="trash" size={13} /></button>
           </div>)}
           {!matching.length && <span className="no-results">{query ? 'No documents found' : 'No documents yet'}</span>}
@@ -347,52 +359,64 @@ export default function App() {
     <div className="main-shell">
       <header className="topbar">
         <div className="document-meta">
-          <button className="square-button sidebar-toggle" title={sidebarOpen ? 'Hide sidebar' : 'Open sidebar'} aria-label={sidebarOpen ? 'Hide sidebar' : 'Open sidebar'}
-            onClick={() => setSidebarOpen(current => !current)}><Icon name="sidebar" size={18} /></button>
+          <motion.button {...pressMotion} className="square-button sidebar-toggle" title={sidebarOpen ? 'Hide sidebar' : 'Open sidebar'} aria-label={sidebarOpen ? 'Hide sidebar' : 'Open sidebar'}
+            onClick={() => setSidebarOpen(current => !current)}><Icon name="sidebar" size={18} /></motion.button>
           <input ref={titleRef} className="document-title" aria-label="Document title" spellCheck={false}
             value={active?.title || ''} onChange={event => changeTitle(event.target.value)} placeholder="Untitled" />
-          <span className="save-indicator" aria-label={saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : 'Save failed'} role="status">
-            {saveState === 'saving' && <TerminalLoader loading />} {saveState === 'error' ? 'Not saved' : saveState === 'saving' ? 'Saving' : 'Saved'}
-          </span>
         </div>
         <div className="header-actions">
           <div className="mode-switch" role="group" aria-label="Editor mode">
-            {(['write', 'split', 'preview'] as const).map(item => <button key={item} type="button" aria-pressed={mode === item}
-              className={mode === item ? 'selected' : ''} onClick={() => changeMode(item)}>
+            {(['write', 'split', 'preview'] as const).map(item => <motion.button key={item} type="button" aria-pressed={mode === item}
+              className={mode === item ? 'selected' : ''} whileTap={motionOff ? undefined : { scale: 0.96 }} onClick={() => changeMode(item)}>
               {mode === item && <motion.span layoutId="mode-highlight" className="mode-highlight" transition={motionOff ? { duration: 0 } : { type: 'spring', stiffness: 550, damping: 42 }} />}
               <span className="mode-label">{item.charAt(0).toUpperCase() + item.slice(1)}</span>
-            </button>)}
+            </motion.button>)}
           </div>
-          <button className="square-button" title={theme === 'light' ? 'Dark mode' : 'Light mode'} aria-label={theme === 'light' ? 'Dark mode' : 'Light mode'} onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} size={17} /></button>
-          <button className="export-button" onClick={() => { const doc = live.current.get(activeIdRef.current); if (doc) { flush(doc.id); downloadMarkdown(doc.markdown, doc.title); setNotice('Exported'); } }}><Icon name="download" size={15} /> <span>Export</span></button>
+          <span className="save-indicator" aria-label={saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : 'Save failed'} role="status">
+            {saveState === 'saving' && <TerminalLoader loading />}{saveState === 'error' ? 'Not saved' : saveState === 'saving' ? 'Saving' : 'Saved'}
+          </span>
+          <motion.button {...pressMotion} type="button" className="export-button" onClick={() => { const doc = live.current.get(activeIdRef.current); if (doc) { flush(doc.id); downloadMarkdown(doc.markdown, doc.title); setNotice('Exported'); } }}><Icon name="download" size={15} /> <span>Export</span></motion.button>
+          <motion.button {...pressMotion} type="button" className="square-button theme-toggle" title={theme === 'light' ? 'Dark mode' : 'Light mode'} aria-label={theme === 'light' ? 'Dark mode' : 'Light mode'} onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')}>
+            <AnimatePresence initial={false} mode="wait"><motion.span key={theme} className="theme-icon" initial={motionOff ? false : { opacity: 0, rotate: -25 }} animate={{ opacity: 1, rotate: 0 }} exit={motionOff ? undefined : { opacity: 0, rotate: 25 }} transition={{ duration: motionOff ? 0 : 0.15 }}><Icon name={theme === 'light' ? 'moon' : 'sun'} size={17} /></motion.span></AnimatePresence>
+          </motion.button>
           <input ref={fileRef} type="file" hidden accept=".md,.markdown,.txt,text/markdown,text/plain" onChange={onFileSelected} aria-label="Import Markdown file" />
         </div>
       </header>
       <div className="subbar">
         <div className="formatting-actions" role="toolbar" aria-label="Markdown formatting">
-          {FORMATS.map(format => <button key={format.name} type="button" title={format.label + (format.shortcut ? ' · ' + format.shortcut : '')} aria-label={format.label}
+          {FORMATS.map(format => <motion.button key={format.name} type="button" whileTap={motionOff ? undefined : { scale: 0.94 }} title={format.label + (format.shortcut ? ' · ' + format.shortcut : '')} aria-label={format.label}
             onClick={() => { if (mode === 'preview') changeMode('write'); window.requestAnimationFrame(() => formatEditor(editorRef.current, format.name)); }}>
             {format.icon ? <Icon name={format.icon} size={16} /> : format.name === 'heading' ? <span className="format-heading">H<span>1</span></span>
               : <span className={format.name === 'bold' ? 'format-bold' : 'format-italic'}>{format.name === 'bold' ? 'B' : 'I'}</span>}
-          </button>)}
+          </motion.button>)}
           <span className="format-divider" />
-          <button title="Import Markdown" aria-label="Import Markdown" onClick={() => fileRef.current?.click()}><Icon name="upload" size={16} /></button>
+          <motion.button {...pressMotion} title="Import Markdown" aria-label="Import Markdown" onClick={() => fileRef.current?.click()}><Icon name="upload" size={16} /></motion.button>
         </div>
         <span className="word-stat">{words.toLocaleString()} words</span>
       </div>
-      <main className={'editor-area mode-' + mode} aria-label="Flow Markdown workspace">
+      <motion.main className={'editor-area mode-' + mode + (compact ? ' compact' : '')} aria-label="Flow Markdown workspace"
+        initial={false} animate={{ gridTemplateColumns: gridColumns }}
+        transition={motionOff ? { duration: 0 } : { duration: 0.29, ease: [0.22, 1, 0.36, 1] }}
+        onAnimationComplete={() => editorRef.current?.requestMeasure()}>
         <section className="editor-pane" aria-label="Write Markdown">
           {active && <MarkdownEditor key={active.id} documentId={active.id} initialText={active.markdown}
             viewRef={editorRef} onChange={onEditorChange} />}
         </section>
         <section className="preview-pane" aria-label="Markdown preview">
-          <div className="preview-scroll"><Suspense fallback={<div className="preview-loading">Rendering…</div>}>
-            {mode !== 'write' && <MarkdownPreview markdown={previewText} />}
-          </Suspense></div>
+          <motion.div className="preview-scroll" initial={false}
+            animate={{ opacity: presentationMode === 'write' ? 0 : 1 }}
+            transition={motionOff ? { duration: 0 } : { duration: 0.2, delay: presentationMode === 'write' ? 0 : 0.035 }}>
+            <Suspense fallback={<div className="preview-loading">Rendering…</div>}>
+              {presentationMode !== 'write' && <MarkdownPreview markdown={previewText} />}
+            </Suspense>
+          </motion.div>
         </section>
-      </main>
-      {pendingDelete && <div className="dialog-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !deleting) setPendingDelete(null); }}>
-        <section className="delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title" aria-describedby="delete-dialog-description">
+      </motion.main>
+      <AnimatePresence initial={false}>
+      {pendingDelete && <motion.div className="dialog-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: motionOff ? 0 : 0.16 }}
+        onMouseDown={event => { if (event.target === event.currentTarget && !deleting) setPendingDelete(null); }}>
+        <motion.section className="delete-dialog" initial={motionOff ? false : { opacity: 0, y: 9, scale: 0.985 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={motionOff ? undefined : { opacity: 0, y: 5, scale: 0.99 }}
+          transition={motionOff ? { duration: 0 } : { duration: 0.21, ease: [0.22, 1, 0.36, 1] }} role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title" aria-describedby="delete-dialog-description">
           <div className="dialog-header"><Icon name="trash" size={17} /><button type="button" aria-label="Close dialog" disabled={deleting} onClick={() => setPendingDelete(null)}><Icon name="close" size={15} /></button></div>
           <h2 id="delete-dialog-title">Delete document?</h2>
           <p id="delete-dialog-description">“{pendingDelete.title}” will be removed from this browser. This cannot be undone.</p>
@@ -402,8 +426,9 @@ export default function App() {
               {deleting && <TerminalLoader loading />}{deleting ? 'Deleting' : 'Delete'}
             </button>
           </div>
-        </section>
-      </div>}
+        </motion.section>
+      </motion.div>}
+      </AnimatePresence>
       {notice && <div role="status" className="notice"><span>{notice}</span><button title="Dismiss" aria-label="Dismiss" onClick={() => setNotice('')}><Icon name="close" size={14} /></button></div>}
     </div>
   </div>;
