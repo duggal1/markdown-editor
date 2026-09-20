@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, type RefObject } from 'react';
 import { Compartment, EditorState } from '@codemirror/state';
-import { EditorView, keymap, lineNumbers, placeholder } from '@codemirror/view';
+import { EditorView, keymap, placeholder } from '@codemirror/view';
 import { basicSetup } from 'codemirror';
 import { markdown } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
@@ -88,13 +88,13 @@ function MarkdownEditor({
   useEffect(() => {
     if (!mount.current) return;
     const languageSlot = new Compartment();
-    const gutterSlot = new Compartment();
     let activeLanguage: CodeLanguage | null = null;
     let request = 0;
     let languageTimer: number | undefined;
     let view: EditorView;
     const setLanguage = (source: string) => {
       const language = detectRawCode(source);
+      view.dom.classList.toggle('raw-code', Boolean(language));
       if (language === activeLanguage) return;
       activeLanguage = language;
       const current = ++request;
@@ -102,7 +102,6 @@ function MarkdownEditor({
         view.dispatch({
           effects: [
             languageSlot.reconfigure(markdown({ codeLanguages: languages })),
-            gutterSlot.reconfigure([]),
           ],
         });
         return;
@@ -117,7 +116,6 @@ function MarkdownEditor({
         view.dispatch({
           effects: [
             languageSlot.reconfigure(support),
-            gutterSlot.reconfigure(lineNumbers()),
           ],
         });
       }).catch(() => { /* Markdown stays editable when an optional language fails. */ });
@@ -126,15 +124,8 @@ function MarkdownEditor({
       state: EditorState.create({
         doc: initialText,
         extensions: [
-          basicSetup({
-            lineNumbers: false,
-            highlightActiveLine: false,
-            highlightActiveLineGutter: false,
-            foldGutter: false,
-            drawSelection: false,
-          }),
+          basicSetup,
           languageSlot.of(markdown({ codeLanguages: languages })),
-          gutterSlot.of([]),
           syntaxHighlighting(flowHighlight),
           EditorView.lineWrapping,
           keymap.of([indentWithTab]),
