@@ -1,10 +1,32 @@
 import { memo, useEffect, useRef, type RefObject } from 'react';
-import { EditorState } from '@codemirror/state';
-import { EditorView, keymap, placeholder } from '@codemirror/view';
+import { Compartment, EditorState } from '@codemirror/state';
+import { EditorView, keymap, lineNumbers, placeholder } from '@codemirror/view';
 import { basicSetup } from 'codemirror';
 import { markdown } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { indentWithTab } from '@codemirror/commands';
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { tags } from '@lezer/highlight';
+import { detectRawCode, type CodeLanguage } from '../lib/code';
+
+
+const flowHighlight = HighlightStyle.define([
+  { tag: tags.keyword, color: 'var(--syntax-keyword)' },
+  { tag: tags.controlKeyword, color: 'var(--syntax-keyword)' },
+  { tag: tags.definitionKeyword, color: 'var(--syntax-keyword)' },
+  { tag: tags.typeName, color: 'var(--syntax-literal)' },
+  { tag: tags.className, color: 'var(--syntax-literal)' },
+  { tag: tags.string, color: 'var(--syntax-string)' },
+  { tag: tags.number, color: 'var(--syntax-number)' },
+  { tag: tags.bool, color: 'var(--syntax-number)' },
+  { tag: tags.comment, color: 'var(--syntax-comment)' },
+  { tag: tags.function(tags.variableName), color: 'var(--syntax-function)' },
+  { tag: tags.propertyName, color: 'var(--syntax-function)' },
+  { tag: tags.heading, color: 'var(--strong)', fontWeight: '400' },
+  { tag: tags.link, color: 'var(--blue)', textDecoration: 'underline dotted' },
+  { tag: tags.strong, fontWeight: '400' },
+  { tag: tags.emphasis, fontStyle: 'italic' },
+]);
 
 export type Format = 'bold' | 'italic' | 'heading' | 'bullet' | 'todo' | 'quote' | 'link' | 'code';
 
@@ -65,17 +87,66 @@ function MarkdownEditor({
   change.current = onChange;
   useEffect(() => {
     if (!mount.current) return;
-    const view = new EditorView({
+    const languageSlot = new Compartment();
+    const gutterSlot = new Compartment();
+    let activeLanguage: CodeLanguage | null = null;
+    let request = 0;
+    let languageTimer: number | undefined;
+    let view: EditorView;
+    const setLanguage = (source: string) => {
+      const language = detectRawCode(source);
+      if (language === activeLanguage) return;
+      activeLanguage = language;
+      const current = ++request;
+      if (!language) {
+        view.dispatch({
+          effects: [
+            languageSlot.reconfigure(markdown({ codeLanguages: languages })),
+            gutterSlot.reconfigure([]),
+          ],
+        });
+        return;
+      }
+      const match = languages.find(item =>
+        item.name.toLowerCase() === language ||
+        item.alias.some(alias => alias.toLowerCase() === language),
+      );
+      if (!match) return;
+      void match.load().then(support => {
+        if (current !== request || viewRef.current !== view) return;
+        view.dispatch({
+          effects: [
+            languageSlot.reconfigure(support),
+            gutterSlot.reconfigure(lineNumbers()),
+          ],
+        });
+      }).catch(() => { /* Markdown stays editable when an optional language fails. */ });
+    };
+    view = new EditorView({
       state: EditorState.create({
         doc: initialText,
         extensions: [
-          basicSetup,
-          markdown({ codeLanguages: languages }),
+          basicSetup({
+            lineNumbers: false,
+            highlightActiveLine: false,
+            highlightActiveLineGutter: false,
+            foldGutter: false,
+            drawSelection: false,
+          }),
+          languageSlot.of(markdown({ codeLanguages: languages })),
+          gutterSlot.of([]),
+          syntaxHighlighting(flowHighlight),
           EditorView.lineWrapping,
           keymap.of([indentWithTab]),
           placeholder('Start writing…'),
           EditorView.updateListener.of(update => {
-            if (update.docChanged) change.current(update.state.doc.toString());
+            if (!update.docChanged) return;
+            change.current(update.state.doc.toString());
+            // Editing stays synchronous and virtualized; expensive language loading does not.
+            if (languageTimer !== undefined) clearTimeout(languageTimer);
+            languageTimer = window.setTimeout(() => {
+              if (viewRef.current === view) setLanguage(view.state.doc.sliceString(0, 12000));
+            }, 320);
           }),
           EditorView.theme({
             '&': { height: '100%', fontSize: '14px' },
@@ -89,12 +160,15 @@ function MarkdownEditor({
       parent: mount.current,
     });
     viewRef.current = view;
+    setLanguage(initialText.slice(0, 12000));
     if (focusOnMount) view.focus();
     return () => {
+      ++request;
+      if (languageTimer !== undefined) clearTimeout(languageTimer);
       if (viewRef.current === view) viewRef.current = null;
       view.destroy();
     };
-    // The editor is only reconstructed when switching documents.
+    // The editor is reconstructed only when switching documents.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentId]);
   return <div className="codemirror-host" ref={mount} aria-label="Markdown editor" />;
