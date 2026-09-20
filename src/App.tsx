@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type KeyboardEvent } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import type { EditorView } from '@codemirror/view';
 import MarkdownEditor, { formatEditor, type Format } from './components/MarkdownEditor';
@@ -32,14 +32,6 @@ function TerminalLoader({ loading }: { loading: boolean }) {
   }, [loading]);
   return <span className="terminal-loader" aria-hidden="true">{loading ? SPINNER[frame] : <Icon name="check" size={13} />}</span>;
 }
-function Button({ icon, title, children, onClick, className = '' }: {
-  icon?: IconName; title: string; children?: React.ReactNode; onClick: () => void; className?: string;
-}) {
-  return <button type="button" title={title} aria-label={title} onClick={onClick} className={'button ' + className}>
-    {icon && <Icon name={icon} size={16} />}{children && <span>{children}</span>}
-  </button>;
-}
-
 export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
