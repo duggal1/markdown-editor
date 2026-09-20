@@ -30,7 +30,7 @@ function TerminalLoader({ loading }: { loading: boolean }) {
     const interval = window.setInterval(() => setFrame(current => (current + 1) % SPINNER.length), 80);
     return () => window.clearInterval(interval);
   }, [loading]);
-  return <span className="terminal-loader" aria-hidden="true">{loading ? SPINNER[frame] : <Icon name="check" size={13} />}</span>;
+  return loading ? <span className="terminal-loader" aria-hidden="true">{SPINNER[frame]}</span> : null;
 }
 export default function App() {
   const [loaded, setLoaded] = useState(false);
@@ -53,6 +53,10 @@ export default function App() {
   const [words, setWords] = useState(0);
   const [saveState, setSaveState] = useState<'saving' | 'saved' | 'error'>('saved');
   const [notice, setNotice] = useState('');
+  const [pendingDelete, setPendingDelete] = useState<{ kind: 'document' | 'workspace'; id: string; title: string; count?: number } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const deletionInFlight = useRef(false);
+  const workspaceInFlight = useRef(false);
   const editorRef = useRef<EditorView | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -200,8 +204,10 @@ export default function App() {
   }, [selectDocument, workspaceId, workspaces]);
 
   async function addWorkspace() {
+    if (workspaceInFlight.current) return;
     const name = workspaceName.trim();
     if (!name) { setCreatingWorkspace(false); return; }
+    workspaceInFlight.current = true;
     const ws: Workspace = { id: uid(), name: name.slice(0, 65), createdAt: Date.now() };
     setWorkspaces(current => [...current, ws]);
     setWorkspaceId(ws.id);
@@ -210,9 +216,9 @@ export default function App() {
     try { await saveWorkspace(ws); }
     catch { setNotice('Workspace could not be saved.'); }
     makeDocument(ws.id);
+    workspaceInFlight.current = false;
   }
   async function eraseDocument(doc: FlowDocument) {
-    if (!window.confirm('Delete "' + doc.title + '"? This cannot be undone.')) return;
     const remaining = [...live.current.values()].filter(item => item.id !== doc.id);
     live.current.delete(doc.id);
     workerRef.current?.postMessage({ type: 'remove', id: doc.id });
@@ -228,7 +234,6 @@ export default function App() {
   async function eraseWorkspace(ws: Workspace) {
     if (workspaces.length < 2) return;
     const contents = [...live.current.values()].filter(doc => doc.workspaceId === ws.id);
-    if (!window.confirm('Delete "' + ws.name + '" and ' + contents.length + ' document(s)?')) return;
     for (const doc of contents) {
       live.current.delete(doc.id);
       workerRef.current?.postMessage({ type: 'remove', id: doc.id });
@@ -245,6 +250,24 @@ export default function App() {
     }
   }
 
+  async function confirmDelete() {
+    if (!pendingDelete || deletionInFlight.current) return;
+    deletionInFlight.current = true;
+    setDeleting(true);
+    try {
+      if (pendingDelete.kind === 'document') {
+        const doc = live.current.get(pendingDelete.id);
+        if (doc) await eraseDocument(doc);
+      } else {
+        const ws = workspaces.find(item => item.id === pendingDelete.id);
+        if (ws) await eraseWorkspace(ws);
+      }
+      setPendingDelete(null);
+    } finally {
+      deletionInFlight.current = false;
+      setDeleting(false);
+    }
+  }
   async function importFile(file?: File) {
     if (!file) return;
     if (file.size > 15 * 1024 * 1024) { setNotice('Maximum file size: 15 MB'); return; }
@@ -336,26 +359,24 @@ export default function App() {
       <div className="sidebar-inner">
         <div className="sidebar-brand">
           <div className="brand-lockup"><FlowMark size={23} /><span>Flow</span></div>
-          <button className="square-button" aria-label="Close sidebar" title="Close sidebar" onClick={() => setSidebarOpen(false)}><Icon name="sidebar" /></button>
         </div>
         <label className="search-field"><Icon name="search" size={16} />
           <input ref={searchRef} value={query} onChange={event => setQuery(event.target.value)} placeholder="Search documents" aria-label="Search documents" />
-          <kbd>⌘K</kbd>
         </label>
-        <div className="sidebar-heading"><span>WORKSPACES</span><button title="Add workspace" aria-label="Add workspace" onClick={() => setCreatingWorkspace(true)}><Icon name="plus" size={15} /></button></div>
+        <div className="sidebar-heading"><span>Workspaces</span><button title="Add workspace" aria-label="Add workspace" onClick={() => setCreatingWorkspace(true)}><Icon name="plus" size={15} /></button></div>
         <div className="workspace-list">
           {workspaces.map(ws => <div className={'workspace-entry' + (workspaceId === ws.id ? ' active' : '')} key={ws.id}>
-            <button className="workspace-select" onClick={() => { setWorkspaceId(ws.id); setQuery(''); }}>
+            <button className="workspace-select" onClick={() => { setQuery(''); const first = [...live.current.values()].filter(doc => doc.workspaceId === ws.id).sort((a, b) => b.updatedAt - a.updatedAt)[0]; if (first) selectDocument(first.id); else { setWorkspaceId(ws.id); makeDocument(ws.id); } }}>
               <Icon name="folder" size={15} /><span>{ws.name}</span>
             </button>
-            {workspaces.length > 1 && <button className="row-delete" aria-label={'Delete workspace ' + ws.name} title="Delete workspace" onClick={() => void eraseWorkspace(ws)}><Icon name="trash" size={13} /></button>}
+            {workspaces.length > 1 && <button className="row-delete" aria-label={'Delete workspace ' + ws.name} title="Delete workspace" onClick={() => setPendingDelete({ kind: 'workspace', id: ws.id, title: ws.name, count: [...live.current.values()].filter(doc => doc.workspaceId === ws.id).length })}><Icon name="trash" size={13} /></button>}
           </div>)}
           {creatingWorkspace && <input className="new-workspace-field" autoFocus value={workspaceName}
             onChange={event => setWorkspaceName(event.target.value)} placeholder="Workspace name"
             onKeyDown={event => { if (event.key === 'Enter') void addWorkspace(); if (event.key === 'Escape') setCreatingWorkspace(false); }}
             onBlur={() => { if (workspaceName.trim()) void addWorkspace(); else setCreatingWorkspace(false); }} />}
         </div>
-        <div className="sidebar-heading documents-heading"><span>{query ? 'RESULTS' : 'DOCUMENTS'}</span>
+        <div className="sidebar-heading documents-heading"><span>{query ? 'Results' : 'Documents'}</span>
           <button title="New document" aria-label="New document" onClick={() => makeDocument()}><Icon name="plus" size={15} /></button>
         </div>
         <div className="document-list">
@@ -364,7 +385,7 @@ export default function App() {
               <Icon name="file" size={15} /><span className="document-label">{doc.title || 'Untitled'}</span>
               <span className="md-tag">.md</span>
             </button>
-            <button className="row-delete" aria-label={'Delete ' + doc.title} title="Delete document" onClick={() => void eraseDocument(doc)}><Icon name="trash" size={13} /></button>
+            <button className="row-delete" aria-label={'Delete ' + doc.title} title="Delete document" onClick={() => setPendingDelete({ kind: 'document', id: doc.id, title: doc.title.trim() || 'Untitled' })}><Icon name="trash" size={13} /></button>
           </div>)}
           {!matching.length && <span className="no-results">{query ? 'No documents found' : 'No documents yet'}</span>}
         </div>
@@ -381,12 +402,10 @@ export default function App() {
           <button className="square-button sidebar-toggle" title={sidebarOpen ? 'Hide sidebar' : 'Open sidebar'} aria-label={sidebarOpen ? 'Hide sidebar' : 'Open sidebar'}
             onClick={() => setSidebarOpen(current => !current)}><Icon name="sidebar" size={18} /></button>
           {!sidebarOpen && <FlowMark size={19} />}
-          <span className="meta-divider" />
           <input ref={titleRef} className="document-title" aria-label="Document title" spellCheck={false}
             value={active?.title || ''} onChange={event => changeTitle(event.target.value)} placeholder="Untitled" />
-          <span className="md-suffix"><span className="md-dot" />.md</span>
           <span className="save-indicator" aria-label={saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : 'Save failed'} role="status">
-            <TerminalLoader loading={saveState === 'saving'} /> {saveState === 'error' ? 'Save failed' : saveState === 'saving' ? 'Saving' : 'Saved'}
+            {saveState === 'saving' && <TerminalLoader loading />} {saveState === 'error' ? 'Not saved' : saveState === 'saving' ? 'Saving' : 'Saved'}
           </span>
         </div>
         <div className="header-actions">
@@ -425,6 +444,19 @@ export default function App() {
           </Suspense></div>
         </section>
       </main>
+      {pendingDelete && <div className="dialog-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !deleting) setPendingDelete(null); }}>
+        <section className="delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title" aria-describedby="delete-dialog-description">
+          <div className="dialog-header"><Icon name="trash" size={17} /><button type="button" aria-label="Close dialog" disabled={deleting} onClick={() => setPendingDelete(null)}><Icon name="close" size={15} /></button></div>
+          <h2 id="delete-dialog-title">Delete {pendingDelete.kind}?</h2>
+          <p id="delete-dialog-description">“{pendingDelete.title}”{pendingDelete.kind === 'workspace' ? ' and its ' + (pendingDelete.count || 0) + ' documents' : ''} will be removed from this browser. This cannot be undone.</p>
+          <div className="dialog-actions">
+            <button autoFocus type="button" disabled={deleting} className="dialog-cancel" onClick={() => setPendingDelete(null)}>Cancel</button>
+            <button type="button" disabled={deleting} className="dialog-delete" aria-label={deleting ? 'Deleting' : 'Delete'} onClick={() => { void confirmDelete(); }}>
+              {deleting && <TerminalLoader loading />}{deleting ? 'Deleting' : 'Delete'}
+            </button>
+          </div>
+        </section>
+      </div>}
       {notice && <div role="status" className="notice"><span>{notice}</span><button title="Dismiss" aria-label="Dismiss" onClick={() => setNotice('')}><Icon name="close" size={14} /></button></div>}
     </div>
   </div>;
