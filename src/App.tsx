@@ -363,6 +363,9 @@ export default function App() {
             onClick={() => setSidebarOpen(current => !current)}><Icon name="sidebar" size={18} /></motion.button>
           <input ref={titleRef} className="document-title" aria-label="Document title" spellCheck={false}
             value={active?.title || ''} onChange={event => changeTitle(event.target.value)} placeholder="Untitled" />
+          <span className="save-indicator" aria-label={saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : 'Save failed'} role="status">
+            {saveState === 'saving' && <TerminalLoader loading />}{saveState === 'error' ? 'Not saved' : saveState === 'saving' ? 'Saving' : 'Saved'}
+          </span>
         </div>
         <div className="header-actions">
           <div className="mode-switch" role="group" aria-label="Editor mode">
@@ -372,9 +375,6 @@ export default function App() {
               <span className="mode-label">{item.charAt(0).toUpperCase() + item.slice(1)}</span>
             </motion.button>)}
           </div>
-          <span className="save-indicator" aria-label={saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : 'Save failed'} role="status">
-            {saveState === 'saving' && <TerminalLoader loading />}{saveState === 'error' ? 'Not saved' : saveState === 'saving' ? 'Saving' : 'Saved'}
-          </span>
           <motion.button {...pressMotion} type="button" className="export-button" onClick={() => { const doc = live.current.get(activeIdRef.current); if (doc) { flush(doc.id); downloadMarkdown(doc.markdown, doc.title); setNotice('Exported'); } }}><Icon name="download" size={15} /> <span>Export</span></motion.button>
           <motion.button {...pressMotion} type="button" className="square-button theme-toggle" title={theme === 'light' ? 'Dark mode' : 'Light mode'} aria-label={theme === 'light' ? 'Dark mode' : 'Light mode'} onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')}>
             <AnimatePresence initial={false} mode="wait"><motion.span key={theme} className="theme-icon" initial={motionOff ? false : { opacity: 0, rotate: -25 }} animate={{ opacity: 1, rotate: 0 }} exit={motionOff ? undefined : { opacity: 0, rotate: 25 }} transition={{ duration: motionOff ? 0 : 0.15 }}><Icon name={theme === 'light' ? 'moon' : 'sun'} size={17} /></motion.span></AnimatePresence>

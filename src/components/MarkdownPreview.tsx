@@ -1,9 +1,13 @@
 import { memo, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import hljs from 'highlight.js';
 import { Icon } from './Icons';
 import { detectRawCode } from '../lib/code';
+
+const safeMarkdownHtml = { ...defaultSchema, tagNames: [...(defaultSchema.tagNames ?? []), 'u', 'mark', 'sub', 'sup', 'details', 'summary'] };
 
 const aliases: Record<string, string> = {
   js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
@@ -56,7 +60,8 @@ function MarkdownPreview({ markdown }: { markdown: string }) {
     <CodeBlock code={markdown} rawLanguage={detected} />
   </article>;
   return <article className="markdown-preview">
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, [rehypeSanitize, safeMarkdownHtml]]} components={{
+      table: ({ children }) => <div className="table-scroll"><table>{children}</table></div>,
       pre: ({ children }) => {
         const child = Array.isArray(children) ? children[0] : children;
         if (!child || typeof child !== 'object' || !('props' in child)) return <pre>{children}</pre>;
