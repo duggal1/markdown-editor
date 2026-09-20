@@ -21,7 +21,7 @@ export function detectRawCode(source: string): CodeLanguage | null {
       && /(?:=>|console\.|\breturn\b|from\s*['"]|;\s*(?:\n|$))/.test(head)) return 'javascript';
   if (/^\s*<\?xml\b|^\s*<(?:svg|html|div|span|section)\b/i.test(head)) return 'xml';
   if (/\bSELECT\b[\s\S]*\bFROM\b|\bCREATE\s+TABLE\b/i.test(head)) return 'sql';
-  if (/^\s*(?:#!/(?:bin\/)?(?:ba)?sh|\$\s+\w+|(?:npm|git|curl|brew)\s+\w+)/m.test(head)) return 'bash';
+  if (/^\s*(?:#!\/(?:bin\/)?(?:ba)?sh|\$\s+\w+|(?:npm|git|curl|brew)\s+\w+)/m.test(head)) return 'bash';
   if (/^\s*[.#]?[\w-]+\s*\{[\s\S]*\b(?:color|display|padding|margin):/.test(head)) return 'css';
   return null;
 }
