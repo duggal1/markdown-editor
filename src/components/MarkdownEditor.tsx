@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, type RefObject } from 'react';
 import { Compartment, EditorState } from '@codemirror/state';
-import { EditorView, keymap, placeholder } from '@codemirror/view';
+import { EditorView, keymap, lineNumbers, placeholder } from '@codemirror/view';
 import { basicSetup } from 'codemirror';
 import { markdown } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
@@ -88,6 +88,7 @@ function MarkdownEditor({
   useEffect(() => {
     if (!mount.current) return;
     const languageSlot = new Compartment();
+    const gutterSlot = new Compartment();
     let activeLanguage: CodeLanguage | null = null;
     let request = 0;
     let languageTimer: number | undefined;
@@ -102,6 +103,7 @@ function MarkdownEditor({
         view.dispatch({
           effects: [
             languageSlot.reconfigure(markdown({ codeLanguages: languages })),
+            gutterSlot.reconfigure([]),
           ],
         });
         return;
@@ -116,6 +118,7 @@ function MarkdownEditor({
         view.dispatch({
           effects: [
             languageSlot.reconfigure(support),
+            gutterSlot.reconfigure(lineNumbers()),
           ],
         });
       }).catch(() => { /* Markdown stays editable when an optional language fails. */ });
@@ -124,7 +127,8 @@ function MarkdownEditor({
       state: EditorState.create({
         doc: initialText,
         extensions: [
-          basicSetup,
+          basicSetup({ lineNumbers: false, highlightActiveLine: false, highlightActiveLineGutter: false, foldGutter: false, drawSelection: false }),
+          gutterSlot.of([]),
           languageSlot.of(markdown({ codeLanguages: languages })),
           syntaxHighlighting(flowHighlight),
           EditorView.lineWrapping,
