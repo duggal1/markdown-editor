@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, type RefObject } from 'react';
 import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, placeholder } from '@codemirror/view';
-import { basicSetup } from 'codemirror';
+import { minimalSetup } from 'codemirror';
 import { markdown } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { indentWithTab } from '@codemirror/commands';
@@ -127,7 +127,7 @@ function MarkdownEditor({
       state: EditorState.create({
         doc: initialText,
         extensions: [
-          basicSetup({ lineNumbers: false, highlightActiveLine: false, highlightActiveLineGutter: false, foldGutter: false, drawSelection: false }),
+          minimalSetup,
           gutterSlot.of([]),
           languageSlot.of(markdown({ codeLanguages: languages })),
           syntaxHighlighting(flowHighlight),
