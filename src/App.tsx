@@ -20,7 +20,7 @@ export default function App() {
   const [content, setContent] = useState(initial.markdown);
   const deferredContent = useDeferredValue(content);
   const [theme, setTheme] = useState<'light' | 'dark'>(initial.theme);
-  const [mode, setMode] = useState<Mode>('split');
+  const [mode, setMode] = useState<Mode>(() => window.matchMedia('(max-width: 760px)').matches ? 'write' : 'split');
   const [status, setStatus] = useState('Saved locally');
   const [notice, setNotice] = useState('');
   const editorRef = useRef<HTMLTextAreaElement>(null);
@@ -107,7 +107,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onShortcut);
   }, [content, title]);
   function newDocument() {
-    if (content && !window.confirm('Create a new document? Your current document is saved in this browser, but will be replaced. Download a copy first if you want to keep it.')) return;
+    if (content && !window.confirm('Create a new document? This replaces the current document in this browser. Download a copy first if you want to keep it.')) return;
     setTitle('Untitled document'); setContent(''); setMode('write');
     if (editorRef.current) editorRef.current.value = '';
     window.requestAnimationFrame(() => titleRef.current?.focus());
