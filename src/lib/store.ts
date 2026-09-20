@@ -1,4 +1,5 @@
 import { restoreDocument } from './document';
+import { detectRawCode } from './code';
 
 export type Theme = 'light' | 'dark';
 export type Mode = 'write' | 'split' | 'preview';
@@ -150,18 +151,27 @@ export async function loadWorkspace(): Promise<{ workspaces: Workspace[]; docume
   return { workspaces, documents };
 }
 export function inferTitle(markdown: string): string {
-  const head = markdown.slice(0, 6000);
-  const h1 = /^#\s+(.+)$/m.exec(head);
-  if (h1) return h1[1].replace(/[*_~\x60]/g, '').trim().slice(0, 70) || 'Untitled';
-  const code = /^\s*\x60{3,}([^\s\x60]*)/m.exec(head);
-  if (code && !head.slice(0, code.index).trim()) {
-    const lang = code[1].trim().toLowerCase();
-    if (lang) return lang === 'ts' ? 'TypeScript code' : lang === 'js' ? 'JavaScript code'
-      : lang.charAt(0).toUpperCase() + lang.slice(1) + ' code';
-    return 'Code';
+  const head = markdown.slice(0, 8000);
+  const heading = /^\s*#\s+(.+)$/m.exec(head);
+  if (heading) return heading[1].replace(/[*_~\x60]/g, '').trim().slice(0, 76) || 'Untitled';
+  const language = detectRawCode(head);
+  if (language) {
+    const symbol = language === 'swift'
+      ? /\b(?:struct|class|enum|protocol)\s+([A-Za-z_$][\w$]*)/.exec(head)
+      : /\b(?:class|function|fn|def|interface)\s+([A-Za-z_$][\w$]*)/.exec(head);
+    if (symbol) return symbol[1];
+    return language === 'typescript' ? 'TypeScript code' : language.charAt(0).toUpperCase() + language.slice(1) + ' code';
   }
-  const first = head.split('\n').find(line => line.trim());
-  return first ? first.replace(/^[#>*\-\s]+/, '').replace(/[*_~\x60]/g, '').trim().slice(0, 70) || 'Untitled' : 'Untitled';
+  const fence = /^\s*\x60{3,}([^\s\x60]*)/.exec(head);
+  if (fence) {
+    const lang = fence[1].toLowerCase();
+    return lang ? lang === 'ts' ? 'TypeScript code' : lang === 'js' ? 'JavaScript code'
+      : lang.charAt(0).toUpperCase() + lang.slice(1) + ' code' : 'Code';
+  }
+  const first = head.split('\n').find(line => line.trim() && !/^\s*[-*_]{3,}\s*$/.test(line));
+  return first
+    ? first.replace(/^[#>*\-\s]+/, '').replace(/[*_~\x60]/g, '').trim().slice(0, 76) || 'Untitled'
+    : 'Untitled';
 }
 export function wordCount(value: string): number {
   const words = value.trim().match(/\S+/g);
