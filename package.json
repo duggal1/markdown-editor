@@ -1,5 +1,5 @@
 {
-  "name": "plain-markdown-editor",
+  "name": "flow-markdown-workspace",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -9,7 +9,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/language-data": "^6.5.2",
+    "@codemirror/state": "^6.7.0",
+    "@codemirror/view": "^6.43.12",
+    "@fontsource-variable/geist": "^5.3.0",
+    "codemirror": "^6.0.2",
     "highlight.js": "^11.11.1",
+    "motion": "^12.0.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",
