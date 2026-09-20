@@ -3,7 +3,7 @@ import { HugeiconsIcon } from '@hugeicons/react';
 import {
   CheckmarkCircle02Icon, Download04Icon, EyeIcon, FileAddIcon,
   Moon02Icon, PencilEdit02Icon, Sun03Icon, Upload04Icon,
-  TextBoldIcon, TextItalicIcon, TextHeadingIcon, Link01Icon,
+  TextBoldIcon, TextItalicIcon, Heading02Icon, Link01Icon,
   SourceCodeIcon, QuoteUpIcon, ArrowDown01Icon,
 } from '@hugeicons/core-free-icons';
 import { Columns, PencilSimple } from '@phosphor-icons/react';
@@ -20,7 +20,7 @@ export default function App() {
   const [content, setContent] = useState(initial.markdown);
   const deferredContent = useDeferredValue(content);
   const [theme, setTheme] = useState<'light' | 'dark'>(initial.theme);
-  const [mode, setMode] = useState<Mode>('write');
+  const [mode, setMode] = useState<Mode>('split');
   const [status, setStatus] = useState('Saved locally');
   const [notice, setNotice] = useState('');
   const editorRef = useRef<HTMLTextAreaElement>(null);
@@ -143,7 +143,7 @@ export default function App() {
           <div className="formatting-actions" aria-label="Formatting">
             <IconButton icon={TextBoldIcon} title="Bold (⌘B)" onClick={() => insertFormat('bold')} />
             <IconButton icon={TextItalicIcon} title="Italic (⌘I)" onClick={() => insertFormat('italic')} />
-            <IconButton icon={TextHeadingIcon} title="Heading" onClick={() => insertFormat('heading')} />
+            <IconButton icon={Heading02Icon} title="Heading" onClick={() => insertFormat('heading')} />
             <span className="toolbar-rule" />
             <IconButton icon={Link01Icon} title="Insert link (⌘K)" onClick={() => insertFormat('link')} />
             <IconButton icon={SourceCodeIcon} title="Insert code (⌘E)" onClick={() => insertFormat('code')} />
