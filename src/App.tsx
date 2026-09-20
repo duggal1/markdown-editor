@@ -5,8 +5,8 @@ import MarkdownEditor, { formatEditor, type Format } from './components/Markdown
 import { FlowMark, Icon, type IconName } from './components/Icons';
 import { downloadMarkdown } from './lib/document';
 import {
-  clearRecovery, inferTitle, loadWorkspace, readPrefs, removeDoc, removeWorkspace,
-  saveDoc, savePrefs, saveRecovery, saveWorkspace, uid, wordCount,
+  clearRecovery, inferTitle, loadWorkspace, readPrefs, removeDoc,
+  saveDoc, savePrefs, saveRecovery, uid, wordCount,
   type FlowDocument, type Mode, type Theme, type Workspace,
 } from './lib/store';
 
@@ -47,16 +47,13 @@ export default function App() {
   const [recentIds, setRecentIds] = useState<string[]>([]);
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<string[]>([]);
-  const [creatingWorkspace, setCreatingWorkspace] = useState(false);
-  const [workspaceName, setWorkspaceName] = useState('');
   const [previewText, setPreviewText] = useState('');
   const [words, setWords] = useState(0);
   const [saveState, setSaveState] = useState<'saving' | 'saved' | 'error'>('saved');
   const [notice, setNotice] = useState('');
-  const [pendingDelete, setPendingDelete] = useState<{ kind: 'document' | 'workspace'; id: string; title: string; count?: number } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const deletionInFlight = useRef(false);
-  const workspaceInFlight = useRef(false);
   const editorRef = useRef<EditorView | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -167,9 +164,13 @@ export default function App() {
     if (!current || current.markdown === value) return;
     const next: FlowDocument = {
       ...current, markdown: value, updatedAt: Date.now(),
-      title: current.titleAuto ? inferTitle(value) : current.title,
+      title: current.titleAuto || !current.title.trim() || current.title === 'Untitled' ? inferTitle(value) : current.title,
+      titleAuto: current.titleAuto || !current.title.trim() || current.title === 'Untitled',
     };
     scheduleSave(next);
+    if (next.title !== current.title || next.titleAuto !== current.titleAuto) {
+      setDocs(items => items.map(item => item.id === next.id ? next : item));
+    }
   }, [scheduleSave]);
 
   const selectDocument = useCallback((id: string) => {
@@ -203,21 +204,6 @@ export default function App() {
     window.requestAnimationFrame(() => editorRef.current?.focus());
   }, [selectDocument, workspaceId, workspaces]);
 
-  async function addWorkspace() {
-    if (workspaceInFlight.current) return;
-    const name = workspaceName.trim();
-    if (!name) { setCreatingWorkspace(false); return; }
-    workspaceInFlight.current = true;
-    const ws: Workspace = { id: uid(), name: name.slice(0, 65), createdAt: Date.now() };
-    setWorkspaces(current => [...current, ws]);
-    setWorkspaceId(ws.id);
-    setCreatingWorkspace(false);
-    setWorkspaceName('');
-    try { await saveWorkspace(ws); }
-    catch { setNotice('Workspace could not be saved.'); }
-    makeDocument(ws.id);
-    workspaceInFlight.current = false;
-  }
   async function eraseDocument(doc: FlowDocument) {
     const remaining = [...live.current.values()].filter(item => item.id !== doc.id);
     live.current.delete(doc.id);
@@ -231,37 +217,13 @@ export default function App() {
       else makeDocument(doc.workspaceId);
     }
   }
-  async function eraseWorkspace(ws: Workspace) {
-    if (workspaces.length < 2) return;
-    const contents = [...live.current.values()].filter(doc => doc.workspaceId === ws.id);
-    for (const doc of contents) {
-      live.current.delete(doc.id);
-      workerRef.current?.postMessage({ type: 'remove', id: doc.id });
-      try { await removeDoc(doc.id); } catch { setNotice('Some documents could not be deleted.'); }
-    }
-    try { await removeWorkspace(ws.id); } catch { setNotice('Workspace deletion could not be saved.'); }
-    setWorkspaces(current => current.filter(item => item.id !== ws.id));
-    const remaining = [...live.current.values()];
-    setDocs(remaining);
-    if (contents.some(doc => doc.id === activeIdRef.current)) {
-      const other = remaining[0];
-      if (other) selectDocument(other.id);
-      else makeDocument(workspaces.find(item => item.id !== ws.id)?.id);
-    }
-  }
-
   async function confirmDelete() {
     if (!pendingDelete || deletionInFlight.current) return;
     deletionInFlight.current = true;
     setDeleting(true);
     try {
-      if (pendingDelete.kind === 'document') {
-        const doc = live.current.get(pendingDelete.id);
-        if (doc) await eraseDocument(doc);
-      } else {
-        const ws = workspaces.find(item => item.id === pendingDelete.id);
-        if (ws) await eraseWorkspace(ws);
-      }
+      const doc = live.current.get(pendingDelete.id);
+      if (doc) await eraseDocument(doc);
       setPendingDelete(null);
     } finally {
       deletionInFlight.current = false;
@@ -297,8 +259,8 @@ export default function App() {
   const active = live.current.get(activeId) || docs.find(doc => doc.id === activeId);
   const matching = useMemo(() => query.trim()
     ? searchResults.map(id => docs.find(doc => doc.id === id)).filter((doc): doc is FlowDocument => !!doc)
-    : docs.filter(doc => doc.workspaceId === workspaceId).sort((a, b) => b.updatedAt - a.updatedAt),
-    [docs, query, searchResults, workspaceId]);
+    : [...docs].sort((a, b) => b.updatedAt - a.updatedAt),
+    [docs, query, searchResults]);
   useEffect(() => {
     const requestId = ++searchRequest.current;
     if (!query.trim()) { setSearchResults([]); return; }
@@ -355,27 +317,14 @@ export default function App() {
     <motion.aside className={'sidebar' + (sidebarOpen ? ' is-open' : '')}
       initial={false} animate={{ width: sidebarOpen ? 256 : 0 }}
       transition={motionOff ? { duration: 0 } : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-      aria-label="Workspaces">
+      aria-label="Documents">
       <div className="sidebar-inner">
         <div className="sidebar-brand">
-          <div className="brand-lockup"><FlowMark size={23} /><span>Flow</span></div>
+          <div className="brand-lockup"><span className="brand-mark"><FlowMark size={18} /></span><span>Flow</span></div>
         </div>
         <label className="search-field"><Icon name="search" size={16} />
           <input ref={searchRef} value={query} onChange={event => setQuery(event.target.value)} placeholder="Search documents" aria-label="Search documents" />
         </label>
-        <div className="sidebar-heading"><span>Workspaces</span><button title="Add workspace" aria-label="Add workspace" onClick={() => setCreatingWorkspace(true)}><Icon name="plus" size={15} /></button></div>
-        <div className="workspace-list">
-          {workspaces.map(ws => <div className={'workspace-entry' + (workspaceId === ws.id ? ' active' : '')} key={ws.id}>
-            <button className="workspace-select" onClick={() => { setQuery(''); const first = [...live.current.values()].filter(doc => doc.workspaceId === ws.id).sort((a, b) => b.updatedAt - a.updatedAt)[0]; if (first) selectDocument(first.id); else { setWorkspaceId(ws.id); makeDocument(ws.id); } }}>
-              <Icon name="folder" size={15} /><span>{ws.name}</span>
-            </button>
-            {workspaces.length > 1 && <button className="row-delete" aria-label={'Delete workspace ' + ws.name} title="Delete workspace" onClick={() => setPendingDelete({ kind: 'workspace', id: ws.id, title: ws.name, count: [...live.current.values()].filter(doc => doc.workspaceId === ws.id).length })}><Icon name="trash" size={13} /></button>}
-          </div>)}
-          {creatingWorkspace && <input className="new-workspace-field" autoFocus value={workspaceName}
-            onChange={event => setWorkspaceName(event.target.value)} placeholder="Workspace name"
-            onKeyDown={event => { if (event.key === 'Enter') void addWorkspace(); if (event.key === 'Escape') setCreatingWorkspace(false); }}
-            onBlur={() => { if (workspaceName.trim()) void addWorkspace(); else setCreatingWorkspace(false); }} />}
-        </div>
         <div className="sidebar-heading documents-heading"><span>{query ? 'Results' : 'Documents'}</span>
           <button title="New document" aria-label="New document" onClick={() => makeDocument()}><Icon name="plus" size={15} /></button>
         </div>
@@ -385,12 +334,11 @@ export default function App() {
               <Icon name="file" size={15} /><span className="document-label">{doc.title || 'Untitled'}</span>
               <span className="md-tag">.md</span>
             </button>
-            <button className="row-delete" aria-label={'Delete ' + doc.title} title="Delete document" onClick={() => setPendingDelete({ kind: 'document', id: doc.id, title: doc.title.trim() || 'Untitled' })}><Icon name="trash" size={13} /></button>
+            <button className="row-delete" aria-label={'Delete ' + doc.title} title="Delete document" onClick={() => setPendingDelete({ id: doc.id, title: doc.title.trim() || 'Untitled' })}><Icon name="trash" size={13} /></button>
           </div>)}
           {!matching.length && <span className="no-results">{query ? 'No documents found' : 'No documents yet'}</span>}
         </div>
         <div className="sidebar-bottom">
-          <button className="sidebar-bottom-action" onClick={() => makeDocument()}><Icon name="plus" size={16} /> New document</button>
           <button className="sidebar-bottom-action" onClick={() => { if (recentIds[1]) selectDocument(recentIds[1]); }} disabled={!recentIds[1]}><Icon name="history" size={16} /> Previous document</button>
         </div>
       </div>
@@ -401,7 +349,6 @@ export default function App() {
         <div className="document-meta">
           <button className="square-button sidebar-toggle" title={sidebarOpen ? 'Hide sidebar' : 'Open sidebar'} aria-label={sidebarOpen ? 'Hide sidebar' : 'Open sidebar'}
             onClick={() => setSidebarOpen(current => !current)}><Icon name="sidebar" size={18} /></button>
-          {!sidebarOpen && <FlowMark size={19} />}
           <input ref={titleRef} className="document-title" aria-label="Document title" spellCheck={false}
             value={active?.title || ''} onChange={event => changeTitle(event.target.value)} placeholder="Untitled" />
           <span className="save-indicator" aria-label={saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : 'Save failed'} role="status">
@@ -447,8 +394,8 @@ export default function App() {
       {pendingDelete && <div className="dialog-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !deleting) setPendingDelete(null); }}>
         <section className="delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title" aria-describedby="delete-dialog-description">
           <div className="dialog-header"><Icon name="trash" size={17} /><button type="button" aria-label="Close dialog" disabled={deleting} onClick={() => setPendingDelete(null)}><Icon name="close" size={15} /></button></div>
-          <h2 id="delete-dialog-title">Delete {pendingDelete.kind}?</h2>
-          <p id="delete-dialog-description">“{pendingDelete.title}”{pendingDelete.kind === 'workspace' ? ' and its ' + (pendingDelete.count || 0) + ' documents' : ''} will be removed from this browser. This cannot be undone.</p>
+          <h2 id="delete-dialog-title">Delete document?</h2>
+          <p id="delete-dialog-description">“{pendingDelete.title}” will be removed from this browser. This cannot be undone.</p>
           <div className="dialog-actions">
             <button autoFocus type="button" disabled={deleting} className="dialog-cancel" onClick={() => setPendingDelete(null)}>Cancel</button>
             <button type="button" disabled={deleting} className="dialog-delete" aria-label={deleting ? 'Deleting' : 'Delete'} onClick={() => { void confirmDelete(); }}>
