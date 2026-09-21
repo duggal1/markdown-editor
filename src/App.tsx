@@ -660,7 +660,7 @@ export default function App() {
             <Suspense fallback={<div className="preview-loading">Rendering…</div>}>
               {presentationMode !== 'write' && (active?.asset
                 ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} />
-                : <MarkdownPreview markdown={previewText} sourceLanguage={active?.language} scrollRef={previewScrollRef} />)}
+                : <MarkdownPreview key={active?.id || 'preview'} markdown={previewText} sourceLanguage={active?.language} scrollRef={previewScrollRef} />)}
             </Suspense>
           </motion.div>
         </section>
