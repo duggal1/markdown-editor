@@ -1,9 +1,14 @@
-export type CodeLanguage = 'swift' | 'typescript' | 'javascript' | 'python' | 'rust' | 'go' | 'json' | 'css' | 'xml' | 'svg' | 'sql' | 'bash';
+import { looksLikeHtml } from './htmlPreview';
+
+export type CodeLanguage = 'swift' | 'typescript' | 'javascript' | 'python' | 'rust' | 'go' | 'json' | 'css' | 'xml' | 'svg' | 'html' | 'sql' | 'bash';
 
 export function detectRawCode(source: string): CodeLanguage | null {
   const text = source.trim();
   if (!text || text.length < 16) return null;
   const head = text.slice(0, 12000);
+  // Recognize complete HTML documents before scanning for Markdown-like lines
+  // inside <style>, <script>, or HTML text nodes.
+  if (looksLikeHtml(head)) return 'html';
   // Ordinary Markdown, including fenced code, should stay Markdown.
   if (/^\s*`{3,}/m.test(head) || /^\s*#{1,6}\s+(?!Preview\b)/m.test(head)
       || /^\s*[-*+]\s+\S/m.test(head) || /^\s*>\s+\S/m.test(head)) return null;
@@ -39,7 +44,7 @@ const fileLanguages: Record<string, string> = {
   rb: 'ruby', php: 'php', lua: 'lua', r: 'r', ex: 'elixir', exs: 'elixir',
   sh: 'bash', bash: 'bash', zsh: 'bash', fish: 'bash', ps1: 'powershell',
   json: 'json', jsonc: 'json', jsonl: 'json', yaml: 'yaml', yml: 'yaml',
-  toml: 'toml', xml: 'xml', svg: 'svg', html: 'xml', htm: 'xml',
+  toml: 'toml', xml: 'xml', svg: 'svg', html: 'html', htm: 'html',
   css: 'css', scss: 'scss', less: 'less', sql: 'sql', graphql: 'graphql',
   gql: 'graphql', dockerfile: 'dockerfile', makefile: 'makefile',
   diff: 'diff', patch: 'diff', mdx: 'markdown',
