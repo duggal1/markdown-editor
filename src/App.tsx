@@ -80,9 +80,11 @@ export default function App() {
   const fileRef = useRef<HTMLInputElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const previewScrollRef = useRef<HTMLDivElement>(null);
   const workerRef = useRef<Worker | null>(null);
   const searchRequest = useRef(0);
   const saveTimers = useRef(new Map<string, number>());
+  const saveQueue = useRef(new Map<string, Promise<void>>());
   const visualTimers = useRef(new Map<string, number>());
   const previewFrame = useRef<number | null>(null);
   const pendingPreview = useRef<{ id: string; markdown: string } | null>(null);
@@ -93,9 +95,16 @@ export default function App() {
     let worker: Worker | null = null;
     try {
       worker = new Worker(new URL('./workers/search.ts', import.meta.url), { type: 'module' });
-      worker.onmessage = (event: MessageEvent<{ type: string; requestId: number; ids: string[] }>) => {
+      worker.onmessage = (event: MessageEvent<
+        | { type: 'result'; requestId: number; ids: string[] }
+        | { type: 'metrics'; id: string; updatedAt: number; words: number }
+      >) => {
         if (event.data.type === 'result' && event.data.requestId === searchRequest.current) {
           setSearchResults(event.data.ids);
+        } else if (event.data.type === 'metrics') {
+          const current = live.current.get(event.data.id);
+          if (current && activeIdRef.current === event.data.id &&
+            current.updatedAt === event.data.updatedAt) setWords(event.data.words);
         }
       };
       workerRef.current = worker;
@@ -124,8 +133,9 @@ export default function App() {
       modeRef.current = restoredMode;
       setMode(restoredMode);
       setPreviewText(first.markdown);
-      setWords(wordCount(first.markdown));
+      setWords(first.markdown.length < 25000 ? wordCount(first.markdown) : 0);
       worker?.postMessage({ type: 'index', documents: data.documents.map(({ id, workspaceId, title, markdown, updatedAt }) => ({ id, workspaceId, title, markdown, updatedAt })) });
+      if (first.markdown.length >= 25000) worker?.postMessage({ type: 'metrics', document: { id: first.id, markdown: first.markdown, updatedAt: first.updatedAt } });
       setLoaded(true);
     }).catch(() => { if (alive) { setSaveState('error'); setNotice('Local storage could not be opened.'); } });
     return () => {
@@ -188,10 +198,20 @@ export default function App() {
     if (timer !== undefined) { clearTimeout(timer); saveTimers.current.delete(id); }
     const doc = live.current.get(id);
     if (!doc) return;
-    void saveDoc(doc).then(() => {
-      if (activeIdRef.current === id) setSaveState('saved');
-      clearRecovery(id);
-    }).catch(() => { if (activeIdRef.current === id) setSaveState('error'); });
+    const previous = saveQueue.current.get(id) || Promise.resolve();
+    const next = previous.catch(() => {}).then(() => saveDoc(doc));
+    saveQueue.current.set(id, next);
+    void next.then(() => {
+      if (saveQueue.current.get(id) === next) saveQueue.current.delete(id);
+      const latest = live.current.get(id);
+      if (latest && latest.updatedAt === doc.updatedAt) {
+        if (activeIdRef.current === id) setSaveState('saved');
+        clearRecovery(id);
+      }
+    }).catch(() => {
+      if (saveQueue.current.get(id) === next) saveQueue.current.delete(id);
+      if (activeIdRef.current === id) setSaveState('error');
+    });
   }, []);
 
   useEffect(() => {
@@ -211,17 +231,20 @@ export default function App() {
     setSaveState('saving');
     const old = saveTimers.current.get(doc.id);
     if (old !== undefined) clearTimeout(old);
-    saveTimers.current.set(doc.id, window.setTimeout(() => flush(doc.id), 170));
+    saveTimers.current.set(doc.id, window.setTimeout(() => flush(doc.id), doc.markdown.length > 100000 ? 900 : 340));
     const visual = visualTimers.current.get(doc.id);
     if (visual !== undefined) clearTimeout(visual);
     visualTimers.current.set(doc.id, window.setTimeout(() => {
       const latest = live.current.get(doc.id);
       if (!latest) return;
-      setDocs(current => current.map(item => item.id === latest.id ? latest : item));
-      workerRef.current?.postMessage({ type: 'upsert', document: { id: latest.id, workspaceId: latest.workspaceId, title: latest.title, markdown: latest.markdown, updatedAt: latest.updatedAt } });
-      if (activeIdRef.current === latest.id) setWords(wordCount(latest.markdown));
+      if (workerRef.current) {
+        workerRef.current.postMessage({ type: 'upsert', document: {
+          id: latest.id, workspaceId: latest.workspaceId, title: latest.title,
+          markdown: latest.markdown, updatedAt: latest.updatedAt,
+        } });
+      } else if (activeIdRef.current === latest.id) setWords(wordCount(latest.markdown));
       visualTimers.current.delete(doc.id);
-    }, 360));
+    }, doc.markdown.length > 100000 ? 700 : 430));
   }, [flush]);
 
   const onEditorChange = useCallback((value: string) => {
@@ -266,7 +289,8 @@ export default function App() {
     setDocs(current => current.map(item => live.current.get(item.id) || item));
     setRecentIds(current => [id, ...current.filter(item => item !== id)].slice(0, 30));
     setPreviewText(doc.markdown);
-    setWords(wordCount(doc.markdown));
+    setWords(doc.markdown.length < 25000 ? wordCount(doc.markdown) : 0);
+    if (doc.markdown.length >= 25000) workerRef.current?.postMessage({ type: 'metrics', document: { id: doc.id, markdown: doc.markdown, updatedAt: doc.updatedAt } });
     setSaveState('saved');
     if (window.innerWidth < 800) setSidebarOpen(false);
   }, [flush]);
@@ -631,13 +655,13 @@ export default function App() {
             viewRef={editorRef} onChange={onEditorChange} />}
         </section>
         <section className="preview-pane" aria-label="Markdown preview">
-          <motion.div className="preview-scroll" initial={false}
+          <motion.div ref={previewScrollRef} className="preview-scroll" initial={false}
             animate={{ opacity: presentationMode === 'write' ? 0 : 1 }}
             transition={motionOff ? { duration: 0 } : { duration: 0.2, delay: presentationMode === 'write' ? 0 : 0.035 }}>
             <Suspense fallback={<div className="preview-loading">Rendering…</div>}>
               {presentationMode !== 'write' && (active?.asset
                 ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} />
-                : <MarkdownPreview markdown={previewText} sourceLanguage={active?.language} />)}
+                : <MarkdownPreview markdown={previewText} sourceLanguage={active?.language} scrollRef={previewScrollRef} />)}
             </Suspense>
           </motion.div>
         </section>
