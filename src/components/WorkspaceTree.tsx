@@ -1,9 +1,11 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from './Icons';
 import type { FlowDocument, Workspace } from '../lib/store';
 
 type Editing = { kind: 'workspace' | 'document'; id: string; name: string };
+type TreeMenu = { kind: 'workspace' | 'document'; id: string; top: number; left: number };
 type Props = {
   workspaces: Workspace[];
   documents: FlowDocument[];
@@ -61,10 +63,8 @@ export default function WorkspaceTree({
   onDeleteWorkspace, onDeleteDocument,
 }: Props) {
   const [editing, setEditing] = useState<Editing | null>(null);
-  const [menu, setMenu] = useState<string | null>(null);
+  const [menu, setMenu] = useState<TreeMenu | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
-  const holdTimer = useRef<number | undefined>(undefined);
-  const heldId = useRef<string | null>(null);
   useEffect(() => {
     if (!newWorkspaceId) return;
     const ws = workspaces.find(item => item.id === newWorkspaceId);
@@ -80,28 +80,26 @@ export default function WorkspaceTree({
     function escape(event: KeyboardEvent) {
       if (event.key === 'Escape') setMenu(null);
     }
+    const closeOnScroll = () => setMenu(null);
     document.addEventListener('pointerdown', close);
     document.addEventListener('keydown', escape);
+    document.addEventListener('scroll', closeOnScroll, true);
+    window.addEventListener('resize', closeOnScroll);
     return () => {
       document.removeEventListener('pointerdown', close);
       document.removeEventListener('keydown', escape);
+      document.removeEventListener('scroll', closeOnScroll, true);
+      window.removeEventListener('resize', closeOnScroll);
     };
   }, [menu]);
-  useEffect(() => () => {
-    if (holdTimer.current !== undefined) clearTimeout(holdTimer.current);
-  }, []);
-  function beginTouch(event: PointerEvent<HTMLButtonElement>, doc: FlowDocument) {
-    if (event.pointerType !== 'touch') return;
-    if (holdTimer.current !== undefined) clearTimeout(holdTimer.current);
-    heldId.current = null;
-    holdTimer.current = window.setTimeout(() => {
-      heldId.current = doc.id;
-      setEditing({ kind: 'document', id: doc.id, name: doc.title || 'Untitled' });
-    }, 550);
-  }
-  function endTouch() {
-    if (holdTimer.current !== undefined) clearTimeout(holdTimer.current);
-    holdTimer.current = undefined;
+  function toggleMenu(event: MouseEvent<HTMLButtonElement>, kind: TreeMenu['kind'], id: string) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const top = window.innerHeight - rect.bottom < 88 && rect.top > 88
+      ? rect.top - 79 : rect.bottom + 4;
+    const left = Math.max(8, Math.min(rect.right - 168, window.innerWidth - 176));
+    setMenu(current => current?.kind === kind && current.id === id ? null : {
+      kind, id, top, left,
+    });
   }
   const searching = Boolean(search.trim());
   return <>
@@ -147,9 +145,8 @@ export default function WorkspaceTree({
                   onCommit={name => { onRenameWorkspace(ws.id, name); setEditing(null); }}
                   onCancel={() => setEditing(null)} />
               : <button type="button" className="tree-workspace-name"
-                  title={ws.name + ' · double-click to rename'}
-                  onClick={event => { onSelectWorkspace(ws.id); if (event.detail === 1) onToggle(ws.id); }}
-                  onDoubleClick={() => setEditing({ kind: 'workspace', id: ws.id, name: ws.name })}>
+                  title={ws.name}
+                  onClick={() => { onSelectWorkspace(ws.id); onToggle(ws.id); }}>
                   {ws.name}
                 </button>}
             <button type="button" className="tree-add" title={'New document in ' + ws.name}
@@ -157,14 +154,10 @@ export default function WorkspaceTree({
               onClick={() => onNewDocument(ws.id)}><Icon name="plus" size={14} /></button>
             <div className="tree-action">
               <button type="button" className="tree-more" title={'Actions for ' + ws.name}
-                aria-label={'Actions for ' + ws.name} aria-expanded={menu === 'w:' + ws.id}
-                onClick={() => setMenu(current => current === 'w:' + ws.id ? null : 'w:' + ws.id)}>
+                aria-label={'Actions for ' + ws.name} aria-expanded={menu?.kind === 'workspace' && menu.id === ws.id}
+                onClick={event => toggleMenu(event, 'workspace', ws.id)}>
                 <Icon name="more" size={16} />
               </button>
-              {menu === 'w:' + ws.id && <div className="tree-menu" role="menu">
-                <button type="button" role="menuitem" disabled={workspaces.length < 2}
-                  onClick={() => { setMenu(null); onDeleteWorkspace(ws.id); }}>Delete workspace</button>
-              </div>}
             </div>
           </div>
           <AnimatePresence initial={false}>
@@ -189,28 +182,17 @@ export default function WorkspaceTree({
                         onCommit={name => { onRenameDocument(doc.id, name); setEditing(null); }}
                         onCancel={() => setEditing(null)} />
                     : <button type="button" className="tree-document-name"
-                        title={doc.title + ' · double-click to rename'}
-                        onClick={() => {
-                          if (heldId.current === doc.id) { heldId.current = null; return; }
-                          onOpen(doc.id);
-                        }}
-                        onDoubleClick={() => setEditing({ kind: 'document', id: doc.id, name: doc.title || 'Untitled' })}
-                        onPointerDown={event => beginTouch(event, doc)}
-                        onPointerUp={endTouch} onPointerCancel={endTouch}
-                        onPointerLeave={endTouch}>
+                        title={doc.title}
+                        onClick={() => onOpen(doc.id)}>
                         <span className="tree-document-title">{doc.title || 'Untitled'}</span>
                         <span className="md-tag">{doc.fileName?.match(/\.[^.]+$/)?.[0] || '.md'}</span>
                       </button>}
                   <div className="tree-action">
                     <button type="button" className="tree-more" title={'Actions for ' + doc.title}
-                      aria-label={'Actions for ' + doc.title} aria-expanded={menu === 'd:' + doc.id}
-                      onClick={() => setMenu(current => current === 'd:' + doc.id ? null : 'd:' + doc.id)}>
+                      aria-label={'Actions for ' + doc.title} aria-expanded={menu?.kind === 'document' && menu.id === doc.id}
+                      onClick={event => toggleMenu(event, 'document', doc.id)}>
                       <Icon name="more" size={16} />
                     </button>
-                    {menu === 'd:' + doc.id && <div className="tree-menu" role="menu">
-                      <button type="button" role="menuitem"
-                        onClick={() => { setMenu(null); onDeleteDocument(doc.id); }}>Delete</button>
-                    </div>}
                   </div>
                 </div>;
               })}
@@ -223,5 +205,25 @@ export default function WorkspaceTree({
         ws.name.toLowerCase().includes(search.trim().toLowerCase())) &&
         <span className="tree-empty">No matches</span>}
     </div>
+    {menu && createPortal(<div className="tree-menu" role="menu"
+      aria-label={menu.kind === 'workspace' ? 'Workspace actions' : 'Document actions'}
+      style={{ top: menu.top, left: menu.left }}>
+      <button type="button" role="menuitem" onClick={() => {
+        const item = menu.kind === 'workspace'
+          ? workspaces.find(ws => ws.id === menu.id)
+          : documents.find(doc => doc.id === menu.id);
+        if (item) setEditing({ kind: menu.kind, id: menu.id,
+          name: 'name' in item ? item.name : item.title || 'Untitled' });
+        setMenu(null);
+      }}>Rename</button>
+      <button type="button" role="menuitem" className="tree-menu-delete"
+        disabled={menu.kind === 'workspace' && workspaces.length < 2}
+        onClick={() => {
+          const { kind, id } = menu;
+          setMenu(null);
+          if (kind === 'workspace') onDeleteWorkspace(id);
+          else onDeleteDocument(id);
+        }}>Delete</button>
+    </div>, document.body)}
   </>;
 }
