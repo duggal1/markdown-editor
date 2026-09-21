@@ -207,8 +207,16 @@ function VirtualMarkdown({ markdown, scrollRef }: {
     if (!scroll) return;
     let pending: number | null = null;
     function onPosition(event: Event) {
-      const { line, kind } = (event as PositionEvent).detail;
+      const { line, total, kind } = (event as PositionEvent).detail;
       if (pending !== null) cancelAnimationFrame(pending);
+      if (line >= total - 1) {
+        virtualizer.scrollToIndex(chunks.length - 1, { align: 'end' });
+        pending = requestAnimationFrame(() => {
+          pending = null;
+          if (scroll) scroll.scrollTop = scroll.scrollHeight - scroll.clientHeight;
+        });
+        return;
+      }
       let low = 0, high = firstLines.length - 1;
       while (low < high) {
         const mid = Math.ceil((low + high) / 2);
@@ -216,12 +224,16 @@ function VirtualMarkdown({ markdown, scrollRef }: {
         else high = mid - 1;
       }
       const index = low;
+      const selector = `.virtual-markdown-section[data-index="${index}"]`;
+      // Avoid a visible jump to the beginning of the same chunk on every scroll tick.
+      if (scroll.querySelector(selector)) {
+        locatePreview(scroll, line, kind);
+        return;
+      }
       virtualizer.scrollToIndex(index, { align: 'start' });
       pending = requestAnimationFrame(() => {
         pending = null;
-        if (!scroll) return;
-        const section = scroll.querySelector<HTMLElement>(`.virtual-markdown-section[data-index="${index}"]`);
-        if (section) locatePreview(scroll, line, kind);
+        if (scroll?.querySelector(selector)) locatePreview(scroll, line, kind);
       });
     }
     scroll.addEventListener('flow-preview-position', onPosition);
