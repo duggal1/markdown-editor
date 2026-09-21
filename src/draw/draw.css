@@ -1,0 +1,239 @@
+.draw-page {
+  --draw-bg: #ffffff;
+  --draw-panel: #fafaf9;
+  --draw-line: #ebe8e4;
+  --draw-text: #292524;
+  --draw-strong: #1c1917;
+  --draw-muted: #847d76;
+  --draw-hover: #f4f2f0;
+  --draw-active: #ebe8e4;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--draw-bg);
+  color: var(--draw-text);
+  font: 400 13px/1.5 'Geist Variable', -apple-system, sans-serif;
+}
+:root[data-theme='dark'] .draw-page {
+  --draw-bg: #191817;
+  --draw-panel: #211f1d;
+  --draw-line: #393532;
+  --draw-text: #e7e5e4;
+  --draw-strong: #fafaf9;
+  --draw-muted: #a8a19a;
+  --draw-hover: #292625;
+  --draw-active: #302c29;
+}
+.draw-page button { font: inherit; color: inherit; }
+.draw-header {
+  flex: 0 0 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--draw-line);
+}
+.draw-heading, .draw-header-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.draw-heading { gap: 13px; }
+.draw-back {
+  display: inline-grid; place-items: center;
+  width: 30px; height: 30px;
+  border-radius: 4px; color: var(--draw-muted);
+  text-decoration: none; font-size: 19px;
+}
+.draw-back:hover { background: var(--draw-hover); color: var(--draw-strong); }
+.draw-wordmark { color: var(--draw-strong); font-size: 15px; letter-spacing: -.035em; }
+.draw-heading-separator { width: 1px; height: 15px; background: var(--draw-line); }
+.draw-heading-note { color: var(--draw-muted); font-size: 12px; white-space: nowrap; }
+.draw-file-input { display: none; }
+.draw-button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--draw-line);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--draw-text);
+  white-space: nowrap; cursor: pointer;
+}
+.draw-button:hover:not(:disabled) { background: var(--draw-hover); }
+.draw-button-primary {
+  background: var(--draw-strong);
+  color: var(--draw-bg) !important;
+  border-color: transparent;
+}
+.draw-button-primary:hover:not(:disabled) {
+  background: var(--draw-text);
+}
+.draw-button:disabled, .draw-text-button:disabled { opacity: .4; cursor: default; }
+.draw-layout {
+  display: grid;
+  grid-template-columns: 224px minmax(0,1fr);
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.draw-rail {
+  display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  background: var(--draw-panel);
+  border-right: 1px solid var(--draw-line);
+}
+.draw-rail-heading {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0 16px;
+  flex: 0 0 46px; color: var(--draw-muted); font-size: 12px;
+}
+.draw-image-list {
+  display: flex; flex-direction: column;
+  gap: 3px; min-height: 0; padding: 0 8px 12px;
+  overflow-y: auto; overscroll-behavior: contain;
+}
+.draw-rail-empty { padding: 14px 8px; color: var(--draw-muted); font-size: 12px; }
+.draw-image-item {
+  display: flex; align-items: center; gap: 10px; flex: 0 0 auto;
+  min-width: 0; min-height: 62px;
+  padding: 6px 8px; border: 0; border-radius: 4px;
+  background: transparent; text-align: left; cursor: pointer;
+}
+.draw-image-item:hover { background: var(--draw-hover); }
+.draw-image-item.is-selected { background: var(--draw-active); }
+.draw-image-item img {
+  flex: 0 0 45px;
+  width: 45px; height: 45px; object-fit: cover;
+  background: var(--draw-bg); border-radius: 2px;
+}
+.draw-image-item-info { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.draw-image-item-name {
+  display: block; min-width: 0; color: var(--draw-strong);
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  font-size: 12px;
+}
+.draw-image-item-count { color: var(--draw-muted); font-size: 11px; }
+.draw-image-item-number { color: var(--draw-muted); font: 400 10px var(--mono); }
+.draw-workspace {
+  position: relative;
+  display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  background: var(--draw-bg);
+}
+.draw-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  flex: 0 0 50px; min-width: 0; gap: 12px; padding: 0 16px;
+  border-bottom: 1px solid var(--draw-line);
+}
+.draw-navigation, .draw-edit-actions {
+  display: flex; align-items: center; gap: 9px; min-width: 0;
+}
+.draw-pagination {
+  min-width: 56px; text-align: center;
+  color: var(--draw-muted); font-variant-numeric: tabular-nums;
+  font-size: 12px; white-space: nowrap;
+}
+.draw-arrow-count { color: var(--draw-muted); font-size: 12px; white-space: nowrap; }
+.draw-text-button {
+  height: 32px; padding: 0 7px; border: 0; border-radius: 4px;
+  background: transparent; white-space: nowrap; cursor: pointer;
+}
+.draw-text-button:hover:not(:disabled) {
+  color: var(--draw-strong); background: var(--draw-hover);
+}
+.draw-stage {
+  display: grid;
+  place-items: center;
+  flex: 1; min-height: 0; min-width: 0;
+  padding: 20px;
+  overflow: hidden;
+  background-image: radial-gradient(var(--draw-line) .7px, transparent .7px);
+  background-size: 16px 16px;
+}
+.draw-stage.is-drop-target { outline: 2px solid var(--draw-muted); outline-offset: -8px; }
+.draw-image-frame {
+  position: relative;
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%; max-height: 100%;
+  min-width: 1px; min-height: 1px;
+  background: #ffffff;
+  box-shadow: 0 1px 12px #00000012;
+  overflow: hidden;
+}
+.draw-image-frame > img {
+  display: block;
+  width: auto; height: auto;
+  max-width: 100%;
+  max-height: calc(100dvh - 201px);
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+.draw-image-frame > canvas {
+  position: absolute;
+  inset: 0; width: 100%; height: 100%;
+  cursor: crosshair;
+  touch-action: none;
+}
+.draw-empty {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px;
+  padding: 40px 20px;
+  min-width: 0; max-width: 100%;
+  border: 0; background: transparent; color: var(--draw-strong);
+  text-align: center; cursor: pointer;
+}
+.draw-empty-mark { font: 400 48px/1 'Geist Variable', sans-serif; color: #ef4444; }
+.draw-empty-hint { max-width: 320px; color: var(--draw-muted); font-size: 12px; }
+.draw-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex: 0 0 32px;
+  padding: 0 16px; border-top: 1px solid var(--draw-line);
+  font-size: 11px; color: var(--draw-muted);
+}
+.draw-error {
+  position: absolute; z-index: 10; bottom: 45px; left: 16px; right: 16px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; gap: 12px;
+  border: 1px solid #fb718533; border-radius: 4px;
+  background: #431d25; color: #fecdd3; font-size: 12px;
+}
+.draw-error button {
+  border: 0; padding: 0 3px;
+  color: inherit; background: transparent; cursor: pointer;
+  font-size: 17px;
+}
+@media (max-width: 800px) {
+  .draw-header { flex-basis: auto; min-height: 56px; padding: 9px 12px; gap: 5px; }
+  .draw-heading { gap: 7px; }
+  .draw-heading-note, .draw-heading-separator { display: none; }
+  .draw-header-actions { gap: 5px; }
+  .draw-button { min-height: 35px; padding: 0 9px; font-size: 12px; }
+  .draw-layout { grid-template-columns: minmax(0,1fr); grid-template-rows: 91px minmax(0,1fr); }
+  .draw-rail {
+    border-right: 0; border-bottom: 1px solid var(--draw-line);
+  }
+  .draw-rail-heading { flex-basis: 24px; padding: 0 12px; }
+  .draw-image-list { flex-direction: row; gap: 5px; padding: 0 8px 6px; overflow-x: auto; overflow-y: hidden; }
+  .draw-image-item { min-width: 125px; max-width: 175px; min-height: 55px; padding: 4px 6px; }
+  .draw-image-item img { flex-basis: 39px; width: 39px; height: 39px; }
+  .draw-image-item-number { display: none; }
+  .draw-toolbar { flex-basis: 50px; padding: 0 8px; gap: 5px; }
+  .draw-navigation, .draw-edit-actions { gap: 2px; }
+  .draw-pagination { min-width: 44px; font-size: 11px; }
+  .draw-arrow-count { display: none; }
+  .draw-text-button { font-size: 12px; padding: 0 5px; }
+  .draw-stage { padding: 10px; }
+  .draw-image-frame > img { max-height: calc(100dvh - 260px); }
+  .draw-footer { flex-basis: auto; min-height: 30px; padding: 5px 10px; }
+  .draw-footer span:last-child { display: none; }
+}
+@media (max-width: 360px) {
+  .draw-wordmark { font-size: 14px; }
+  .draw-back { width: 25px; }
+  .draw-header-actions .draw-button { padding: 0 6px; }
+  .draw-pagination { min-width: 37px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .draw-page * { scroll-behavior: auto !important; }
+}
