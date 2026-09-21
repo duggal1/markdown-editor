@@ -163,19 +163,39 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   font-size: 12px; outline: none;
 }
 .tree-rename:focus-visible { outline: none; }
+/* Fixed-position menu escapes the scrollable tree, including its bottom rows. */
 .tree-menu {
-  position: absolute; top: 27px; right: 0; z-index: 30;
-  width: 150px; padding: 3px;
-  background: var(--surface); border: 1px solid var(--line);
-  border-radius: 5px;
+  position: fixed; z-index: 1000; width: 168px;
+  padding: 4px; border: 1px solid #e7e5e4; border-radius: 4px;
+  background: #fafaf9;
 }
 .tree-menu button {
-  display: flex; align-items: center; width: 100%; min-height: 30px;
-  padding: 0 9px; border: 0; border-radius: 3px;
-  background: transparent; color: var(--text); text-align: left; font-size: 12px;
+  display: flex; align-items: center; width: 100%; min-height: 34px;
+  padding: 0 10px; border: 0; border-radius: 3px;
+  background: transparent; color: #292524; text-align: left; font-size: 12px;
+  cursor: pointer;
 }
-.tree-menu button:hover:not(:disabled) { background: var(--hover); color: var(--strong); }
-.tree-menu button:disabled { opacity: .36; }
+.tree-menu button:hover:not(:disabled),
+.tree-menu button:focus-visible { background: #e7e5e4; color: #1c1917; }
+.tree-menu button:disabled { opacity: .36; cursor: default; }
+.tree-menu button.tree-menu-delete { background: #fff1f2; color: #be123c; margin-top: 2px; }
+.tree-menu button.tree-menu-delete:hover:not(:disabled),
+.tree-menu button.tree-menu-delete:focus-visible { background: #ffe4e6; color: #9f1239; }
+:root[data-theme='dark'] .tree-menu {
+  background: #25221f; border-color: #37312d;
+}
+:root[data-theme='dark'] .tree-menu button { color: #f5f5f4; }
+:root[data-theme='dark'] .tree-menu button:hover:not(:disabled),
+:root[data-theme='dark'] .tree-menu button:focus-visible {
+  background: #292524; color: #fafaf9;
+}
+:root[data-theme='dark'] .tree-menu button.tree-menu-delete {
+  background: #43282d; color: #fda4af;
+}
+:root[data-theme='dark'] .tree-menu button.tree-menu-delete:hover:not(:disabled),
+:root[data-theme='dark'] .tree-menu button.tree-menu-delete:focus-visible {
+  background: #542d36; color: #fecdd3;
+}
 .md-tag {
   display: inline-flex; align-items: center; flex: 0 0 auto; gap: 5px;
   margin-left: auto; padding: 2px 5px; border-radius: 2px;
