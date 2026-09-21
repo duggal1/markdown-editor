@@ -31,6 +31,18 @@ export function htmlPreviewDocument(source: string): string | null {
   head.querySelectorAll('base, meta[http-equiv]').forEach(node => {
     if (node !== csp) node.remove();
   });
+  // Approximate source-to-preview scroll mapping across the iframe's opaque
+  // origin. The editor never gets access to the document's script or storage.
+  const sync = parsed.createElement('script');
+  sync.textContent = [
+    "window.addEventListener('message', function(event) {",
+    "  if (event.source !== window.parent || !event.data || event.data.type !== 'flow-html-scroll') return;",
+    "  var fraction = Math.max(0, Math.min(1, Number(event.data.progress) || 0));",
+    "  var root = document.scrollingElement || document.documentElement;",
+    "  window.scrollTo(0, Math.max(0, root.scrollHeight - window.innerHeight) * fraction);",
+    "});",
+  ].join('\n');
+  parsed.body.append(sync);
   // DOMParser treats <script> as inert here; scripts run only inside the iframe.
   const doctype = parsed.doctype ? '<!doctype html>\n' : '';
   return doctype + parsed.documentElement.outerHTML;
