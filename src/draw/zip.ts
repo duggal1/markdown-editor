@@ -41,14 +41,15 @@ export async function createImageZip(
 ): Promise<Blob> {
   if (entries.length > 65535) throw new Error('A ZIP can contain at most 65,535 images.');
   const output: BlobPart[] = [];
-  const central: Uint8Array[] = [];
+  const central: ArrayBuffer[] = [];
   const { time, day } = dosTimestamp(new Date());
   let offset = 0;
   let centralBytes = 0;
 
   for (let i = 0; i < entries.length; i++) {
     const name = encoder.encode(entries[i].name);
-    const data = new Uint8Array(await entries[i].file.arrayBuffer());
+    const dataBuffer = await entries[i].file.arrayBuffer();
+    const data = new Uint8Array(dataBuffer);
     if (name.length > 65535 || data.length > 0xffffffff) {
       throw new Error('An image or file name exceeds the ZIP format limit.');
     }
@@ -68,7 +69,7 @@ export async function createImageZip(
     local.view.setUint32(22, data.length, true);
     local.view.setUint16(26, name.length, true);
     local.bytes.set(name, 30);
-    output.push(local.bytes, data);
+    output.push(local.bytes.buffer as ArrayBuffer, dataBuffer);
 
     const directory = header(46 + name.length);
     directory.view.setUint32(0, 0x02014b50, true);
@@ -83,7 +84,7 @@ export async function createImageZip(
     directory.view.setUint16(28, name.length, true);
     directory.view.setUint32(42, offset, true);
     directory.bytes.set(name, 46);
-    central.push(directory.bytes);
+    central.push(directory.bytes.buffer as ArrayBuffer);
     centralBytes += directory.bytes.length;
     offset += local.bytes.length + data.length;
     onProgress?.(i + 1, entries.length);
@@ -94,5 +95,5 @@ export async function createImageZip(
   end.view.setUint16(10, entries.length, true);
   end.view.setUint32(12, centralBytes, true);
   end.view.setUint32(16, offset, true);
-  return new Blob([...output, ...central, end.bytes], { type: 'application/zip' });
+  return new Blob([...output, ...central, end.bytes.buffer as ArrayBuffer], { type: 'application/zip' });
 }
