@@ -4,6 +4,7 @@ import type { EditorView } from '@codemirror/view';
 import MarkdownEditor, { formatEditor, type Format } from './components/MarkdownEditor';
 import { FlowMark, Icon, type IconName } from './components/Icons';
 import { downloadMarkdown } from './lib/document';
+import { detectRawCode, isMarkdownFile, languageForFile } from './lib/code';
 import {
   clearRecovery, inferTitle, loadWorkspace, readPrefs, removeDoc,
   saveDoc, savePrefs, saveRecovery, uid, wordCount,
@@ -55,6 +56,8 @@ export default function App() {
   const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const deletionInFlight = useRef(false);
+  const importInFlight = useRef(false);
+  const [assetView, setAssetView] = useState<{ id: string; url: string } | null>(null);
   const editorRef = useRef<EditorView | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -97,7 +100,7 @@ export default function App() {
       setMode(restoredMode);
       setPreviewText(first.markdown);
       setWords(wordCount(first.markdown));
-      worker?.postMessage({ type: 'index', documents: data.documents });
+      worker?.postMessage({ type: 'index', documents: data.documents.map(({ id, workspaceId, title, markdown, updatedAt }) => ({ id, workspaceId, title, markdown, updatedAt })) });
       setLoaded(true);
     }).catch(() => { if (alive) { setSaveState('error'); setNotice('Local storage could not be opened.'); } });
     return () => {
@@ -109,6 +112,13 @@ export default function App() {
     };
   }, []);
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
+  useEffect(() => {
+    const doc = live.current.get(activeId);
+    if (!doc?.asset) { setAssetView(null); return; }
+    const url = URL.createObjectURL(doc.asset);
+    setAssetView({ id: doc.id, url });
+    return () => URL.revokeObjectURL(url);
+  }, [activeId]);
   useEffect(() => {
     const query = window.matchMedia('(max-width: 800px)');
     const update = () => setCompact(query.matches);
@@ -156,7 +166,7 @@ export default function App() {
       const latest = live.current.get(doc.id);
       if (!latest) return;
       setDocs(current => current.map(item => item.id === latest.id ? latest : item));
-      workerRef.current?.postMessage({ type: 'upsert', document: latest });
+      workerRef.current?.postMessage({ type: 'upsert', document: { id: latest.id, workspaceId: latest.workspaceId, title: latest.title, markdown: latest.markdown, updatedAt: latest.updatedAt } });
       if (activeIdRef.current === latest.id) {
         if (modeRef.current !== 'write') setPreviewText(latest.markdown);
         setWords(wordCount(latest.markdown));
@@ -237,31 +247,89 @@ export default function App() {
       setDeleting(false);
     }
   }
-  async function importFile(file?: File) {
-    if (!file) return;
-    if (file.size > 15 * 1024 * 1024) { setNotice('Maximum file size: 15 MB'); return; }
-    if (!/\.(md|markdown|txt)$/i.test(file.name)) { setNotice('Choose a .md, .markdown or .txt file.'); return; }
+  function exportDocument(doc: FlowDocument) {
+    flush(doc.id);
+    if (doc.asset || doc.fileName) {
+      const blob = doc.asset ?? new Blob([doc.markdown], { type: 'text/plain;charset=utf-8' });
+      const href = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = href;
+      link.download = doc.fileName || doc.title;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(href), 1000);
+    } else {
+      downloadMarkdown(doc.markdown, doc.title);
+    }
+    setNotice('Exported');
+  }
+  async function importFiles(incoming: File[]) {
+    if (!incoming.length || importInFlight.current) return;
+    importInFlight.current = true;
+    setSaveState('saving');
+    const imported: FlowDocument[] = [];
+    const errors: string[] = [];
     try {
-      const markdown = await file.text();
-      const now = Date.now();
-      const doc: FlowDocument = {
-        id: uid(), workspaceId, markdown, title: file.name.replace(/\.(md|markdown|txt)$/i, ''),
-        titleAuto: false, createdAt: now, updatedAt: now,
-      };
-      live.current.set(doc.id, doc);
-      setDocs(current => [doc, ...current]);
-      selectDocument(doc.id);
-      await saveDoc(doc);
-      setNotice('Imported ' + file.name);
-    } catch { setNotice('The file could not be imported.'); }
+      for (const file of incoming) {
+        if (file.size > 50 * 1024 * 1024) {
+          errors.push(file.name + ' exceeds the 50 MB limit');
+          continue;
+        }
+        try {
+          const image = file.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i.test(file.name);
+          let binary = false;
+          let markdown = '';
+          if (!image) {
+            const sample = new Uint8Array(await file.slice(0, 4096).arrayBuffer());
+            binary = sample.includes(0);
+            if (!binary) {
+              try { new TextDecoder('utf-8', { fatal: true }).decode(sample); }
+              catch { binary = true; }
+            }
+            if (!binary) markdown = await file.text();
+          }
+          const now = Date.now();
+          const fileType = image ? 'image' : binary ? 'binary' : 'text';
+          const doc: FlowDocument = {
+            id: uid(), workspaceId, markdown,
+            title: file.name.replace(/\.[^.]+$/, '') || file.name,
+            fileName: file.name, fileType,
+            language: fileType === 'text' && !isMarkdownFile(file.name)
+              ? languageForFile(file.name) || detectRawCode(markdown) || undefined : undefined,
+            asset: image || binary ? file : undefined,
+            titleAuto: false, createdAt: now, updatedAt: now,
+          };
+          await saveDoc(doc);
+          live.current.set(doc.id, doc);
+          imported.push(doc);
+          workerRef.current?.postMessage({ type: 'upsert', document: {
+            id: doc.id, workspaceId: doc.workspaceId, title: doc.title,
+            markdown: doc.markdown, updatedAt: doc.updatedAt,
+          } });
+        } catch {
+          errors.push('Could not import ' + file.name);
+        }
+      }
+      if (imported.length) {
+        setDocs(current => [...imported.slice().reverse(), ...current]);
+        selectDocument(imported[0].id);
+        setNotice(imported.length === 1 ? 'Imported ' + imported[0].fileName : 'Imported ' + imported.length + ' files');
+      }
+      if (errors.length) setNotice(errors.join(' · '));
+      setSaveState(errors.length ? 'error' : 'saved');
+    } finally {
+      importInFlight.current = false;
+    }
   }
   function onFileSelected(event: ChangeEvent<HTMLInputElement>) {
-    void importFile(event.target.files?.[0]);
+    const files = Array.from(event.target.files || []);
     event.target.value = '';
+    void importFiles(files);
   }
   function onDrop(event: DragEvent<HTMLElement>) {
     event.preventDefault();
-    void importFile(event.dataTransfer.files?.[0]);
+    void importFiles(Array.from(event.dataTransfer.files));
   }
   const active = live.current.get(activeId) || docs.find(doc => doc.id === activeId);
   const matching = useMemo(() => query.trim()
@@ -285,7 +353,7 @@ export default function App() {
       if (key === 's') {
         event.preventDefault();
         const doc = live.current.get(activeIdRef.current);
-        if (doc) { flush(doc.id); downloadMarkdown(doc.markdown, doc.title); setNotice('Markdown exported'); }
+        if (doc) exportDocument(doc);
       } else if (key === 'k' && !event.shiftKey) {
         event.preventDefault(); setSidebarOpen(true); window.requestAnimationFrame(() => searchRef.current?.focus());
       } else if (key === 'p' && event.shiftKey) {
@@ -343,8 +411,8 @@ export default function App() {
         <div className="document-list">
           {matching.map(doc => <div key={doc.id} className={'document-entry' + (activeId === doc.id ? ' active' : '')}>
             <motion.button className="document-select" whileTap={motionOff ? undefined : { scale: 0.994 }} transition={{ duration: 0.12 }} onClick={() => selectDocument(doc.id)}>
-              <Icon name="file" size={15} /><span className="document-label">{doc.title || 'Untitled'}</span>
-              <span className="md-tag">.md</span>
+              <Icon name={doc.fileType === 'image' ? 'svg' : 'file'} size={15} /><span className="document-label">{doc.title || 'Untitled'}</span>
+              <span className="md-tag">{doc.fileName?.match(/\.[^.]+$/)?.[0] || '.md'}</span>
             </motion.button>
             <button className="row-delete" aria-label={'Delete ' + doc.title} title="Delete document" onClick={() => setPendingDelete({ id: doc.id, title: doc.title.trim() || 'Untitled' })}><Icon name="trash" size={13} /></button>
           </div>)}
@@ -375,11 +443,11 @@ export default function App() {
               <span className="mode-label">{item.charAt(0).toUpperCase() + item.slice(1)}</span>
             </motion.button>)}
           </div>
-          <motion.button {...pressMotion} type="button" className="export-button" onClick={() => { const doc = live.current.get(activeIdRef.current); if (doc) { flush(doc.id); downloadMarkdown(doc.markdown, doc.title); setNotice('Exported'); } }}><Icon name="download" size={15} /> <span>Export</span></motion.button>
+          <motion.button {...pressMotion} type="button" className="export-button" onClick={() => { const doc = live.current.get(activeIdRef.current); if (doc) exportDocument(doc); }}><Icon name="download" size={15} /> <span>Export</span></motion.button>
           <motion.button {...pressMotion} type="button" className="square-button theme-toggle" title={theme === 'light' ? 'Dark mode' : 'Light mode'} aria-label={theme === 'light' ? 'Dark mode' : 'Light mode'} onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')}>
             <AnimatePresence initial={false} mode="wait"><motion.span key={theme} className="theme-icon" initial={motionOff ? false : { opacity: 0, rotate: -25 }} animate={{ opacity: 1, rotate: 0 }} exit={motionOff ? undefined : { opacity: 0, rotate: 25 }} transition={{ duration: motionOff ? 0 : 0.15 }}><Icon name={theme === 'light' ? 'moon' : 'sun'} size={17} /></motion.span></AnimatePresence>
           </motion.button>
-          <input ref={fileRef} type="file" hidden accept=".md,.markdown,.txt,text/markdown,text/plain" onChange={onFileSelected} aria-label="Import Markdown file" />
+          <input ref={fileRef} type="file" hidden multiple onChange={onFileSelected} aria-label="Import files" />
         </div>
       </header>
       <div className="subbar">
@@ -390,16 +458,16 @@ export default function App() {
               : <span className={format.name === 'bold' ? 'format-bold' : 'format-italic'}>{format.name === 'bold' ? 'B' : 'I'}</span>}
           </motion.button>)}
           <span className="format-divider" />
-          <motion.button {...pressMotion} title="Import Markdown" aria-label="Import Markdown" onClick={() => fileRef.current?.click()}><Icon name="upload" size={16} /></motion.button>
+          <motion.button {...pressMotion} title="Import files" aria-label="Import files" onClick={() => fileRef.current?.click()}><Icon name="upload" size={16} /></motion.button>
         </div>
-        <span className="word-stat">{words.toLocaleString()} words</span>
+        <span className="word-stat">{active?.fileType === 'image' ? 'Image' : active?.fileType === 'binary' ? 'File' : `${words.toLocaleString()} words`}</span>
       </div>
       <motion.main className={'editor-area mode-' + mode + (compact ? ' compact' : '')} aria-label="Flow Markdown workspace"
         initial={false} animate={{ gridTemplateColumns: gridColumns }}
         transition={motionOff ? { duration: 0 } : { duration: 0.29, ease: [0.22, 1, 0.36, 1] }}
         onAnimationComplete={() => editorRef.current?.requestMeasure()}>
         <section className="editor-pane" aria-label="Write Markdown">
-          {active && <MarkdownEditor key={active.id} documentId={active.id} initialText={active.markdown}
+          {active?.asset ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} /> : active && <MarkdownEditor key={active.id} documentId={active.id} initialText={active.markdown}
             viewRef={editorRef} onChange={onEditorChange} />}
         </section>
         <section className="preview-pane" aria-label="Markdown preview">
@@ -407,7 +475,9 @@ export default function App() {
             animate={{ opacity: presentationMode === 'write' ? 0 : 1 }}
             transition={motionOff ? { duration: 0 } : { duration: 0.2, delay: presentationMode === 'write' ? 0 : 0.035 }}>
             <Suspense fallback={<div className="preview-loading">Rendering…</div>}>
-              {presentationMode !== 'write' && <MarkdownPreview markdown={previewText} />}
+              {presentationMode !== 'write' && (active?.asset
+                ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} />
+                : <MarkdownPreview markdown={previewText} sourceLanguage={active?.language} />)}
             </Suspense>
           </motion.div>
         </section>
