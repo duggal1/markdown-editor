@@ -20,30 +20,38 @@ function darkInk(color: string): boolean {
   const [r, g, b] = parts;
   return Math.max(r, g, b) < 125 && Math.max(r, g, b) - Math.min(r, g, b) < 35;
 }
-export function svgPreviewDocument(code: string, theme: 'light' | 'dark'): string {
-  let svg = code;
-  if (theme === 'dark') {
-    const parsed = new DOMParser().parseFromString(code, 'image/svg+xml');
-    const root = parsed.documentElement;
-    if (root.localName.toLowerCase() === 'svg' && !parsed.querySelector('parsererror')) {
-      const nodes = [root, ...Array.from(root.querySelectorAll('*'))];
-      for (const node of nodes) {
-        for (const attribute of ['fill', 'stroke', 'color']) {
-          const value = node.getAttribute(attribute);
-          if (value && darkInk(value)) node.setAttribute(attribute, '#fafaf9');
-        }
-        const element = node as SVGElement;
-        for (const property of ['fill', 'stroke', 'color'] as const) {
-          const value = element.style?.getPropertyValue(property);
-          if (value && darkInk(value)) element.style.setProperty(property, '#fafaf9');
-        }
-      }
-      // A dark SVG with no explicit fill inherits black from the root.
-      if (!root.hasAttribute('fill') && !(root as unknown as SVGElement).style?.getPropertyValue('fill'))
-        root.setAttribute('fill', '#fafaf9');
-      svg = new XMLSerializer().serializeToString(root);
+export function adaptSvgForTheme(code: string, theme: 'light' | 'dark'): string {
+  if (theme !== 'dark') return code;
+  const parsed = new DOMParser().parseFromString(code, 'image/svg+xml');
+  const root = parsed.documentElement;
+  if (root.localName.toLowerCase() !== 'svg' || parsed.querySelector('parsererror')) return code;
+
+  const nodes = [root, ...Array.from(root.querySelectorAll('*'))];
+  for (const node of nodes) {
+    for (const attribute of ['fill', 'stroke', 'color']) {
+      const value = node.getAttribute(attribute);
+      // currentColor is intentionally left intact here. The sandbox gets
+      // color:#fafaf9, so inherited icon ink becomes white without touching source.
+      if (value && darkInk(value)) node.setAttribute(attribute, '#fafaf9');
+    }
+    const element = node as SVGElement;
+    for (const property of ['fill', 'stroke', 'color'] as const) {
+      const value = element.style?.getPropertyValue(property);
+      if (value && darkInk(value)) element.style.setProperty(property, '#fafaf9');
     }
   }
+
+  // SVG's default fill is black. On a dark canvas, an SVG with no root fill
+  // must inherit a visible light fill. Explicit colored descendants remain unchanged.
+  if (!root.hasAttribute('fill') && !(root as unknown as SVGElement).style?.getPropertyValue('fill')) {
+    root.setAttribute('fill', '#fafaf9');
+  }
+
+  return new XMLSerializer().serializeToString(root);
+}
+
+export function svgPreviewDocument(code: string, theme: 'light' | 'dark'): string {
+  const svg = adaptSvgForTheme(code, theme);
   // currentColor can inherit from a nested SVG group or stylesheet, not just the root.
   // Override ONLY the inherited "color" channel in dark mode. Explicit colored
   // fills and strokes remain as-authored; dark monochrome values were handled above.
