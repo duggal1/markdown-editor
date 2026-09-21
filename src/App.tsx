@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type PointerEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import type { EditorView } from '@codemirror/view';
 import MarkdownEditor, { formatEditor, type Format } from './components/MarkdownEditor';
@@ -17,7 +17,7 @@ const MarkdownPreview = lazy(() => import('./components/MarkdownPreview'));
 const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const FORMATS: { name: Format; icon?: IconName; label: string; shortcut?: string }[] = [
   { name: 'heading', label: 'Heading', shortcut: '#' },
-  { name: 'bold', label: 'Bold', shortcut: '⌘B' },
+  { name: 'bold', label: 'Bold' },
   { name: 'italic', label: 'Italic', shortcut: '⌘I' },
   { name: 'link', icon: 'link', label: 'Link', shortcut: '⌘K' },
   { name: 'bullet', icon: 'list', label: 'List', shortcut: '-' },
@@ -35,19 +35,33 @@ function TerminalLoader({ loading }: { loading: boolean }) {
   }, [loading]);
   return loading ? <span className="terminal-loader" aria-hidden="true">{SPINNER[frame]}</span> : null;
 }
-function AssetPreview({ document: doc, src, onExport }: {
-  document: FlowDocument; src: string | null; onExport: () => void;
+function AssetPreview({ document: doc, src, onExport, theme }: {
+  document: FlowDocument; src: string | null; onExport: () => void; theme: Theme;
 }) {
+  const [svgText, setSvgText] = useState<string | null>(null);
+  const isSvg = doc.fileType === 'image' &&
+    (doc.fileName?.toLowerCase().endsWith('.svg') || doc.asset?.type === 'image/svg+xml');
+  useEffect(() => {
+    if (!isSvg || !doc.asset) { setSvgText(null); return; }
+    let alive = true;
+    if (doc.asset.size > 2 * 1024 * 1024) { setSvgText(null); return; }
+    void doc.asset.text().then(value => { if (alive) setSvgText(value); });
+    return () => { alive = false; };
+  }, [doc.asset, isSvg]);
+  const svgDocument = useMemo(() => svgText ? svgPreviewDocument(svgText, theme) : '', [svgText, theme]);
   return <div className="asset-preview">
-    {doc.fileType === 'image' && src
-      ? <img src={src} alt={doc.fileName || doc.title} draggable={false} />
-      : doc.fileType === 'image'
-        ? <span className="asset-loading">Loading image…</span>
-        : <div className="asset-file">
-            <Icon name="file" size={22} />
-            <span>{doc.fileName || doc.title}</span>
-            <button type="button" onClick={onExport}><Icon name="download" size={15} /> Download</button>
-          </div>}
+    {isSvg && svgDocument
+      ? <iframe className="asset-svg-frame" title={doc.fileName || doc.title}
+          sandbox="" srcDoc={svgDocument} />
+      : doc.fileType === 'image' && src && !isSvg
+        ? <img src={src} alt={doc.fileName || doc.title} draggable={false} />
+        : doc.fileType === 'image'
+          ? <span className="asset-loading">Loading SVG preview…</span>
+          : <div className="asset-file">
+              <Icon name="file" size={22} />
+              <span>{doc.fileName || doc.title}</span>
+              <button type="button" onClick={onExport}><Icon name="download" size={15} /> Download</button>
+            </div>}
   </div>;
 }
 export default function App() {
@@ -602,7 +616,7 @@ export default function App() {
     });
     return () => cancelAnimationFrame(frame);
   }, [previewText, mode, activeId, onEditorPosition]);
-  function startSplitDrag(event: React.PointerEvent<HTMLDivElement>) {
+  function startSplitDrag(event: PointerEvent<HTMLDivElement>) {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -748,7 +762,7 @@ export default function App() {
         transition={motionOff || resizingSplit ? { duration: 0 } : { duration: 0.29, ease: [0.22, 1, 0.36, 1] }}
         onAnimationComplete={() => editorRef.current?.requestMeasure()}>
         <section className="editor-pane" aria-label="Write Markdown">
-          {active?.asset ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} /> : active && <MarkdownEditor key={active.id} documentId={active.id} initialText={active.markdown}
+          {active?.asset ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} theme={theme} /> : active && <MarkdownEditor key={active.id} documentId={active.id} initialText={active.markdown}
             viewRef={editorRef} onChange={onEditorChange} onPosition={onEditorPosition} />}
         </section>
         <section className="preview-pane" aria-label="Markdown preview">
@@ -757,7 +771,7 @@ export default function App() {
             transition={motionOff ? { duration: 0 } : { duration: 0.2, delay: presentationMode === 'write' ? 0 : 0.035 }}>
             <Suspense fallback={<div className="preview-loading">Rendering…</div>}>
               {presentationMode !== 'write' && (active?.asset
-                ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} />
+                ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} theme={theme} />
                 : <MarkdownPreview key={active?.id || 'preview'} markdown={previewText} sourceLanguage={active?.language} scrollRef={previewScrollRef} theme={theme} />)}
             </Suspense>
           </motion.div>
