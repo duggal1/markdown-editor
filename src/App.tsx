@@ -53,10 +53,10 @@ function AssetPreview({ document: doc, src, onExport, theme }: {
     {isSvg && svgDocument
       ? <iframe className="asset-svg-frame" title={doc.fileName || doc.title}
           sandbox="" srcDoc={svgDocument} />
-      : doc.fileType === 'image' && src && !isSvg
+      : doc.fileType === 'image' && src
         ? <img src={src} alt={doc.fileName || doc.title} draggable={false} />
         : doc.fileType === 'image'
-          ? <span className="asset-loading">Loading SVG preview…</span>
+          ? <span className="asset-loading">Loading image…</span>
           : <div className="asset-file">
               <Icon name="file" size={22} />
               <span>{doc.fileName || doc.title}</span>
