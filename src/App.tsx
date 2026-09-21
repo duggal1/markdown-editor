@@ -247,8 +247,7 @@ export default function App() {
     }, doc.markdown.length > 100000 ? 700 : 430));
   }, [flush]);
 
-  const onEditorChange = useCallback((value: string) => {
-    const id = activeIdRef.current;
+  const onEditorChange = useCallback((value: string, id: string) => {
     const current = live.current.get(id);
     if (!current || current.markdown === value) return;
     const next: FlowDocument = {
@@ -258,7 +257,7 @@ export default function App() {
     };
     scheduleSave(next);
     // Coalesce edits to one preview update per animation frame, never after an idle delay.
-    if (modeRef.current !== 'write') {
+    if (id === activeIdRef.current && modeRef.current !== 'write') {
       pendingPreview.current = { id, markdown: value };
       if (previewFrame.current === null) {
         previewFrame.current = requestAnimationFrame(() => {
