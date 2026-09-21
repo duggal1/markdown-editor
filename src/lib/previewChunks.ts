@@ -8,7 +8,6 @@ export function previewChunks(markdown: string, target = 7200): string[] {
   let start = 0;
   let position = 0;
   let fence: { char: string; length: number } | null = null;
-  let previousBlank = false;
   let inHtmlBlock = false;
   while (position < markdown.length) {
     const end = markdown.indexOf('\n', position);
@@ -26,12 +25,11 @@ export function previewChunks(markdown: string, target = 7200): string[] {
     if (inHtmlBlock && /^<\/(?:div|table|details|section|article|pre|script|style)>/i.test(trimmed)) inHtmlBlock = false;
     const blank = !trimmed;
     const nextStart = end < 0 ? markdown.length : end + 1;
-    if (!fence && !inHtmlBlock && blank && previousBlank &&
+    if (!fence && !inHtmlBlock && blank &&
       nextStart - start >= target && nextStart < markdown.length) {
       output.push(markdown.slice(start, nextStart));
       start = nextStart;
-      previousBlank = false;
-    } else previousBlank = blank;
+    }
     position = nextStart;
   }
   if (start < markdown.length) output.push(markdown.slice(start));
