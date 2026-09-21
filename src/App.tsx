@@ -110,7 +110,8 @@ export default function App() {
       setWorkspaceId(chosenWorkspace.id);
       setRecentIds(Array.isArray(prefs.recentIds) ? prefs.recentIds.filter(id => live.current.has(id)) : [first.id]);
       setTheme(prefs.theme === 'dark' ? 'dark' : 'light');
-      setSidebarOpen(prefs.sidebarOpen !== false);
+      // Never restore a desktop-open drawer over the entire phone editor.
+      setSidebarOpen(window.matchMedia('(max-width: 800px)').matches ? false : prefs.sidebarOpen !== false);
       modeRef.current = restoredMode;
       setMode(restoredMode);
       setPreviewText(first.markdown);
@@ -136,10 +137,32 @@ export default function App() {
   }, [activeId]);
   useEffect(() => {
     const query = window.matchMedia('(max-width: 800px)');
-    const update = () => setCompact(query.matches);
+    const update = () => {
+      setCompact(query.matches);
+      if (query.matches) setSidebarOpen(false);
+    };
     query.addEventListener('change', update);
     return () => query.removeEventListener('change', update);
   }, []);
+  useEffect(() => {
+    if (!compact) {
+      document.documentElement.style.removeProperty('--flow-viewport-height');
+      return;
+    }
+    const viewport = window.visualViewport;
+    const update = () => {
+      const height = viewport?.height || window.innerHeight;
+      document.documentElement.style.setProperty('--flow-viewport-height', Math.round(height) + 'px');
+    };
+    update();
+    viewport?.addEventListener('resize', update);
+    window.addEventListener('resize', update);
+    return () => {
+      viewport?.removeEventListener('resize', update);
+      window.removeEventListener('resize', update);
+      document.documentElement.style.removeProperty('--flow-viewport-height');
+    };
+  }, [compact]);
   useEffect(() => {
     if (!loaded) return;
     savePrefs({ theme, mode, sidebarOpen, activeDocumentId: activeId,
@@ -397,7 +420,7 @@ export default function App() {
     modeRef.current = next;
     if (next !== 'write') setPreviewText(live.current.get(activeIdRef.current)?.markdown || '');
     setMode(next);
-    if (next !== 'preview') window.requestAnimationFrame(() => editorRef.current?.focus());
+    if (!compact && next !== 'preview') window.requestAnimationFrame(() => editorRef.current?.focus());
   }
   function changeTitle(value: string) {
     const current = live.current.get(activeIdRef.current);
@@ -407,8 +430,12 @@ export default function App() {
     setDocs(docs => docs.map(doc => doc.id === next.id ? next : doc));
   }
 
-  const presentationMode: Mode = compact && mode === 'split' ? 'preview' : mode;
+  // A phone's Split mode shows two vertically stacked, independently scrolling panes.
+  const presentationMode: Mode = mode;
   const gridColumns = presentationMode === 'split' ? 'minmax(0, 1fr) minmax(0, 1fr)'
+    : presentationMode === 'preview' ? 'minmax(0, 0fr) minmax(0, 1fr)'
+      : 'minmax(0, 1fr) minmax(0, 0fr)';
+  const mobileGridRows = presentationMode === 'split' ? 'minmax(0, 1fr) minmax(0, 1fr)'
     : presentationMode === 'preview' ? 'minmax(0, 0fr) minmax(0, 1fr)'
       : 'minmax(0, 1fr) minmax(0, 0fr)';
   const pressMotion = motionOff ? {} : { whileHover: { scale: 1.035 }, whileTap: { scale: 0.965 } };
@@ -451,7 +478,7 @@ export default function App() {
             onClick={() => setSidebarOpen(current => !current)}><Icon name="sidebar" size={18} /></motion.button>
           <input ref={titleRef} className="document-title" aria-label="Document title" spellCheck={false}
             value={active?.title || ''} onChange={event => changeTitle(event.target.value)} placeholder="Untitled" />
-          <span className="save-indicator" aria-label={saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : 'Save failed'} role="status">
+          <span className="save-indicator" data-save-state={saveState} aria-label={saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : 'Save failed'} role="status">
             {saveState === 'saving' && <TerminalLoader loading />}{saveState === 'error' ? 'Not saved' : saveState === 'saving' ? 'Saving' : 'Saved'}
           </span>
         </div>
@@ -483,7 +510,8 @@ export default function App() {
         <span className="word-stat">{active?.fileType === 'image' ? 'Image' : active?.fileType === 'binary' ? 'File' : `${words.toLocaleString()} words`}</span>
       </div>
       <motion.main className={'editor-area mode-' + mode + (compact ? ' compact' : '')} aria-label="Flow Markdown workspace"
-        initial={false} animate={{ gridTemplateColumns: gridColumns }}
+        initial={false} animate={{ gridTemplateColumns: compact ? 'minmax(0, 1fr)' : gridColumns,
+          gridTemplateRows: compact ? mobileGridRows : 'minmax(0, 1fr)' }}
         transition={motionOff ? { duration: 0 } : { duration: 0.29, ease: [0.22, 1, 0.36, 1] }}
         onAnimationComplete={() => editorRef.current?.requestMeasure()}>
         <section className="editor-pane" aria-label="Write Markdown">
