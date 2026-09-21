@@ -74,17 +74,20 @@ export function formatEditor(view: EditorView | null, format: Format): void {
 }
 
 function MarkdownEditor({
-  documentId, initialText, viewRef, onChange, focusOnMount = false,
+  documentId, initialText, viewRef, onChange, onPosition, focusOnMount = false,
 }: {
   documentId: string;
   initialText: string;
   viewRef: RefObject<EditorView | null>;
   onChange: (value: string, documentId: string) => void;
+  onPosition?: (line: number, kind: 'scroll' | 'cursor', total: number) => void;
   focusOnMount?: boolean;
 }) {
   const mount = useRef<HTMLDivElement>(null);
   const change = useRef(onChange);
   change.current = onChange;
+  const position = useRef(onPosition);
+  position.current = onPosition;
   useEffect(() => {
     if (!mount.current) return;
     const languageSlot = new Compartment();
@@ -106,6 +109,18 @@ function MarkdownEditor({
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('pagehide', drain);
     let view: EditorView;
+    let scrollFrame: number | null = null;
+    const onScroll = () => {
+      if (scrollFrame !== null) return;
+      scrollFrame = requestAnimationFrame(() => {
+        scrollFrame = null;
+        if (viewRef.current !== view) return;
+        const scroller = view.scrollDOM;
+        const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4;
+        const line = atBottom ? view.state.doc.lines : view.state.doc.lineAt(view.viewport.from).number;
+        position.current?.(line, 'scroll', view.state.doc.lines);
+      });
+    };
     const setLanguage = (source: string) => {
       const language = detectRawCode(source);
       view.dom.classList.toggle('raw-code', Boolean(language));
@@ -148,6 +163,10 @@ function MarkdownEditor({
           keymap.of([indentWithTab]),
           placeholder('Start writing…'),
           EditorView.updateListener.of(update => {
+            if (update.selectionSet || update.docChanged) {
+              const line = update.state.doc.lineAt(update.state.selection.main.head).number;
+              position.current?.(line, 'cursor', update.state.doc.lines);
+            }
             if (!update.docChanged) return;
             // Keep typing synchronous. Large immutable snapshots are materialized at most
             // once per animation frame, even across a burst of CodeMirror transactions.
@@ -181,10 +200,13 @@ function MarkdownEditor({
       parent: mount.current,
     });
     viewRef.current = view;
+    view.scrollDOM.addEventListener('scroll', onScroll, { passive: true });
     setLanguage(initialText.slice(0, 12000));
     if (focusOnMount) view.focus();
     return () => {
       ++request;
+      view.scrollDOM.removeEventListener('scroll', onScroll);
+      if (scrollFrame !== null) cancelAnimationFrame(scrollFrame);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('pagehide', drain);
       drain();
