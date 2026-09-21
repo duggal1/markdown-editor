@@ -67,7 +67,8 @@ export default function WorkspaceTree({
     if (!newWorkspaceId) return;
     const ws = workspaces.find(item => item.id === newWorkspaceId);
     if (ws) setEditing({ kind: 'workspace', id: ws.id, name: ws.name });
-  }, [newWorkspaceId, workspaces]);
+  // Only a newly created id starts the rename flow; edits must not restart it.
+  }, [newWorkspaceId]);
   useEffect(() => {
     if (!menu) return;
     function close(event: globalThis.PointerEvent) {
@@ -124,7 +125,7 @@ export default function WorkspaceTree({
               onClick={() => onToggle(ws.id)}><Icon name="chevron" size={14} /></button>
             <Icon name="folder" size={15} />
             {wsEditing
-              ? <RenameField key={ws.id} name={editing.name}
+              ? <RenameField key={ws.id} name={editing?.name || ws.name}
                   onCommit={name => { onRenameWorkspace(ws.id, name); setEditing(null); }}
                   onCancel={() => setEditing(null)} />
               : <button type="button" className="tree-workspace-name"
@@ -160,7 +161,7 @@ export default function WorkspaceTree({
                   className={'tree-row tree-document' + (activeId === doc.id ? ' is-active' : '')}>
                   <Icon name={doc.fileType === 'image' ? 'svg' : 'file'} size={14} />
                   {docEditing
-                    ? <RenameField key={doc.id} name={editing.name}
+                    ? <RenameField key={doc.id} name={editing?.name || doc.title}
                         onCommit={name => { onRenameDocument(doc.id, name); setEditing(null); }}
                         onCancel={() => setEditing(null)} />
                     : <button type="button" className="tree-document-name"
