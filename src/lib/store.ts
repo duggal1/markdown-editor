@@ -18,6 +18,7 @@ export type Preferences = {
 const DATABASE = 'flow.workspace.v1';
 const PREFS = 'flow.preferences.v1';
 const RECOVERY = 'flow.last-edit.v1';
+const RECOVERY_ID = 'flow.last-edit.id.v1';
 const FALLBACK = 'flow.document.';
 let dbPromise: Promise<IDBDatabase> | undefined;
 
@@ -80,13 +81,19 @@ export function savePrefs(prefs: Preferences): void {
   try { localStorage.setItem(PREFS, JSON.stringify(prefs)); } catch { /* Storage blocked. */ }
 }
 export function saveRecovery(doc: FlowDocument): void {
-  try { localStorage.setItem(RECOVERY, JSON.stringify(doc)); } catch { /* IndexedDB remains primary. */ }
+  try {
+    localStorage.setItem(RECOVERY, JSON.stringify(doc));
+    localStorage.setItem(RECOVERY_ID, doc.id);
+  } catch { /* IndexedDB remains primary. */ }
 }
 export function clearRecovery(id: string): void {
-  const saved = readJson<FlowDocument>(RECOVERY);
-  if (saved && saved.id === id) {
-    try { localStorage.removeItem(RECOVERY); } catch { /* no-op */ }
-  }
+  // The marker avoids reparsing megabytes of recovery JSON after every save.
+  try {
+    const marker = localStorage.getItem(RECOVERY_ID);
+    if (marker ? marker !== id : readJson<FlowDocument>(RECOVERY)?.id !== id) return;
+    localStorage.removeItem(RECOVERY);
+    localStorage.removeItem(RECOVERY_ID);
+  } catch { /* no-op */ }
 }
 export async function saveDoc(doc: FlowDocument): Promise<void> {
   try { await put('documents', doc); }
@@ -177,6 +184,15 @@ export function inferTitle(markdown: string): string {
     : 'Untitled';
 }
 export function wordCount(value: string): number {
-  const words = value.trim().match(/\S+/g);
-  return words?.length || 0;
+  let words = 0;
+  let whitespace = true;
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    const blank = c === 32 || (c >= 9 && c <= 13) || c === 160 ||
+      c === 0x1680 || (c >= 0x2000 && c <= 0x200a) ||
+      c === 0x2028 || c === 0x2029 || c === 0x202f || c === 0x205f || c === 0x3000 || c === 0xfeff;
+    if (!blank && whitespace) words++;
+    whitespace = blank;
+  }
+  return words;
 }
