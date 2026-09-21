@@ -1,4 +1,4 @@
-export type CodeLanguage = 'swift' | 'typescript' | 'javascript' | 'python' | 'rust' | 'go' | 'json' | 'css' | 'xml' | 'sql' | 'bash';
+export type CodeLanguage = 'swift' | 'typescript' | 'javascript' | 'python' | 'rust' | 'go' | 'json' | 'css' | 'xml' | 'svg' | 'sql' | 'bash';
 
 export function detectRawCode(source: string): CodeLanguage | null {
   const text = source.trim();
@@ -21,7 +21,8 @@ export function detectRawCode(source: string): CodeLanguage | null {
       && /(?:\{|=>|\breturn\b|;)/.test(head)) return 'javascript';
   if (/\b(?:const|let|function|export|import)\b/.test(head)
       && /(?:=>|console\.|\breturn\b|from\s*['"]|;\s*(?:\n|$))/.test(head)) return 'javascript';
-  if (/^\s*<\?xml\b|^\s*<(?:svg|html|div|span|section)\b/i.test(head)) return 'xml';
+  if (/^\s*(?:<\?xml[^>]*>\s*)?<svg(?:\s|>)/i.test(head)) return 'svg';
+  if (/^\s*<\?xml\b|^\s*<(?:html|div|span|section)\b/i.test(head)) return 'xml';
   if (/\bSELECT\b[\s\S]*\bFROM\b|\bCREATE\s+TABLE\b/i.test(head)) return 'sql';
   if (head.startsWith('#!/bin/sh') || head.startsWith('#!/bin/bash') || /^\s*(?:\$\s+\w+|(?:npm|git|curl|brew)\s+\w+)/m.test(head)) return 'bash';
   if (/^\s*[.#]?[\w-]+\s*\{[\s\S]*\b(?:color|display|padding|margin):/.test(head)) return 'css';
