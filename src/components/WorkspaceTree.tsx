@@ -20,6 +20,7 @@ type Props = {
   onNewDocument: (workspaceId: string) => void;
   onRenameWorkspace: (id: string, name: string) => void;
   onRenameDocument: (id: string, name: string) => void;
+  onMoveDocument: (id: string, workspaceId: string) => void;
   onDeleteWorkspace: (id: string) => void;
   onDeleteDocument: (id: string) => void;
 };
@@ -56,11 +57,12 @@ function RenameField({ name, onCommit, onCancel }: {
 export default function WorkspaceTree({
   workspaces, documents, activeId, activeWorkspaceId, search, expandedIds,
   newWorkspaceId, reducedMotion, onToggle, onSelectWorkspace, onOpen,
-  onNewWorkspace, onNewDocument, onRenameWorkspace, onRenameDocument,
+  onNewWorkspace, onNewDocument, onRenameWorkspace, onRenameDocument, onMoveDocument,
   onDeleteWorkspace, onDeleteDocument,
 }: Props) {
   const [editing, setEditing] = useState<Editing | null>(null);
   const [menu, setMenu] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
   const holdTimer = useRef<number | undefined>(undefined);
   const heldId = useRef<string | null>(null);
   useEffect(() => {
@@ -118,7 +120,23 @@ export default function WorkspaceTree({
         const wsEditing = editing?.kind === 'workspace' && editing.id === ws.id;
         const selected = activeWorkspaceId === ws.id;
         return <div className="tree-workspace" key={ws.id} role="treeitem" aria-expanded={expanded}>
-          <div className={'tree-row tree-workspace-row' + (selected ? ' is-current' : '')}>
+          <div className={'tree-row tree-workspace-row' + (selected ? ' is-current' : '') + (dropTarget === ws.id ? ' is-drop' : '')}
+            onDragOver={event => {
+              if (event.dataTransfer.types.includes('application/x-flow-document-id')) {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+                setDropTarget(ws.id);
+              }
+            }}
+            onDragLeave={() => setDropTarget(current => current === ws.id ? null : current)}
+            onDrop={event => {
+              const id = event.dataTransfer.getData('application/x-flow-document-id');
+              if (!id) return;
+              event.preventDefault();
+              event.stopPropagation();
+              setDropTarget(null);
+              onMoveDocument(id, ws.id);
+            }}>
             <button type="button" className={'tree-chevron' + (expanded ? ' is-expanded' : '')}
               title={expanded ? 'Collapse workspace' : 'Expand workspace'}
               aria-label={(expanded ? 'Collapse ' : 'Expand ') + ws.name}
@@ -158,6 +176,12 @@ export default function WorkspaceTree({
               {children.map(doc => {
                 const docEditing = editing?.kind === 'document' && editing.id === doc.id;
                 return <div key={doc.id} role="treeitem"
+                  draggable={!docEditing}
+                  onDragStart={event => {
+                    event.dataTransfer.setData('application/x-flow-document-id', doc.id);
+                    event.dataTransfer.effectAllowed = 'move';
+                  }}
+                  onDragEnd={() => setDropTarget(null)}
                   className={'tree-row tree-document' + (activeId === doc.id ? ' is-active' : '')}>
                   <Icon name={doc.fileType === 'image' ? 'svg' : 'file'} size={14} />
                   {docEditing
