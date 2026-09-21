@@ -207,6 +207,7 @@ function VirtualMarkdown({ markdown, scrollRef }: {
     if (!scroll) return;
     let pending: number | null = null;
     function onPosition(event: Event) {
+      if (!scroll) return;
       const { line, total, kind } = (event as PositionEvent).detail;
       if (pending !== null) cancelAnimationFrame(pending);
       if (line >= total - 1) {
@@ -233,7 +234,7 @@ function VirtualMarkdown({ markdown, scrollRef }: {
       virtualizer.scrollToIndex(index, { align: 'start' });
       pending = requestAnimationFrame(() => {
         pending = null;
-        if (scroll?.querySelector(selector)) locatePreview(scroll, line, kind);
+        if (scroll && scroll.querySelector(selector)) locatePreview(scroll, line, kind);
       });
     }
     scroll.addEventListener('flow-preview-position', onPosition);
