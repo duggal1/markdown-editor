@@ -1,6 +1,7 @@
 import { createContext, memo, useContext, useDeferredValue, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { ReactNode } from 'react';
 import { svgPreviewDocument } from '../lib/svgPreview';
+import { htmlPreviewDocument } from '../lib/htmlPreview';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
@@ -91,6 +92,45 @@ function useCopy(code: string) {
   }
   return { copied, copy };
 }
+/**
+ * Render a real HTML page rather than a Markdown approximation.
+ * Throttle iframe reloads to 8 per second during continuous typing, without
+ * the stop-typing debounce that previously made Flow feel disconnected.
+ */
+function HtmlCanvas({ source, embedded = false, scrollRef }: {
+  source: string; embedded?: boolean;
+  scrollRef?: RefObject<HTMLDivElement | null>;
+}) {
+  const [rendered, setRendered] = useState(source);
+  const latest = useRef(source);
+  const iframe = useRef<HTMLIFrameElement>(null);
+  latest.current = source;
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setRendered(current => current === latest.current ? current : latest.current);
+    }, 125);
+    return () => window.clearInterval(interval);
+  }, []);
+  const documentHtml = useMemo(() => htmlPreviewDocument(rendered), [rendered]);
+  useEffect(() => {
+    const parent = scrollRef?.current;
+    if (!parent) return;
+    const onPosition = (event: Event) => {
+      const { line, total } = (event as PositionEvent).detail;
+      iframe.current?.contentWindow?.postMessage({
+        type: 'flow-html-scroll', progress: Math.max(0, Math.min(1, (line - 1) / Math.max(1, total - 1))),
+      }, '*');
+    };
+    parent.addEventListener('flow-preview-position', onPosition);
+    return () => parent.removeEventListener('flow-preview-position', onPosition);
+  }, [scrollRef]);
+  if (!documentHtml) return embedded ? null
+    : <div className="html-preview-unavailable">Paste a valid HTML document to preview it.</div>;
+  return <div className={embedded ? 'html-embedded-preview' : 'html-document-preview'}>
+    <iframe ref={iframe} title={embedded ? 'HTML code preview' : 'HTML document preview'}
+      sandbox="allow-scripts" srcDoc={documentHtml} referrerPolicy="no-referrer" />
+  </div>;
+}
 function VirtualCodeBlock({ code, rawLanguage }: { code: string; rawLanguage: string }) {
   const ref = useRef<HTMLPreElement>(null);
   const theme = useContext(ThemeContext);
@@ -112,6 +152,7 @@ function VirtualCodeBlock({ code, rawLanguage }: { code: string; rawLanguage: st
       </button>
     </div>
     {svgDocument && <div className="svg-preview"><iframe title="SVG preview" sandbox="" srcDoc={svgDocument} loading="lazy" /></div>}
+    {rawLanguage.toLowerCase() === 'html' && <HtmlCanvas source={code} embedded />}
     <pre ref={ref} className="code-content virtual-code-scroll" tabIndex={0}>
       <code className="virtual-code-canvas" style={{ height: virtualizer.getTotalSize() }}>
         {virtualizer.getVirtualItems().map(item => <span key={item.key} className="virtual-code-row"
@@ -142,6 +183,7 @@ function CodeBlock({ code, rawLanguage }: { code: string; rawLanguage: string })
       </button>
     </div>
     {svgDocument && <div className="svg-preview"><iframe title="SVG preview" sandbox="" srcDoc={svgDocument} loading="lazy" /></div>}
+    {rawLanguage.toLowerCase() === 'html' && <HtmlCanvas source={code} embedded />}
     <pre className="code-content" tabIndex={0}>
       {rows <= 400 && <span className="code-gutter" aria-hidden="true">
         {Array.from({ length: rows }, (_, index) => <span key={index}>{index + 1}</span>)}
@@ -263,10 +305,11 @@ function MarkdownPreview({ markdown, sourceLanguage, scrollRef, theme }: {
   const value = markdown.length <= 18000 ? markdown : deferred;
   const detected = useMemo(() => sourceLanguage && sourceLanguage !== 'markdown'
     ? sourceLanguage : detectRawCode(value), [value, sourceLanguage]);
+  const html = detected === 'html';
   const virtual = !detected && value.length > 18000;
   useEffect(() => {
     const scroll = scrollRef.current;
-    if (!scroll || virtual) return;
+    if (!scroll || virtual || html) return;
     const onPosition = (event: Event) => {
       const { line, total, kind } = (event as PositionEvent).detail;
       if (line >= total - 1) {
@@ -288,9 +331,11 @@ function MarkdownPreview({ markdown, sourceLanguage, scrollRef, theme }: {
     };
     scroll.addEventListener('flow-preview-position', onPosition);
     return () => scroll.removeEventListener('flow-preview-position', onPosition);
-  }, [detected, scrollRef, virtual, value]);
+  }, [detected, scrollRef, virtual, html, value]);
   const body = !value.trim()
     ? <article className="markdown-preview"><p className="empty-preview">Nothing to preview.</p></article>
+    : html
+      ? <HtmlCanvas source={value} scrollRef={scrollRef} />
     : detected
       ? <article className="markdown-preview preview-is-code">
           <CodeBlock code={value} rawLanguage={detected} />
