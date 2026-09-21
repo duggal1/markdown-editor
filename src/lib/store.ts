@@ -13,6 +13,7 @@ export type Preferences = {
   theme: Theme; mode: Mode; sidebarOpen: boolean;
   activeWorkspaceId: string; activeDocumentId: string; recentIds: string[];
   expandedWorkspaceIds?: string[];
+  splitPercent?: number;
 };
 
 const DATABASE = 'flow.workspace.v1';
