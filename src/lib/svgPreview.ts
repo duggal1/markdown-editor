@@ -44,9 +44,13 @@ export function svgPreviewDocument(code: string, theme: 'light' | 'dark'): strin
       svg = new XMLSerializer().serializeToString(root);
     }
   }
+  // currentColor can inherit from a nested SVG group or stylesheet, not just the root.
+  // Override ONLY the inherited "color" channel in dark mode. Explicit colored
+  // fills and strokes remain as-authored; dark monochrome values were handled above.
+  const ink = theme === 'dark' ? '#fafaf9' : '#1c1917';
   const css = 'html,body{margin:0;height:100%;display:grid;place-items:center;background:transparent;color:' +
-    (theme === 'dark' ? '#fafaf9' : '#1c1917') +
-    '}svg{display:block;max-width:100%;max-height:100%;width:auto;height:auto}';
+    ink + '}svg{display:block;max-width:100%;max-height:100%;width:auto;height:auto}' +
+    (theme === 'dark' ? 'svg,svg *{color:#fafaf9!important}' : '');
   return '<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="' +
     "default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'" +
     '"><style>' + css + '</style></head><body>' + svg + '</body></html>';
