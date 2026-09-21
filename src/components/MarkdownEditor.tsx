@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, type RefObject } from 'react';
-import { Compartment, EditorState } from '@codemirror/state';
+import { Compartment, EditorState, type Text } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, placeholder } from '@codemirror/view';
 import { minimalSetup } from 'codemirror';
 import { markdown } from '@codemirror/lang-markdown';
@@ -79,7 +79,7 @@ function MarkdownEditor({
   documentId: string;
   initialText: string;
   viewRef: RefObject<EditorView | null>;
-  onChange: (value: string) => void;
+  onChange: (value: string, documentId: string) => void;
   focusOnMount?: boolean;
 }) {
   const mount = useRef<HTMLDivElement>(null);
@@ -92,6 +92,19 @@ function MarkdownEditor({
     let activeLanguage: CodeLanguage | null = null;
     let request = 0;
     let languageTimer: number | undefined;
+    let pendingText: Text | null = null;
+    let frame: number | null = null;
+    const drain = () => {
+      if (frame !== null) { cancelAnimationFrame(frame); frame = null; }
+      if (pendingText) {
+        const doc = pendingText;
+        pendingText = null;
+        change.current(doc.toString(), documentId);
+      }
+    };
+    const onVisibility = () => { if (document.visibilityState === 'hidden') drain(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', drain);
     let view: EditorView;
     const setLanguage = (source: string) => {
       const language = detectRawCode(source);
@@ -136,8 +149,21 @@ function MarkdownEditor({
           placeholder('Start writing…'),
           EditorView.updateListener.of(update => {
             if (!update.docChanged) return;
-            change.current(update.state.doc.toString());
-            // Editing stays synchronous and virtualized; expensive language loading does not.
+            // Keep typing synchronous. Large immutable snapshots are materialized at most
+            // once per animation frame, even across a burst of CodeMirror transactions.
+            if (update.state.doc.length < 25000) {
+              change.current(update.state.doc.toString(), documentId);
+            } else {
+              pendingText = update.state.doc;
+              if (frame === null) frame = requestAnimationFrame(() => {
+                frame = null;
+                if (!pendingText) return;
+                const doc = pendingText;
+                pendingText = null;
+                change.current(doc.toString(), documentId);
+              });
+            }
+            // Language switching is infrequent and never runs in a typing transaction.
             if (languageTimer !== undefined) clearTimeout(languageTimer);
             languageTimer = window.setTimeout(() => {
               if (viewRef.current === view) setLanguage(view.state.doc.sliceString(0, 12000));
@@ -159,6 +185,9 @@ function MarkdownEditor({
     if (focusOnMount) view.focus();
     return () => {
       ++request;
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', drain);
+      drain();
       if (languageTimer !== undefined) clearTimeout(languageTimer);
       if (viewRef.current === view) viewRef.current = null;
       view.destroy();
