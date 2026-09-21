@@ -292,10 +292,15 @@ export default function App() {
           continue;
         }
         try {
-          const image = file.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i.test(file.name);
-          let binary = false;
+          const supportedImage = /^image\/(png|jpeg|gif|webp|avif|bmp|x-icon|vnd\.microsoft\.icon|svg\+xml)$/i.test(file.type);
+          const image = supportedImage || /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i.test(file.name);
+          const recognizedText = file.type.startsWith('text/') ||
+            /^(application\/(?:json|javascript|xml|x-javascript|x-yaml|yaml|toml|graphql))$/i.test(file.type) ||
+            Boolean(languageForFile(file.name)) || isMarkdownFile(file.name) ||
+            /\.(txt|csv|tsv|log|ini|cfg|env|gitignore|editorconfig)$/i.test(file.name);
+          let binary = !image && Boolean(file.type && !recognizedText);
           let markdown = '';
-          if (!image) {
+          if (!image && !binary) {
             const sample = new Uint8Array(await file.slice(0, 4096).arrayBuffer());
             binary = sample.includes(0);
             if (!binary) {
