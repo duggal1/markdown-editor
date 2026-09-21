@@ -33,6 +33,21 @@ function TerminalLoader({ loading }: { loading: boolean }) {
   }, [loading]);
   return loading ? <span className="terminal-loader" aria-hidden="true">{SPINNER[frame]}</span> : null;
 }
+function AssetPreview({ document: doc, src, onExport }: {
+  document: FlowDocument; src: string | null; onExport: () => void;
+}) {
+  return <div className="asset-preview">
+    {doc.fileType === 'image' && src
+      ? <img src={src} alt={doc.fileName || doc.title} draggable={false} />
+      : doc.fileType === 'image'
+        ? <span className="asset-loading">Loading image…</span>
+        : <div className="asset-file">
+            <Icon name="file" size={22} />
+            <span>{doc.fileName || doc.title}</span>
+            <button type="button" onClick={onExport}><Icon name="download" size={15} /> Download</button>
+          </div>}
+  </div>;
+}
 export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
