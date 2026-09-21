@@ -3,8 +3,24 @@ type Incoming =
   | { type: 'index'; documents: IndexedDoc[] }
   | { type: 'upsert'; document: IndexedDoc }
   | { type: 'remove'; id: string }
+  | { type: 'metrics'; document: { id: string; markdown: string; updatedAt: number } }
   | { type: 'query'; query: string; requestId: number };
 const docs = new Map<string, IndexedDoc>();
+function countWords(value: string): number {
+  let words = 0;
+  let previousWhitespace = true;
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    const whitespace = c === 32 || (c >= 9 && c <= 13) || c === 160;
+    if (!whitespace && previousWhitespace) words++;
+    previousWhitespace = whitespace;
+  }
+  return words;
+}
+function postMetrics(doc: { id: string; markdown: string; updatedAt: number }) {
+  self.postMessage({ type: 'metrics', id: doc.id, updatedAt: doc.updatedAt,
+    words: countWords(doc.markdown) });
+}
 self.onmessage = (event: MessageEvent<Incoming>) => {
   const message = event.data;
   if (message.type === 'index') {
@@ -12,6 +28,9 @@ self.onmessage = (event: MessageEvent<Incoming>) => {
     for (const doc of message.documents) docs.set(doc.id, doc);
   } else if (message.type === 'upsert') {
     docs.set(message.document.id, message.document);
+    postMetrics(message.document);
+  } else if (message.type === 'metrics') {
+    postMetrics(message.document);
   } else if (message.type === 'remove') {
     docs.delete(message.id);
   } else {
