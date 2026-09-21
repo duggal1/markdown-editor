@@ -2,12 +2,13 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import type { EditorView } from '@codemirror/view';
 import MarkdownEditor, { formatEditor, type Format } from './components/MarkdownEditor';
+import WorkspaceTree from './components/WorkspaceTree';
 import { FlowMark, Icon, type IconName } from './components/Icons';
 import { downloadMarkdown } from './lib/document';
 import { detectRawCode, isMarkdownFile, languageForFile } from './lib/code';
 import {
-  clearRecovery, inferTitle, loadWorkspace, readPrefs, removeDoc,
-  saveDoc, savePrefs, saveRecovery, uid, wordCount,
+  clearRecovery, inferTitle, loadWorkspace, readPrefs, removeDoc, removeWorkspace,
+  saveDoc, savePrefs, saveRecovery, saveWorkspace, uid, wordCount,
   type FlowDocument, type Mode, type Theme, type Workspace,
 } from './lib/store';
 
@@ -56,6 +57,8 @@ export default function App() {
   const [activeId, setActiveId] = useState('');
   const activeIdRef = useRef('');
   const [workspaceId, setWorkspaceId] = useState('');
+  const [expandedIds, setExpandedIds] = useState<string[]>([]);
+  const [newWorkspaceId, setNewWorkspaceId] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>('light');
   const [mode, setMode] = useState<Mode>('write');
   const modeRef = useRef<Mode>('write');
@@ -68,7 +71,7 @@ export default function App() {
   const [words, setWords] = useState(0);
   const [saveState, setSaveState] = useState<'saving' | 'saved' | 'error'>('saved');
   const [notice, setNotice] = useState('');
-  const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ kind: 'document' | 'workspace'; id: string; title: string; count?: number } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const deletionInFlight = useRef(false);
   const importInFlight = useRef(false);
@@ -81,6 +84,8 @@ export default function App() {
   const searchRequest = useRef(0);
   const saveTimers = useRef(new Map<string, number>());
   const visualTimers = useRef(new Map<string, number>());
+  const previewFrame = useRef<number | null>(null);
+  const pendingPreview = useRef<{ id: string; markdown: string } | null>(null);
   const motionOff = useReducedMotion();
 
   useEffect(() => {
@@ -105,6 +110,9 @@ export default function App() {
       const restoredMode = prefs.mode === 'preview' || prefs.mode === 'split' ? prefs.mode : 'write';
       setDocs(data.documents);
       setWorkspaces(data.workspaces);
+      setExpandedIds(Array.isArray(prefs.expandedWorkspaceIds)
+        ? prefs.expandedWorkspaceIds.filter(id => data.workspaces.some(ws => ws.id === id))
+        : data.workspaces.map(ws => ws.id));
       activeIdRef.current = first.id;
       setActiveId(first.id);
       setWorkspaceId(chosenWorkspace.id);
@@ -126,6 +134,7 @@ export default function App() {
       workerRef.current = null;
       for (const timer of saveTimers.current.values()) clearTimeout(timer);
       for (const timer of visualTimers.current.values()) clearTimeout(timer);
+      if (previewFrame.current !== null) cancelAnimationFrame(previewFrame.current);
     };
   }, []);
   useEffect(() => {
@@ -171,8 +180,8 @@ export default function App() {
   useEffect(() => {
     if (!loaded) return;
     savePrefs({ theme, mode, sidebarOpen, activeDocumentId: activeId,
-      activeWorkspaceId: workspaceId, recentIds });
-  }, [loaded, theme, mode, sidebarOpen, activeId, workspaceId, recentIds]);
+      activeWorkspaceId: workspaceId, recentIds, expandedWorkspaceIds: expandedIds });
+  }, [loaded, theme, mode, sidebarOpen, activeId, workspaceId, recentIds, expandedIds]);
 
   const flush = useCallback((id: string) => {
     const timer = saveTimers.current.get(id);
@@ -210,10 +219,7 @@ export default function App() {
       if (!latest) return;
       setDocs(current => current.map(item => item.id === latest.id ? latest : item));
       workerRef.current?.postMessage({ type: 'upsert', document: { id: latest.id, workspaceId: latest.workspaceId, title: latest.title, markdown: latest.markdown, updatedAt: latest.updatedAt } });
-      if (activeIdRef.current === latest.id) {
-        if (modeRef.current !== 'write') setPreviewText(latest.markdown);
-        setWords(wordCount(latest.markdown));
-      }
+      if (activeIdRef.current === latest.id) setWords(wordCount(latest.markdown));
       visualTimers.current.delete(doc.id);
     }, 360));
   }, [flush]);
@@ -228,6 +234,19 @@ export default function App() {
       titleAuto: current.titleAuto || !current.title.trim() || current.title === 'Untitled',
     };
     scheduleSave(next);
+    // Coalesce edits to one preview update per animation frame, never after an idle delay.
+    if (modeRef.current !== 'write') {
+      pendingPreview.current = { id, markdown: value };
+      if (previewFrame.current === null) {
+        previewFrame.current = requestAnimationFrame(() => {
+          previewFrame.current = null;
+          const snapshot = pendingPreview.current;
+          if (snapshot && snapshot.id === activeIdRef.current && modeRef.current !== 'write') {
+            setPreviewText(snapshot.markdown);
+          }
+        });
+      }
+    }
     if (next.title !== current.title || next.titleAuto !== current.titleAuto) {
       setDocs(items => items.map(item => item.id === next.id ? next : item));
     }
@@ -239,7 +258,10 @@ export default function App() {
     const previous = activeIdRef.current;
     if (previous && previous !== id) flush(previous);
     activeIdRef.current = id;
+    pendingPreview.current = null;
+    if (previewFrame.current !== null) { cancelAnimationFrame(previewFrame.current); previewFrame.current = null; }
     setActiveId(id);
+    setExpandedIds(ids => ids.includes(doc.workspaceId) ? ids : [...ids, doc.workspaceId]);
     setWorkspaceId(doc.workspaceId);
     setDocs(current => current.map(item => live.current.get(item.id) || item));
     setRecentIds(current => [id, ...current.filter(item => item !== id)].slice(0, 30));
@@ -277,13 +299,75 @@ export default function App() {
       else makeDocument(doc.workspaceId);
     }
   }
+  function toggleWorkspace(id: string) {
+    setExpandedIds(ids => ids.includes(id) ? ids.filter(item => item !== id) : [...ids, id]);
+  }
+  function createWorkspace() {
+    const ws: Workspace = { id: uid(), name: 'New workspace', createdAt: Date.now() };
+    setWorkspaces(items => [...items, ws]);
+    setWorkspaceId(ws.id);
+    setExpandedIds(ids => [...ids, ws.id]);
+    setNewWorkspaceId(ws.id);
+    void saveWorkspace(ws).catch(() => setNotice('Workspace could not be saved.'));
+  }
+  function renameWorkspace(id: string, name: string) {
+    const old = workspaces.find(item => item.id === id);
+    if (!old || name === old.name) { setNewWorkspaceId(null); return; }
+    const next = { ...old, name };
+    setWorkspaces(items => items.map(item => item.id === id ? next : item));
+    setNewWorkspaceId(null);
+    void saveWorkspace(next).catch(() => setNotice('Workspace rename could not be saved.'));
+  }
+  function renameDocument(id: string, name: string) {
+    const old = live.current.get(id);
+    if (!old) return;
+    const extension = old.fileName?.match(/\.[^.]+$/)?.[0] || '';
+    const title = extension && name.toLowerCase().endsWith(extension.toLowerCase())
+      ? name.slice(0, -extension.length).trim() || name : name;
+    if (!title || (title === old.title && !old.titleAuto)) return;
+    const next: FlowDocument = { ...old, title, titleAuto: false,
+      fileName: old.fileName ? title + extension : undefined, updatedAt: Date.now() };
+    scheduleSave(next);
+    setDocs(items => items.map(doc => doc.id === id ? next : doc));
+  }
+  async function eraseWorkspace(id: string) {
+    if (workspaces.length < 2) return;
+    const ws = workspaces.find(item => item.id === id);
+    if (!ws) return;
+    const remainingWorkspaces = workspaces.filter(item => item.id !== id);
+    const deletedDocs = [...live.current.values()].filter(doc => doc.workspaceId === id);
+    const otherDocs = [...live.current.values()].filter(doc => doc.workspaceId !== id);
+    // Preserve document data if a storage deletion fails; do not silently drop files.
+    try {
+      for (const doc of deletedDocs) await removeDoc(doc.id);
+      await removeWorkspace(id);
+    } catch {
+      setNotice('Could not delete the workspace completely. Refresh to reconcile your files.');
+      return;
+    }
+    for (const doc of deletedDocs) {
+      live.current.delete(doc.id);
+      workerRef.current?.postMessage({ type: 'remove', id: doc.id });
+    }
+    setWorkspaces(remainingWorkspaces);
+    setExpandedIds(ids => ids.filter(item => item !== id));
+    setDocs(otherDocs);
+    setRecentIds(ids => ids.filter(docId => live.current.has(docId)));
+    if (activeIdRef.current && !live.current.has(activeIdRef.current)) {
+      if (otherDocs.length) selectDocument(otherDocs[0].id);
+      else makeDocument(remainingWorkspaces[0].id);
+    } else if (workspaceId === id) setWorkspaceId(remainingWorkspaces[0].id);
+  }
   async function confirmDelete() {
     if (!pendingDelete || deletionInFlight.current) return;
     deletionInFlight.current = true;
     setDeleting(true);
     try {
-      const doc = live.current.get(pendingDelete.id);
-      if (doc) await eraseDocument(doc);
+      if (pendingDelete.kind === 'workspace') await eraseWorkspace(pendingDelete.id);
+      else {
+        const doc = live.current.get(pendingDelete.id);
+        if (doc) await eraseDocument(doc);
+      }
       setPendingDelete(null);
     } finally {
       deletionInFlight.current = false;
