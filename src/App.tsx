@@ -6,6 +6,7 @@ import WorkspaceTree from './components/WorkspaceTree';
 import { FlowMark, Icon, type IconName } from './components/Icons';
 import { downloadMarkdown } from './lib/document';
 import { detectRawCode, isMarkdownFile, languageForFile } from './lib/code';
+import { svgPreviewDocument } from './lib/svgPreview';
 import {
   clearRecovery, inferTitle, loadWorkspace, readPrefs, removeDoc, removeWorkspace,
   saveDoc, savePrefs, saveRecovery, saveWorkspace, uid, wordCount,
@@ -61,6 +62,9 @@ export default function App() {
   const [newWorkspaceId, setNewWorkspaceId] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>('light');
   const [mode, setMode] = useState<Mode>('write');
+  const [splitPercent, setSplitPercent] = useState(50);
+  const [storedSplitPercent, setStoredSplitPercent] = useState(50);
+  const [resizingSplit, setResizingSplit] = useState(false);
   const modeRef = useRef<Mode>('write');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [compact, setCompact] = useState(() => window.matchMedia('(max-width: 800px)').matches);
@@ -81,6 +85,12 @@ export default function App() {
   const titleRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
+  const editorAreaRef = useRef<HTMLElement>(null);
+  const targetLine = useRef<{ line: number; total: number; kind: 'scroll' | 'cursor'; id: string } | null>(null);
+  const syncFrame = useRef<number | null>(null);
+  const splitFrame = useRef<number | null>(null);
+  const splitNext = useRef<number>(50);
+  const lastSyncLine = useRef(-1);
   const workerRef = useRef<Worker | null>(null);
   const searchRequest = useRef(0);
   const saveTimers = useRef(new Map<string, number>());
@@ -119,6 +129,11 @@ export default function App() {
       const restoredMode = prefs.mode === 'preview' || prefs.mode === 'split' ? prefs.mode : 'write';
       setDocs(data.documents);
       setWorkspaces(data.workspaces);
+      const width = typeof prefs.splitPercent === 'number' && Number.isFinite(prefs.splitPercent)
+        ? Math.min(78, Math.max(22, prefs.splitPercent)) : 50;
+      setSplitPercent(width);
+      setStoredSplitPercent(width);
+      splitNext.current = width;
       setExpandedIds(Array.isArray(prefs.expandedWorkspaceIds)
         ? prefs.expandedWorkspaceIds.filter(id => data.workspaces.some(ws => ws.id === id))
         : data.workspaces.map(ws => ws.id));
@@ -145,6 +160,8 @@ export default function App() {
       for (const timer of saveTimers.current.values()) clearTimeout(timer);
       for (const timer of visualTimers.current.values()) clearTimeout(timer);
       if (previewFrame.current !== null) cancelAnimationFrame(previewFrame.current);
+      if (syncFrame.current !== null) cancelAnimationFrame(syncFrame.current);
+      if (splitFrame.current !== null) cancelAnimationFrame(splitFrame.current);
     };
   }, []);
   useEffect(() => {
@@ -190,8 +207,9 @@ export default function App() {
   useEffect(() => {
     if (!loaded) return;
     savePrefs({ theme, mode, sidebarOpen, activeDocumentId: activeId,
-      activeWorkspaceId: workspaceId, recentIds, expandedWorkspaceIds: expandedIds });
-  }, [loaded, theme, mode, sidebarOpen, activeId, workspaceId, recentIds, expandedIds]);
+      activeWorkspaceId: workspaceId, recentIds, expandedWorkspaceIds: expandedIds,
+      splitPercent: storedSplitPercent });
+  }, [loaded, theme, mode, sidebarOpen, activeId, workspaceId, recentIds, expandedIds, storedSplitPercent]);
 
   const flush = useCallback((id: string) => {
     const timer = saveTimers.current.get(id);
@@ -283,6 +301,8 @@ export default function App() {
     pendingPreview.current = null;
     if (previewFrame.current !== null) { cancelAnimationFrame(previewFrame.current); previewFrame.current = null; }
     setActiveId(id);
+    targetLine.current = null;
+    lastSyncLine.current = -1;
     setExpandedIds(ids => ids.includes(doc.workspaceId) ? ids : [...ids, doc.workspaceId]);
     setWorkspaceId(doc.workspaceId);
     setDocs(current => current.map(item => live.current.get(item.id) || item));
@@ -529,7 +549,10 @@ export default function App() {
     const handler = (event: globalThis.KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey)) return;
       const key = event.key.toLowerCase();
-      if (key === 's') {
+      if (key === 'b' && event.metaKey && !event.shiftKey) {
+        event.preventDefault();
+        setSidebarOpen(current => !current);
+      } else if (key === 's') {
         event.preventDefault();
         const doc = live.current.get(activeIdRef.current);
         if (doc) exportDocument(doc);
@@ -552,6 +575,60 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler);
   }, [flush]);
 
+  const dispatchPreviewPosition = useCallback(() => {
+    syncFrame.current = null;
+    const target = targetLine.current;
+    const preview = previewScrollRef.current;
+    if (!target || !preview || target.id !== activeIdRef.current || modeRef.current === 'write') return;
+    preview.dispatchEvent(new CustomEvent('flow-preview-position', {
+      detail: { line: target.line, total: target.total, kind: target.kind },
+    }));
+  }, []);
+  const onEditorPosition = useCallback((line: number, kind: 'scroll' | 'cursor', total: number) => {
+    if (modeRef.current === 'write') return;
+    if (line === lastSyncLine.current && kind === 'scroll') return;
+    lastSyncLine.current = line;
+    targetLine.current = { line, total, kind, id: activeIdRef.current };
+    if (syncFrame.current === null) syncFrame.current = requestAnimationFrame(dispatchPreviewPosition);
+  }, [dispatchPreviewPosition]);
+  useEffect(() => {
+    if (mode === 'write') return;
+    const frame = requestAnimationFrame(() => {
+      const view = editorRef.current;
+      if (!view || !activeId) return;
+      const target = targetLine.current;
+      const line = target?.id === activeId ? target.line : view.state.doc.lineAt(view.state.selection.main.head).number;
+      onEditorPosition(line, target?.kind || 'cursor', view.state.doc.lines);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [previewText, mode, activeId, onEditorPosition]);
+  function startSplitDrag(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setResizingSplit(true);
+  }
+  function moveSplitDrag(event: React.PointerEvent<HTMLDivElement>) {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    const area = editorAreaRef.current;
+    if (!area) return;
+    const rect = area.getBoundingClientRect();
+    splitNext.current = Math.max(22, Math.min(78, ((event.clientX - rect.left) / rect.width) * 100));
+    if (splitFrame.current !== null) return;
+    splitFrame.current = requestAnimationFrame(() => {
+      splitFrame.current = null;
+      setSplitPercent(splitNext.current);
+      editorRef.current?.requestMeasure();
+    });
+  }
+  function finishSplitDrag(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (splitFrame.current !== null) { cancelAnimationFrame(splitFrame.current); splitFrame.current = null; }
+    setSplitPercent(splitNext.current);
+    setStoredSplitPercent(splitNext.current);
+    setResizingSplit(false);
+    editorRef.current?.requestMeasure();
+  }
   function changeMode(next: Mode) {
     modeRef.current = next;
     if (next !== 'write') setPreviewText(live.current.get(activeIdRef.current)?.markdown || '');
@@ -569,7 +646,7 @@ export default function App() {
 
   // A phone's Split mode shows two vertically stacked, independently scrolling panes.
   const presentationMode: Mode = mode;
-  const gridColumns = presentationMode === 'split' ? 'minmax(0, 1fr) minmax(0, 1fr)'
+  const gridColumns = presentationMode === 'split' ? `minmax(0, ${splitPercent}fr) minmax(0, ${100 - splitPercent}fr)`
     : presentationMode === 'preview' ? 'minmax(0, 0fr) minmax(0, 1fr)'
       : 'minmax(0, 1fr) minmax(0, 0fr)';
   const mobileGridRows = presentationMode === 'split' ? 'minmax(0, 1fr) minmax(0, 1fr)'
@@ -665,14 +742,14 @@ export default function App() {
         </div>
         <span className="word-stat">{active?.fileType === 'image' ? 'Image' : active?.fileType === 'binary' ? 'File' : `${words.toLocaleString()} words`}</span>
       </div>
-      <motion.main className={'editor-area mode-' + mode + (compact ? ' compact' : '')} aria-label="Flow Markdown workspace"
+      <motion.main ref={editorAreaRef} className={'editor-area mode-' + mode + (compact ? ' compact' : '') + (resizingSplit ? ' is-resizing' : '')} aria-label="Flow Markdown workspace"
         initial={false} animate={{ gridTemplateColumns: compact ? 'minmax(0, 1fr)' : gridColumns,
           gridTemplateRows: compact ? mobileGridRows : 'minmax(0, 1fr)' }}
-        transition={motionOff ? { duration: 0 } : { duration: 0.29, ease: [0.22, 1, 0.36, 1] }}
+        transition={motionOff || resizingSplit ? { duration: 0 } : { duration: 0.29, ease: [0.22, 1, 0.36, 1] }}
         onAnimationComplete={() => editorRef.current?.requestMeasure()}>
         <section className="editor-pane" aria-label="Write Markdown">
           {active?.asset ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} /> : active && <MarkdownEditor key={active.id} documentId={active.id} initialText={active.markdown}
-            viewRef={editorRef} onChange={onEditorChange} />}
+            viewRef={editorRef} onChange={onEditorChange} onPosition={onEditorPosition} />}
         </section>
         <section className="preview-pane" aria-label="Markdown preview">
           <motion.div ref={previewScrollRef} className="preview-scroll" initial={false}
@@ -681,10 +758,28 @@ export default function App() {
             <Suspense fallback={<div className="preview-loading">Rendering…</div>}>
               {presentationMode !== 'write' && (active?.asset
                 ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} />
-                : <MarkdownPreview key={active?.id || 'preview'} markdown={previewText} sourceLanguage={active?.language} scrollRef={previewScrollRef} />)}
+                : <MarkdownPreview key={active?.id || 'preview'} markdown={previewText} sourceLanguage={active?.language} scrollRef={previewScrollRef} theme={theme} />)}
             </Suspense>
           </motion.div>
         </section>
+        {mode === 'split' && !compact && <div className="split-resizer" role="separator" tabIndex={0}
+          aria-label="Resize editor and preview" aria-orientation="vertical"
+          aria-valuemin={22} aria-valuemax={78} aria-valuenow={Math.round(splitPercent)}
+          title="Drag to resize · arrow keys to adjust"
+          style={{ left: splitPercent + '%' }}
+          onPointerDown={startSplitDrag} onPointerMove={moveSplitDrag}
+          onPointerUp={finishSplitDrag} onPointerCancel={finishSplitDrag}
+          onDoubleClick={() => { splitNext.current = 50; setSplitPercent(50); setStoredSplitPercent(50); }}
+          onKeyDown={event => {
+            const value = event.key === 'ArrowLeft' ? splitPercent - 2
+              : event.key === 'ArrowRight' ? splitPercent + 2
+              : event.key === 'Home' ? 25 : event.key === 'End' ? 75 : null;
+            if (value === null) return;
+            event.preventDefault();
+            splitNext.current = Math.min(78, Math.max(22, value));
+            setSplitPercent(splitNext.current);
+            setStoredSplitPercent(splitNext.current);
+          }}><span className="split-grip" /></div>}
       </motion.main>
       <AnimatePresence initial={false}>
       {pendingDelete && <motion.div className="dialog-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: motionOff ? 0 : 0.16 }}
