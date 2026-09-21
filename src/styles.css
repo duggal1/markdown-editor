@@ -233,6 +233,45 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .editor-area.mode-split:not(.compact) .preview-pane { border-left: 1px solid var(--split-line); }
 .editor-area.mode-write .preview-pane { visibility: hidden; pointer-events: none; }
 .editor-area.mode-preview .editor-pane { visibility: hidden; pointer-events: none; }
+
+/* One precise, accessible Split handle. Nothing moves while the user drags. */
+.split-resizer {
+  position: absolute; top: 0; bottom: 0; z-index: 8;
+  width: 16px; transform: translateX(-50%);
+  display: flex; align-items: center; justify-content: center;
+  outline: none; cursor: col-resize; touch-action: none; user-select: none;
+  background: transparent;
+}
+.split-resizer::before {
+  content: ''; position: absolute; inset: 0 auto; width: 1px;
+  background: var(--split-line); pointer-events: none;
+}
+.split-grip {
+  position: relative; width: 4px; height: 34px; border-radius: 2px;
+  background: var(--muted); opacity: .5;
+  transition: opacity 140ms ease, height 140ms ease;
+}
+.split-resizer:hover .split-grip,
+.split-resizer:focus-visible .split-grip,
+.editor-area.is-resizing .split-grip {
+  opacity: .95; height: 47px;
+}
+.split-resizer:focus-visible .split-grip { outline: 2px solid var(--muted); outline-offset: 4px; }
+.editor-area.is-resizing { cursor: col-resize; }
+.editor-area.is-resizing .editor-pane,
+.editor-area.is-resizing .preview-pane { pointer-events: none; }
+/* SVG canvases live in sandboxed iframes; no fake border or forced filter. */
+.asset-svg-frame { display: block; width: min(100%, 820px); height: min(72dvh, 700px); border: 0; background: transparent; }
+.markdown-preview svg { max-width: 100%; height: auto; color: var(--strong); }
+:root[data-theme='dark'] .markdown-preview svg [fill="black"],
+:root[data-theme='dark'] .markdown-preview svg [fill="#000"],
+:root[data-theme='dark'] .markdown-preview svg [fill="#000000"],
+:root[data-theme='dark'] .markdown-preview svg [fill="#201d1d"],
+:root[data-theme='dark'] .markdown-preview svg [fill="rgb(84, 84, 84)"] { fill: #fafaf9; }
+:root[data-theme='dark'] .markdown-preview svg [stroke="black"],
+:root[data-theme='dark'] .markdown-preview svg [stroke="#000"],
+:root[data-theme='dark'] .markdown-preview svg [stroke="#000000"] { stroke: #fafaf9; }
+
 .codemirror-host { height: 100%; overflow: hidden; }
 .cm-editor, .cm-scroller { height: 100%; color: var(--text); background: var(--background) !important; }
 .cm-editor.cm-focused { outline: none !important; }
@@ -372,6 +411,7 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   .document-meta { gap: 8px; }
 }
 @media (max-width: 800px) {
+  .split-resizer { display: none; }
   html, body, #root { width: 100%; max-width: 100%; height: 100%; overflow: hidden; }
   body { overscroll-behavior: none; }
   .flow-shell {
