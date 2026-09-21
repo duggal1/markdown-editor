@@ -90,6 +90,7 @@ export function clearRecovery(id: string): void {
 export async function saveDoc(doc: FlowDocument): Promise<void> {
   try { await put('documents', doc); }
   catch (error) {
+    if (doc.asset) throw error; // Browser storage cannot safely JSON-serialize file data.
     try { localStorage.setItem(FALLBACK + doc.id, JSON.stringify(doc)); }
     catch { throw error; }
   }
