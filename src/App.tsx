@@ -464,10 +464,13 @@ export default function App() {
     void importFiles(Array.from(event.dataTransfer.files));
   }
   const active = live.current.get(activeId) || docs.find(doc => doc.id === activeId);
-  const matching = useMemo(() => query.trim()
-    ? searchResults.map(id => docs.find(doc => doc.id === id)).filter((doc): doc is FlowDocument => !!doc)
-    : [...docs].sort((a, b) => b.updatedAt - a.updatedAt),
-    [docs, query, searchResults]);
+  const matching = useMemo(() => {
+    const text = query.trim().toLowerCase();
+    const matchingWorkspaceIds = workspaces.filter(ws => ws.name.toLowerCase().includes(text)).map(ws => ws.id);
+    const ids = new Set(searchResults);
+    return docs.filter(doc => !text || ids.has(doc.id) || matchingWorkspaceIds.includes(doc.workspaceId))
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  }, [docs, query, searchResults, workspaces]);
   useEffect(() => {
     const requestId = ++searchRequest.current;
     if (!query.trim()) { setSearchResults([]); return; }
@@ -534,7 +537,7 @@ export default function App() {
     <motion.aside className={'sidebar' + (sidebarOpen ? ' is-open' : '')}
       initial={false} animate={{ width: sidebarOpen ? 256 : 0 }}
       transition={motionOff ? { duration: 0 } : { duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-      aria-label="Documents">
+      aria-label="Workspaces and documents">
       <div className="sidebar-inner">
         <div className="sidebar-brand">
           <motion.div className="brand-lockup" initial={false} animate={{ opacity: sidebarOpen ? 1 : 0, x: sidebarOpen ? 0 : -8 }} transition={motionOff ? { duration: 0 } : { duration: 0.18 }}><span className="brand-mark"><FlowMark size={18} /></span><span>Flow</span></motion.div>
@@ -542,20 +545,30 @@ export default function App() {
         <label className="search-field"><Icon name="search" size={16} />
           <input ref={searchRef} value={query} onChange={event => setQuery(event.target.value)} placeholder="Search documents" aria-label="Search documents" />
         </label>
-        <div className="sidebar-heading documents-heading"><span>{query ? 'Results' : 'Documents'}</span>
-          <motion.button {...pressMotion} title="New document" aria-label="New document" onClick={() => makeDocument()}><Icon name="plus" size={15} /></motion.button>
-        </div>
-        <div className="document-list">
-          {matching.map(doc => <div key={doc.id} className={'document-entry' + (activeId === doc.id ? ' active' : '')}>
-            <motion.button className="document-select" whileTap={motionOff ? undefined : { scale: 0.994 }} transition={{ duration: 0.12 }} onClick={() => selectDocument(doc.id)}>
-              <Icon name={doc.fileType === 'image' ? 'svg' : 'file'} size={15} /><span className="document-label">{doc.title || 'Untitled'}</span>
-              <span className="md-tag">{doc.fileName?.match(/\.[^.]+$/)?.[0] || '.md'}</span>
-            </motion.button>
-            <button className="row-delete" aria-label={'Delete ' + doc.title} title="Delete document" onClick={() => setPendingDelete({ id: doc.id, title: doc.title.trim() || 'Untitled' })}><Icon name="trash" size={13} /></button>
-          </div>)}
-          {!matching.length && <span className="no-results">{query ? 'No documents found' : 'No documents yet'}</span>}
-        </div>
+        <WorkspaceTree
+          workspaces={workspaces} documents={matching}
+          activeId={activeId} activeWorkspaceId={workspaceId}
+          search={query} expandedIds={expandedIds}
+          newWorkspaceId={newWorkspaceId} reducedMotion={!!motionOff}
+          onToggle={toggleWorkspace}
+          onSelectWorkspace={setWorkspaceId}
+          onOpen={selectDocument}
+          onNewWorkspace={createWorkspace}
+          onNewDocument={makeDocument}
+          onRenameWorkspace={renameWorkspace}
+          onRenameDocument={renameDocument}
+          onDeleteWorkspace={id => {
+            const ws = workspaces.find(item => item.id === id);
+            if (ws) setPendingDelete({ kind: 'workspace', id, title: ws.name,
+              count: [...live.current.values()].filter(doc => doc.workspaceId === id).length });
+          }}
+          onDeleteDocument={id => {
+            const doc = live.current.get(id);
+            if (doc) setPendingDelete({ kind: 'document', id, title: doc.title.trim() || 'Untitled' });
+          }}
+        />
         <div className="sidebar-bottom">
+          <button className="sidebar-bottom-action" onClick={() => makeDocument(workspaceId)}><Icon name="plus" size={16} /> New document</button>
           <button className="sidebar-bottom-action" onClick={() => { if (recentIds[1]) selectDocument(recentIds[1]); }} disabled={!recentIds[1]}><Icon name="history" size={16} /> Previous document</button>
         </div>
       </div>
@@ -626,8 +639,8 @@ export default function App() {
         <motion.section className="delete-dialog" initial={motionOff ? false : { opacity: 0, y: 9, scale: 0.985 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={motionOff ? undefined : { opacity: 0, y: 5, scale: 0.99 }}
           transition={motionOff ? { duration: 0 } : { duration: 0.21, ease: [0.22, 1, 0.36, 1] }} role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title" aria-describedby="delete-dialog-description">
           <div className="dialog-header"><Icon name="trash" size={17} /><button type="button" aria-label="Close dialog" disabled={deleting} onClick={() => setPendingDelete(null)}><Icon name="close" size={15} /></button></div>
-          <h2 id="delete-dialog-title">Delete document?</h2>
-          <p id="delete-dialog-description">“{pendingDelete.title}” will be removed from this browser. This cannot be undone.</p>
+          <h2 id="delete-dialog-title">Delete {pendingDelete.kind}?</h2>
+          <p id="delete-dialog-description">“{pendingDelete.title}”{pendingDelete.kind === 'workspace' ? ` and ${pendingDelete.count || 0} document${pendingDelete.count === 1 ? '' : 's'}` : ''} will be removed from this browser. This cannot be undone.</p>
           <div className="dialog-actions">
             <button autoFocus type="button" disabled={deleting} className="dialog-cancel" onClick={() => setPendingDelete(null)}>Cancel</button>
             <button type="button" disabled={deleting} className="dialog-delete" aria-label={deleting ? 'Deleting' : 'Delete'} onClick={() => { void confirmDelete(); }}>
