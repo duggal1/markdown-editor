@@ -4,11 +4,12 @@ export type CodeLanguage = 'swift' | 'typescript' | 'javascript' | 'python' | 'r
 
 export function detectRawCode(source: string): CodeLanguage | null {
   const text = source.trim();
-  if (!text || text.length < 16) return null;
+  if (!text) return null;
+  // Even a tiny valid snippet like <p>Hi</p> deserves a real preview.
+  // Check before scanning Markdown-like text inside <style> and <script>.
+  if (looksLikeHtml(text)) return 'html';
+  if (text.length < 16) return null;
   const head = text.slice(0, 12000);
-  // Recognize complete HTML documents before scanning for Markdown-like lines
-  // inside <style>, <script>, or HTML text nodes.
-  if (looksLikeHtml(head)) return 'html';
   // Ordinary Markdown, including fenced code, should stay Markdown.
   if (/^\s*`{3,}/m.test(head) || /^\s*#{1,6}\s+(?!Preview\b)/m.test(head)
       || /^\s*[-*+]\s+\S/m.test(head) || /^\s*>\s+\S/m.test(head)) return null;
