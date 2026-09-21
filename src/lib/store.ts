@@ -12,6 +12,7 @@ export type FlowDocument = {
 export type Preferences = {
   theme: Theme; mode: Mode; sidebarOpen: boolean;
   activeWorkspaceId: string; activeDocumentId: string; recentIds: string[];
+  expandedWorkspaceIds?: string[];
 };
 
 const DATABASE = 'flow.workspace.v1';
