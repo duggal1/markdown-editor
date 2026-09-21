@@ -7,6 +7,7 @@ export type Workspace = { id: string; name: string; createdAt: number };
 export type FlowDocument = {
   id: string; workspaceId: string; title: string; titleAuto: boolean;
   markdown: string; createdAt: number; updatedAt: number;
+  fileName?: string; fileType?: 'text' | 'image' | 'binary'; language?: string; asset?: Blob;
 };
 export type Preferences = {
   theme: Theme; mode: Mode; sidebarOpen: boolean;
