@@ -104,6 +104,7 @@ function HtmlCanvas({ source, embedded = false, scrollRef }: {
   const [rendered, setRendered] = useState(source);
   const latest = useRef(source);
   const iframe = useRef<HTMLIFrameElement>(null);
+  const progress = useRef(0);
   latest.current = source;
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -117,8 +118,9 @@ function HtmlCanvas({ source, embedded = false, scrollRef }: {
     if (!parent) return;
     const onPosition = (event: Event) => {
       const { line, total } = (event as PositionEvent).detail;
+      progress.current = Math.max(0, Math.min(1, (line - 1) / Math.max(1, total - 1)));
       iframe.current?.contentWindow?.postMessage({
-        type: 'flow-html-scroll', progress: Math.max(0, Math.min(1, (line - 1) / Math.max(1, total - 1))),
+        type: 'flow-html-scroll', progress: progress.current,
       }, '*');
     };
     parent.addEventListener('flow-preview-position', onPosition);
@@ -128,7 +130,10 @@ function HtmlCanvas({ source, embedded = false, scrollRef }: {
     : <div className="html-preview-unavailable">Paste a valid HTML document to preview it.</div>;
   return <div className={embedded ? 'html-embedded-preview' : 'html-document-preview'}>
     <iframe ref={iframe} title={embedded ? 'HTML code preview' : 'HTML document preview'}
-      sandbox="allow-scripts" srcDoc={documentHtml} referrerPolicy="no-referrer" />
+      sandbox="allow-scripts" srcDoc={documentHtml} referrerPolicy="no-referrer"
+      onLoad={() => iframe.current?.contentWindow?.postMessage({
+        type: 'flow-html-scroll', progress: progress.current,
+      }, '*')} />
   </div>;
 }
 function VirtualCodeBlock({ code, rawLanguage }: { code: string; rawLanguage: string }) {
