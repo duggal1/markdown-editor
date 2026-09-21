@@ -310,16 +310,37 @@ export default function App() {
   }, [selectDocument, workspaceId, workspaces]);
 
   async function eraseDocument(doc: FlowDocument) {
+    // Delete immediately in the UI. Cancel pending writes so a stale save
+    // cannot recreate a deleted file after its IndexedDB record is removed.
+    const saveTimer = saveTimers.current.get(doc.id);
+    if (saveTimer !== undefined) clearTimeout(saveTimer);
+    saveTimers.current.delete(doc.id);
+    const visualTimer = visualTimers.current.get(doc.id);
+    if (visualTimer !== undefined) clearTimeout(visualTimer);
+    visualTimers.current.delete(doc.id);
+    const pendingSave = saveQueue.current.get(doc.id);
     const remaining = [...live.current.values()].filter(item => item.id !== doc.id);
     live.current.delete(doc.id);
     workerRef.current?.postMessage({ type: 'remove', id: doc.id });
     setDocs(remaining);
     setRecentIds(current => current.filter(id => id !== doc.id));
-    try { await removeDoc(doc.id); } catch { setNotice('Document deletion could not be saved.'); }
     if (activeIdRef.current === doc.id) {
       const other = remaining[0];
       if (other) selectDocument(other.id);
       else makeDocument(doc.workspaceId);
+    }
+    try {
+      if (pendingSave) await pendingSave.catch(() => {});
+      await removeDoc(doc.id);
+    } catch {
+      // Failed deletion should not silently lose access to the original.
+      live.current.set(doc.id, doc);
+      setDocs(items => [...items, doc]);
+      workerRef.current?.postMessage({ type: 'upsert', document: {
+        id: doc.id, workspaceId: doc.workspaceId, title: doc.title,
+        markdown: doc.markdown, updatedAt: doc.updatedAt,
+      } });
+      setNotice('Could not delete the document. It is still available.');
     }
   }
   function toggleWorkspace(id: string) {
@@ -596,7 +617,7 @@ export default function App() {
           }}
           onDeleteDocument={id => {
             const doc = live.current.get(id);
-            if (doc) setPendingDelete({ kind: 'document', id, title: doc.title.trim() || 'Untitled' });
+            if (doc) void eraseDocument(doc);
           }}
         />
         <div className="sidebar-bottom">
