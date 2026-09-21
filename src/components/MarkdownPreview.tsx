@@ -18,8 +18,8 @@ const aliases: Record<string, string> = {
 function escapeHtml(value: string) {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
-function highlight(value: string, language: string) {
-  if (!language || !hljs.getLanguage(language) || value.length > 1600) return escapeHtml(value);
+function highlight(value: string, language: string, limit = 1600) {
+  if (!language || !hljs.getLanguage(language) || value.length > limit) return escapeHtml(value);
   try { return hljs.highlight(value, { language, ignoreIllegals: true }).value; }
   catch { return escapeHtml(value); }
 }
@@ -70,7 +70,7 @@ function CodeBlock({ code, rawLanguage }: { code: string; rawLanguage: string })
   const { copied, copy } = useCopy(code);
   const language = aliases[rawLanguage.toLowerCase()] || rawLanguage.toLowerCase();
   const big = code.length > 20000;
-  const highlighted = useMemo(() => big ? '' : highlight(code, language), [code, language, big]);
+  const highlighted = useMemo(() => big ? '' : highlight(code, language, 20000), [code, language, big]);
   const rows = useMemo(() => big ? 0 : code.split('\n').length, [code, big]);
   const svgDocument = useMemo(() => rawLanguage === 'svg' && !big
     ? '<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;; img-src data: blob:; style-src &#39;unsafe-inline&#39;"><style>html,body{margin:0;height:100%;display:grid;place-items:center;background:transparent}svg{max-width:100%;max-height:100%;width:auto;height:auto}</style></head><body>' + code + '</body></html>'
