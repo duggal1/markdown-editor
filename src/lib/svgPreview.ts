@@ -39,7 +39,7 @@ export function svgPreviewDocument(code: string, theme: 'light' | 'dark'): strin
         }
       }
       // A dark SVG with no explicit fill inherits black from the root.
-      if (!root.hasAttribute('fill') && !(root as SVGElement).style?.getPropertyValue('fill'))
+      if (!root.hasAttribute('fill') && !(root as unknown as SVGElement).style?.getPropertyValue('fill'))
         root.setAttribute('fill', '#fafaf9');
       svg = new XMLSerializer().serializeToString(root);
     }
