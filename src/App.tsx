@@ -557,6 +557,15 @@ export default function App() {
           onNewDocument={makeDocument}
           onRenameWorkspace={renameWorkspace}
           onRenameDocument={renameDocument}
+          onMoveDocument={(id, targetWorkspace) => {
+            const original = live.current.get(id);
+            if (!original || original.workspaceId === targetWorkspace) return;
+            const moved = { ...original, workspaceId: targetWorkspace, updatedAt: Date.now() };
+            scheduleSave(moved);
+            setDocs(items => items.map(doc => doc.id === id ? moved : doc));
+            setExpandedIds(ids => ids.includes(targetWorkspace) ? ids : [...ids, targetWorkspace]);
+            if (activeIdRef.current === id) setWorkspaceId(targetWorkspace);
+          }}
           onDeleteWorkspace={id => {
             const ws = workspaces.find(item => item.id === id);
             if (ws) setPendingDelete({ kind: 'workspace', id, title: ws.name,
