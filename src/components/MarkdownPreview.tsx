@@ -52,8 +52,8 @@ function CodeBlock({ code, rawLanguage }: { code: string; rawLanguage: string })
     </pre>
   </div>;
 }
-function MarkdownPreview({ markdown }: { markdown: string }) {
-  const detected = useMemo(() => detectRawCode(markdown), [markdown]);
+function MarkdownPreview({ markdown, sourceLanguage }: { markdown: string; sourceLanguage?: string | null }) {
+  const detected = useMemo(() => sourceLanguage && sourceLanguage !== 'markdown' ? sourceLanguage : detectRawCode(markdown), [markdown, sourceLanguage]);
   if (!markdown.trim()) return <article className="markdown-preview"><p className="empty-preview">Nothing to preview.</p></article>;
   // Pasted source is shown as source. Markdown prose never gets a fabricated gutter.
   if (detected) return <article className="markdown-preview preview-is-code">
