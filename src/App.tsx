@@ -109,7 +109,8 @@ export default function App() {
       setActiveId(first.id);
       setWorkspaceId(chosenWorkspace.id);
       setRecentIds(Array.isArray(prefs.recentIds) ? prefs.recentIds.filter(id => live.current.has(id)) : [first.id]);
-      setTheme(prefs.theme === 'dark' ? 'dark' : 'light');
+      setTheme(prefs.theme === 'dark' || prefs.theme === 'light' ? prefs.theme
+        : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
       // Never restore a desktop-open drawer over the entire phone editor.
       setSidebarOpen(window.matchMedia('(max-width: 800px)').matches ? false : prefs.sidebarOpen !== false);
       modeRef.current = restoredMode;
@@ -127,7 +128,11 @@ export default function App() {
       for (const timer of visualTimers.current.values()) clearTimeout(timer);
     };
   }, []);
-  useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    const color = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (color) color.content = theme === 'dark' ? '#191817' : '#ffffff';
+  }, [theme]);
   useEffect(() => {
     const doc = live.current.get(activeId);
     if (!doc?.asset) { setAssetView(null); return; }
@@ -420,6 +425,7 @@ export default function App() {
     modeRef.current = next;
     if (next !== 'write') setPreviewText(live.current.get(activeIdRef.current)?.markdown || '');
     setMode(next);
+    if (compact && next === 'preview') editorRef.current?.contentDOM.blur();
     if (!compact && next !== 'preview') window.requestAnimationFrame(() => editorRef.current?.focus());
   }
   function changeTitle(value: string) {
