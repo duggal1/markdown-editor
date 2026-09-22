@@ -237,3 +237,99 @@
 @media (prefers-reduced-motion: reduce) {
   .draw-page * { scroll-behavior: auto !important; }
 }
+
+
+/* Agent screenshot workflow: controls stay quiet and the image stays dominant. */
+.draw-project-label { color: var(--draw-muted); font-size: 11px; white-space: nowrap; }
+.draw-project-input {
+  width: clamp(85px, 12vw, 175px); height: 32px; min-width: 0;
+  padding: 0 8px; border: 1px solid transparent; border-radius: 3px;
+  color: var(--draw-strong); background: transparent;
+  font-size: 13px; outline: none;
+}
+.draw-project-input:hover, .draw-project-input:focus {
+  border-color: var(--draw-line); background: var(--draw-panel);
+}
+.draw-toolbar {
+  flex: 0 0 49px; justify-content: flex-start; gap: 15px;
+}
+.draw-tools, .draw-format {
+  display: flex; align-items: center; gap: 2px;
+  padding: 3px; border-radius: 4px; background: var(--draw-panel);
+}
+.draw-tools button, .draw-format button {
+  display: inline-flex; justify-content: center; align-items: center; gap: 6px;
+  min-height: 29px; padding: 0 10px;
+  border: 0; border-radius: 3px; background: transparent;
+  color: var(--draw-muted); font-size: 12px; white-space: nowrap;
+  cursor: pointer;
+}
+.draw-tools button.is-active, .draw-format button.is-active {
+  color: var(--draw-strong); background: var(--draw-active);
+}
+.draw-tools button:hover:not(.is-active), .draw-format button:hover:not(.is-active) {
+  color: var(--draw-strong);
+}
+.draw-swatches { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.draw-swatch {
+  display: block; flex: 0 0 17px;
+  width: 17px; height: 17px; padding: 0;
+  border: 1px solid #0000001c; border-radius: 3px;
+  cursor: pointer;
+}
+.draw-swatch.is-active {
+  outline: 1px solid var(--draw-strong); outline-offset: 2px;
+}
+.draw-custom-color {
+  display: inline-grid; place-items: center; flex: 0 0 20px;
+  width: 20px; height: 20px; margin-left: 2px;
+  border: 1px solid var(--draw-line); border-radius: 3px;
+  overflow: hidden; cursor: pointer;
+}
+.draw-custom-color input {
+  width: 38px; height: 38px; padding: 0;
+  border: none; background: transparent; cursor: pointer;
+}
+.draw-format { margin-left: auto; }
+.draw-subbar {
+  display: flex; flex: 0 0 46px; min-width: 0; align-items: center;
+  justify-content: space-between; gap: 10px;
+  padding: 0 16px; border-bottom: 1px solid var(--draw-line);
+}
+.draw-stage { background-image: none; background-color: var(--draw-panel); }
+.draw-image-frame { box-shadow: none; outline: 1px solid var(--draw-line); }
+.draw-image-frame > img { max-height: calc(100dvh - 255px); }
+.draw-image-frame > canvas { z-index: 1; }
+.draw-inline-text {
+  position: absolute; z-index: 2;
+  width: clamp(145px, 23vw, 290px); max-width: 96%; min-height: 55px;
+  padding: 9px 11px;
+  color: #fafaf9; background: #141313f5;
+  border: 1px solid; border-radius: 4px;
+  box-shadow: 0 6px 24px #00000029;
+  outline: none; font: 400 13px/1.45 'Geist Variable', sans-serif;
+  resize: both;
+}
+.draw-inline-text::placeholder { color: #a8a29e; }
+.draw-inline-text:focus { outline: none; }
+.draw-image-item-count { font-variant-numeric: tabular-nums; }
+.draw-footer { font-variant-numeric: tabular-nums; }
+@media (max-width: 800px) {
+  .draw-header { flex-wrap: wrap; padding: 9px 10px; row-gap: 6px; }
+  .draw-heading, .draw-header-actions { flex: 1 1 auto; }
+  .draw-heading { min-width: 130px; }
+  .draw-project-label { display: none; }
+  .draw-project-input { width: min(105px, 26vw); }
+  .draw-header-actions { justify-content: flex-end; }
+  .draw-toolbar {
+    min-height: 49px; flex-basis: 49px; padding: 0 9px;
+    gap: 11px; overflow-x: auto; overflow-y: hidden;
+    scrollbar-width: none;
+  }
+  .draw-toolbar::-webkit-scrollbar { display: none; }
+  .draw-tools, .draw-swatches, .draw-format { flex: 0 0 auto; }
+  .draw-format { margin-left: 0; }
+  .draw-subbar { flex-basis: 45px; padding: 0 8px; }
+  .draw-image-frame > img { max-height: calc(100dvh - 315px); }
+  .draw-inline-text { width: min(205px, 63vw); font-size: 16px; }
+}
