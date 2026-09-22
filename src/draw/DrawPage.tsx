@@ -369,8 +369,37 @@ export default function DrawPage() {
 
   function start(event: PointerEvent<HTMLCanvasElement>) {
     const item = activeRef.current;
-    if (!item || drawn.current || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    if (!item || (event.pointerType === 'mouse' && event.button !== 0 &&
+      event.button !== 1)) return;
+    if (event.pointerType === 'touch') {
+      touchPoints.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (touchPoints.current.size > 1) {
+        suppressTouch.current = true;
+        drawn.current = null;
+        draftArrow.current = null;
+        setTextDraft(null);
+        const touches = Array.from(touchPoints.current.values());
+        pinch.current = {
+          distance: Math.max(1, Math.hypot(touches[1].x - touches[0].x,
+            touches[1].y - touches[0].y)),
+          x: (touches[0].x + touches[1].x) / 2,
+          y: (touches[0].y + touches[1].y) / 2,
+        };
+        event.currentTarget.setPointerCapture(event.pointerId);
+        requestPaint();
+        return;
+      }
+    }
+    if (suppressTouch.current || drawn.current || pan.current) return;
     event.preventDefault();
+    if (spaceDown.current || event.button === 1) {
+      const viewport = stage.current;
+      if (!viewport) return;
+      pan.current = { pointerId: event.pointerId, x: event.clientX,
+        y: event.clientY, left: viewport.scrollLeft, top: viewport.scrollTop };
+      event.currentTarget.setPointerCapture(event.pointerId);
+      return;
+    }
     const pos = point(event);
     if (tool === 'text') {
       if (textDraft) commitText();
@@ -388,6 +417,38 @@ export default function DrawPage() {
   }
 
   function move(event: PointerEvent<HTMLCanvasElement>) {
+    if (event.pointerType === 'touch' && touchPoints.current.has(event.pointerId)) {
+      touchPoints.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (touchPoints.current.size > 1) {
+        event.preventDefault();
+        const touches = Array.from(touchPoints.current.values());
+        const distance = Math.max(1, Math.hypot(touches[1].x - touches[0].x,
+          touches[1].y - touches[0].y));
+        const x = (touches[0].x + touches[1].x) / 2;
+        const y = (touches[0].y + touches[1].y) / 2;
+        const previous = pinch.current;
+        if (previous) {
+          const viewport = stage.current;
+          if (viewport) {
+            viewport.scrollLeft -= x - previous.x;
+            viewport.scrollTop -= y - previous.y;
+          }
+          zoomAt(zoomRef.current * distance / previous.distance, x, y);
+        }
+        pinch.current = { distance, x, y };
+        return;
+      }
+      if (suppressTouch.current) return;
+    }
+    if (pan.current?.pointerId === event.pointerId) {
+      event.preventDefault();
+      const viewport = stage.current;
+      if (viewport) {
+        viewport.scrollLeft = pan.current.left - (event.clientX - pan.current.x);
+        viewport.scrollTop = pan.current.top - (event.clientY - pan.current.y);
+      }
+      return;
+    }
     const current = drawn.current;
     if (!current || current.pointerId !== event.pointerId ||
       current.imageId !== activeRef.current?.id) return;
@@ -397,6 +458,25 @@ export default function DrawPage() {
   }
 
   function finish(event: PointerEvent<HTMLCanvasElement>, cancelled = false) {
+    if (event.pointerType === 'touch') {
+      touchPoints.current.delete(event.pointerId);
+      if (touchPoints.current.size < 2) pinch.current = null;
+      if (suppressTouch.current) {
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+        if (touchPoints.current.size === 0) suppressTouch.current = false;
+        requestPaint();
+        return;
+      }
+    }
+    if (pan.current?.pointerId === event.pointerId) {
+      pan.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      return;
+    }
     const current = drawn.current;
     if (!current || current.pointerId !== event.pointerId) return;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
@@ -439,15 +519,37 @@ export default function DrawPage() {
     setBusy(true);
     setError('');
     try {
-      const entries: ZipEntry[] = [];
-      for (let i = 0; i < images.length; i++) {
-        const image = images[i];
-        setProgress('Exporting ' + (i + 1) + ' / ' + images.length);
-        const file = await renderExport(image.url, annotationsRef.current[image.id] || [], format);
-        entries.push({ name: filename(projectName, i, format), file });
-      }
+      // Two/three encoders in flight rather than forcing every image to wait for
+      // the previous canvas to finish encoding. Keep ZIP entry order deterministic.
+      const entries: ZipEntry[] = new Array(images.length);
+      const currentAnnotations = annotationsRef.current;
+      let nextIndex = 0;
+      let completed = 0;
+      const workerCount = Math.min(3, images.length);
+      await Promise.all(Array.from({ length: workerCount }, async () => {
+        while (nextIndex < images.length) {
+          const i = nextIndex++;
+          const image = images[i];
+          const key = image.id + ':' + format;
+          let blob = exportCache.current.get(key);
+          if (!blob) {
+            blob = await renderExport(image.url, currentAnnotations[image.id] || [], format);
+            exportCache.current.set(key, blob);
+            // Only keep a few recent outputs; large batches must not retain
+            // two full-size encoded copies in memory indefinitely.
+            while (exportCache.current.size > 8) {
+              const oldest = exportCache.current.keys().next().value;
+              if (oldest) exportCache.current.delete(oldest);
+              else break;
+            }
+          }
+          entries[i] = { name: filename(projectName, i, format), file: blob };
+          completed++;
+          setProgress('Exporting ' + completed + ' / ' + images.length);
+        }
+      }));
       setProgress('Packing ZIP…');
-      const zip = await createImageZip(entries);
+      const zip = await packZip(entries);
       const url = URL.createObjectURL(zip);
       const link = document.createElement('a');
       link.href = url;
