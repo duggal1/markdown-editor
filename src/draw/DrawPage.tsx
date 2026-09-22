@@ -7,6 +7,9 @@ type ImageItem = { id: string; name: string; file: File; url: string };
 type Drawing = { pointerId: number; imageId: string; arrow: ArrowAnnotation };
 type TextDraft = { imageId: string; x: number; y: number; color: string; value: string };
 type Tool = 'arrow' | 'text';
+type Fit = { width: number; height: number };
+type Pan = { pointerId: number; x: number; y: number; left: number; top: number };
+type Pinch = { distance: number; x: number; y: number };
 
 const COLORS = ['#fb7185', '#fbbf24', '#60a5fa', '#a3e635', '#c4b5fd', '#fafaf9'];
 const clamp = (n: number) => Math.max(0, Math.min(1, n));
@@ -29,6 +32,29 @@ function initialName(): string {
   catch { return 'Flow'; }
 }
 
+function packZip(entries: ZipEntry[]): Promise<Blob> {
+  if (typeof Worker === 'undefined') return createImageZip(entries);
+  return new Promise((resolve, reject) => {
+    let worker: Worker;
+    try {
+      worker = new Worker(new URL('./zip.worker.ts', import.meta.url), { type: 'module' });
+    } catch {
+      void createImageZip(entries).then(resolve, reject);
+      return;
+    }
+    worker.onmessage = (event: MessageEvent<{ zip?: Blob; error?: string }>) => {
+      worker.terminate();
+      if (event.data.zip) resolve(event.data.zip);
+      else reject(new Error(event.data.error || 'Could not create ZIP.'));
+    };
+    worker.onerror = () => {
+      worker.terminate();
+      reject(new Error('The ZIP worker could not finish the export.'));
+    };
+    worker.postMessage({ entries });
+  });
+}
+
 export default function DrawPage() {
   const [images, setImages] = useState<ImageItem[]>([]);
   const [index, setIndex] = useState(0);
@@ -42,10 +68,23 @@ export default function DrawPage() {
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
   const [over, setOver] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [fit, setFit] = useState<Fit>({ width: 0, height: 0 });
 
   const input = useRef<HTMLInputElement>(null);
   const textInput = useRef<HTMLTextAreaElement>(null);
   const frame = useRef<HTMLDivElement>(null);
+  const stage = useRef<HTMLDivElement>(null);
+  const sourceImage = useRef<HTMLImageElement>(null);
+  const zoomRef = useRef(1);
+  const fitRef = useRef<Fit>({ width: 0, height: 0 });
+  const spaceDown = useRef(false);
+  const pan = useRef<Pan | null>(null);
+  const touchPoints = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<Pinch | null>(null);
+  const suppressTouch = useRef(false);
+  const zoomAdjust = useRef<number | null>(null);
+  const exportCache = useRef(new Map<string, Blob>());
   const canvas = useRef<HTMLCanvasElement>(null);
   const urls = useRef<string[]>([]);
   const paintFrame = useRef<number | null>(null);
@@ -68,6 +107,7 @@ export default function DrawPage() {
   }, [projectName]);
   useEffect(() => () => {
     if (paintFrame.current !== null) cancelAnimationFrame(paintFrame.current);
+    if (zoomAdjust.current !== null) cancelAnimationFrame(zoomAdjust.current);
     urls.current.forEach(url => URL.revokeObjectURL(url));
   }, []);
   useEffect(() => {
@@ -90,16 +130,20 @@ export default function DrawPage() {
     const width = bounds.clientWidth;
     const height = bounds.clientHeight;
     if (!width || !height) return;
-    const dpr = Math.min(2, devicePixelRatio || 1);
-    const pixelWidth = Math.max(1, Math.round(width * dpr));
-    const pixelHeight = Math.max(1, Math.round(height * dpr));
+    // Retessellate the vector annotations at the *zoomed* display density.
+    // Keep a hard pixel budget so huge screenshots do not exhaust GPU memory.
+    const density = Math.min(3, devicePixelRatio || 1) * zoomRef.current;
+    const rasterScale = Math.min(density, 8192 / width, 8192 / height,
+      Math.sqrt(24_000_000 / (width * height)));
+    const pixelWidth = Math.max(1, Math.round(width * rasterScale));
+    const pixelHeight = Math.max(1, Math.round(height * rasterScale));
     if (element.width !== pixelWidth || element.height !== pixelHeight) {
       element.width = pixelWidth;
       element.height = pixelHeight;
     }
     const ctx = element.getContext('2d');
     if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.setTransform(rasterScale, 0, 0, rasterScale, 0, 0);
     ctx.clearRect(0, 0, width, height);
     const image = activeRef.current;
     if (!image) return;
@@ -128,7 +172,144 @@ export default function DrawPage() {
     return () => observer.disconnect();
   }, [active?.id, requestPaint]);
 
+  const measureFit = useCallback(() => {
+    const viewport = stage.current;
+    const picture = sourceImage.current;
+    if (!viewport || !picture?.naturalWidth || !picture.naturalHeight) return;
+    const padding = matchMedia('(max-width: 800px)').matches ? 20 : 40;
+    const ratio = Math.min(1,
+      Math.max(1, viewport.clientWidth - padding) / picture.naturalWidth,
+      Math.max(1, viewport.clientHeight - padding) / picture.naturalHeight);
+    const next: Fit = {
+      width: Math.max(1, picture.naturalWidth * ratio),
+      height: Math.max(1, picture.naturalHeight * ratio),
+    };
+    if (Math.abs(next.width - fitRef.current.width) < 0.5 &&
+      Math.abs(next.height - fitRef.current.height) < 0.5) return;
+    fitRef.current = next;
+    setFit(next);
+    requestPaint();
+  }, [requestPaint]);
+
+  useEffect(() => {
+    if (!active) return;
+    const viewport = stage.current;
+    if (!viewport) return;
+    const observer = new ResizeObserver(measureFit);
+    observer.observe(viewport);
+    measureFit();
+    return () => observer.disconnect();
+  }, [active?.id, measureFit]);
+
+  useEffect(() => { requestPaint(); }, [zoom, fit, requestPaint]);
+
+  const zoomAt = useCallback((requested: number, clientX: number, clientY: number) => {
+    const viewport = stage.current;
+    const element = frame.current;
+    const measure = fitRef.current;
+    if (!viewport || !element || !measure.width || !measure.height) return;
+    const beforeZoom = zoomRef.current;
+    const next = Math.min(10, Math.max(1, requested));
+    if (Math.abs(beforeZoom - next) < 0.0001) return;
+    const before = element.getBoundingClientRect();
+    const x = Math.max(0, Math.min(measure.width, (clientX - before.left) / beforeZoom));
+    const y = Math.max(0, Math.min(measure.height, (clientY - before.top) / beforeZoom));
+    zoomRef.current = next;
+    setZoom(next);
+    if (zoomAdjust.current !== null) cancelAnimationFrame(zoomAdjust.current);
+    let attempts = 0;
+    const adjust = () => {
+      const current = frame.current;
+      const host = stage.current;
+      if (!current || !host) return;
+      const after = current.getBoundingClientRect();
+      if (Math.abs(after.width - measure.width * next) > 2 && attempts++ < 3) {
+        zoomAdjust.current = requestAnimationFrame(adjust);
+        return;
+      }
+      host.scrollLeft += after.left + x * next - clientX;
+      host.scrollTop += after.top + y * next - clientY;
+      zoomAdjust.current = null;
+      requestPaint();
+    };
+    zoomAdjust.current = requestAnimationFrame(adjust);
+  }, [requestPaint]);
+
+  useEffect(() => {
+    const viewport = stage.current;
+    if (!viewport || !active) return;
+    const wheel = (event: WheelEvent) => {
+      if (event.shiftKey && !event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.clientHeight : 1;
+      const strength = event.ctrlKey ? 0.012 : 0.003;
+      zoomAt(zoomRef.current * Math.exp(-event.deltaY * unit * strength),
+        event.clientX, event.clientY);
+    };
+    let gestureScale = 1;
+    const startGesture = (event: Event) => { event.preventDefault(); gestureScale = 1; };
+    const changeGesture = (event: Event) => {
+      event.preventDefault();
+      const gesture = event as Event & { scale?: number; clientX?: number; clientY?: number };
+      const scale = gesture.scale || 1;
+      const rect = viewport.getBoundingClientRect();
+      zoomAt(zoomRef.current * scale / gestureScale,
+        gesture.clientX ?? rect.left + rect.width / 2,
+        gesture.clientY ?? rect.top + rect.height / 2);
+      gestureScale = scale;
+    };
+    viewport.addEventListener('wheel', wheel, { passive: false });
+    viewport.addEventListener('gesturestart', startGesture, { passive: false });
+    viewport.addEventListener('gesturechange', changeGesture, { passive: false });
+    return () => {
+      viewport.removeEventListener('wheel', wheel);
+      viewport.removeEventListener('gesturestart', startGesture);
+      viewport.removeEventListener('gesturechange', changeGesture);
+    };
+  }, [active?.id, zoomAt]);
+
+  useEffect(() => {
+    const keyDown = (event: KeyboardEvent) => {
+      if (!activeRef.current ||
+        (event.target instanceof HTMLElement &&
+          event.target.closest('input, textarea, select, [contenteditable="true"]'))) return;
+      if (event.code === 'Space') {
+        event.preventDefault();
+        spaceDown.current = true;
+        return;
+      }
+      if (event.altKey || event.shiftKey && event.key !== '+' && event.key !== '_') return;
+      if (event.key !== '+' && event.key !== '=' && event.key !== '-' &&
+        event.key !== '_' && event.key !== '0') return;
+      event.preventDefault();
+      const host = stage.current;
+      if (!host) return;
+      const rect = host.getBoundingClientRect();
+      const next = event.key === '0' ? 1 : zoomRef.current *
+        (event.key === '+' || event.key === '=' ? 1.25 : 0.8);
+      zoomAt(next, rect.left + rect.width / 2, rect.top + rect.height / 2);
+    };
+    const keyUp = (event: KeyboardEvent) => {
+      if (event.code === 'Space') spaceDown.current = false;
+    };
+    const blur = () => { spaceDown.current = false; };
+    window.addEventListener('keydown', keyDown);
+    window.addEventListener('keyup', keyUp);
+    window.addEventListener('blur', blur);
+    return () => {
+      window.removeEventListener('keydown', keyDown);
+      window.removeEventListener('keyup', keyUp);
+      window.removeEventListener('blur', blur);
+    };
+  }, [zoomAt]);
+
   function updateAnnotations(next: Record<string, Annotation[]>) {
+    for (const id of Object.keys(next)) {
+      if (next[id] !== annotationsRef.current[id]) {
+        exportCache.current.delete(id + ':webp');
+        exportCache.current.delete(id + ':jpeg');
+      }
+    }
     annotationsRef.current = next;
     setAnnotations(next);
     downloaded.current = false;
@@ -155,6 +336,15 @@ export default function DrawPage() {
     drawn.current = null;
     draftArrow.current = null;
     setIndex(nextIndex);
+    zoomRef.current = 1;
+    setZoom(1);
+    fitRef.current = { width: 0, height: 0 };
+    setFit(fitRef.current);
+    touchPoints.current.clear();
+    pinch.current = null;
+    pan.current = null;
+    suppressTouch.current = false;
+    if (stage.current) { stage.current.scrollLeft = 0; stage.current.scrollTop = 0; }
     requestPaint();
   }
 
