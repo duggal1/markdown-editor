@@ -27,11 +27,15 @@ export function drawAnnotation(
     ctx.strokeStyle = annotation.color;
     ctx.fillStyle = annotation.color;
     ctx.lineWidth = widthPx;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    // End the shaft INSIDE the solid head. The old round cap protruded beyond
+    // its point and could look like a white/bright nose pixel on screenshots.
+    // No halo, tip circle, outline, or stroke around the arrowhead.
+    ctx.lineCap = 'butt';
+    ctx.lineJoin = 'miter';
     ctx.beginPath();
     ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
+    ctx.lineTo(x2 - Math.cos(angle) * head * 0.70,
+      y2 - Math.sin(angle) * head * 0.70);
     ctx.stroke();
     ctx.beginPath();
     ctx.moveTo(x2, y2);
