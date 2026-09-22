@@ -671,9 +671,15 @@ export default function DrawPage() {
           </div>
         </div>
 
-        <div className={'draw-stage' + (over ? ' is-drop-target' : '')}>
-          {active ? <div className="draw-image-frame" ref={frame} key={active.id}>
-            <img src={active.url} alt={active.name} draggable={false} onLoad={requestPaint} />
+        <div ref={stage} className={'draw-stage' + (over ? ' is-drop-target' : '')}
+          tabIndex={0} aria-label="Image canvas. Wheel or pinch to zoom, plus and minus to zoom, zero to fit. Hold Space and drag to pan.">
+          {active ? <div className="draw-zoom-space" key={active.id}
+            style={{ width: fit.width * zoom, height: fit.height * zoom }}>
+            <div className="draw-image-frame" ref={frame}
+              style={{ width: fit.width, height: fit.height,
+                transform: 'scale(' + zoom + ')', transformOrigin: 'top left' }}>
+            <img ref={sourceImage} src={active.url} alt={active.name}
+              draggable={false} onLoad={() => { measureFit(); requestPaint(); }} />
             <canvas ref={canvas}
               aria-label={tool === 'arrow' ? 'Drag to draw an arrow' : 'Tap to add text'}
               onPointerDown={start} onPointerMove={move}
@@ -695,6 +701,7 @@ export default function DrawPage() {
                 }
               }}
               onBlur={commitText} />}
+            </div>
           </div> : <button type="button" className="draw-empty"
             onClick={() => input.current?.click()}>
             <span className="draw-empty-mark">↗</span>
@@ -705,8 +712,8 @@ export default function DrawPage() {
           </button>}
         </div>
         <footer className="draw-footer">
-          <span>{tool === 'arrow' ? 'Drag from an issue to the exact element.' :
-            'Tap to place text. Enter saves; Shift+Enter adds a line.'}</span>
+          <span>{tool === 'arrow' ? 'Wheel / pinch to zoom · Space + drag to pan · + / − / 0' :
+            'Tap to place text · Wheel / pinch to zoom · Space + drag to pan'}</span>
           <span>{format === 'webp' ? 'WebP' : 'JPEG'} · {projectName.trim() || 'Screenshots'} 1–{images.length}</span>
         </footer>
         {error && <div className="draw-error" role="alert">{error}
