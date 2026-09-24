@@ -385,3 +385,50 @@
   touch-action: none;
   user-select: none;
 }
+
+
+/* Gallery actions are sibling buttons: no nested buttons, no accidental opening. */
+.draw-image-item { padding: 3px 5px; gap: 2px; cursor: default; }
+.draw-image-item-select {
+  display: flex; align-items: center; gap: 9px;
+  min-width: 0; flex: 1; height: 55px; padding: 3px;
+  border: 0; border-radius: 3px; background: transparent;
+  text-align: left; cursor: pointer;
+}
+.draw-image-item-select img {
+  flex: 0 0 42px; width: 42px; height: 42px;
+  border-radius: 2px; object-fit: cover;
+}
+.draw-image-item-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 1px; }
+.draw-image-item-action {
+  display: inline-grid; place-items: center;
+  flex: 0 0 23px; width: 23px; height: 28px;
+  padding: 0; border: 0; border-radius: 3px; background: transparent;
+  color: var(--draw-muted) !important; font-size: 16px !important;
+  cursor: pointer; opacity: .5;
+}
+.draw-image-item:hover .draw-image-item-action,
+.draw-image-item:focus-within .draw-image-item-action { opacity: 1; }
+.draw-image-item-action:hover:not(:disabled) {
+  color: var(--draw-strong) !important; background: var(--draw-hover);
+}
+.draw-image-remove:hover:not(:disabled) {
+  color: #fb7185 !important; background: #fb71851b;
+}
+.draw-image-item-action:disabled { opacity: .25; cursor: default; }
+.draw-select-canvas { cursor: grab !important; }
+.draw-select-canvas:active { cursor: grabbing !important; }
+.draw-remove-annotation { color: #f43f5e !important; }
+.draw-remove-annotation:hover { background: #f43f5e17 !important; }
+@media (pointer: coarse) {
+  .draw-image-item-action { opacity: 1; width: 30px; height: 32px; flex-basis: 30px; }
+}
+@media (max-width: 800px) {
+  .draw-image-item { min-width: 185px; max-width: 205px; padding: 3px; }
+  .draw-image-item-select { height: 47px; gap: 6px; }
+  .draw-image-item-select img { flex-basis: 35px; width: 35px; height: 35px; }
+  .draw-image-item-actions { gap: 0; }
+  .draw-image-item-action { flex-basis: 26px; width: 26px; opacity: 1; }
+  .draw-subbar { overflow-x: auto; gap: 8px; }
+  .draw-edit-actions { flex: 0 0 auto; }
+}
