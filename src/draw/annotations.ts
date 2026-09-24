@@ -115,3 +115,59 @@ export async function renderExport(
     canvas.height = 0;
   }
 }
+
+export type AnnotationHit = { index: number; part: 'body' | 'start' | 'end' };
+
+/**
+ * Hit tests use the same image-relative geometry as drawing and exporting.
+ * Tolerance remains approximately 10 screen pixels while zoomed.
+ */
+export function hitTestAnnotation(
+  annotations: Annotation[], point: Point, width: number, height: number,
+  zoom = 1,
+): AnnotationHit | null {
+  const x = point.x * width;
+  const y = point.y * height;
+  const tolerance = 11 / Math.max(0.25, zoom);
+  const ctx = document.createElement('canvas').getContext('2d');
+  for (let index = annotations.length - 1; index >= 0; index--) {
+    const annotation = annotations[index];
+    if (annotation.kind === 'arrow') {
+      const ax = annotation.x1 * width;
+      const ay = annotation.y1 * height;
+      const bx = annotation.x2 * width;
+      const by = annotation.y2 * height;
+      // Body first: clicking the shaft never accidentally grabs its endpoint.
+      const dx = bx - ax;
+      const dy = by - ay;
+      const len2 = dx * dx + dy * dy;
+      const t = len2 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / len2)) : 0;
+      const dist = Math.hypot(x - ax - t * dx, y - ay - t * dy);
+      if (dist <= tolerance + Math.max(2.6, Math.min(15, Math.min(width, height) * 0.0045)) / 2) {
+        const tipTolerance = tolerance * 1.1;
+        if (Math.hypot(x - bx, y - by) < tipTolerance) return { index, part: 'end' };
+        if (Math.hypot(x - ax, y - ay) < tipTolerance) return { index, part: 'start' };
+        return { index, part: 'body' };
+      }
+      continue;
+    }
+    if (!ctx) continue;
+    const scale = Math.min(width, height);
+    const font = Math.max(14, Math.min(48, scale * 0.026));
+    const lineHeight = font * 1.35;
+    const padX = font * 0.53;
+    const padY = font * 0.38;
+    const lines = annotation.text.split('\n').slice(0, 6);
+    ctx.font = '500 ' + font + 'px -apple-system, BlinkMacSystemFont, Arial, sans-serif';
+    const boxWidth = Math.min(width,
+      Math.max(0, ...lines.map(line => ctx.measureText(line).width)) + padX * 2);
+    const boxHeight = lines.length * lineHeight + padY * 2;
+    const left = Math.max(0, Math.min(annotation.x * width, width - boxWidth));
+    const top = Math.max(0, Math.min(annotation.y * height, height - boxHeight));
+    if (x >= left - tolerance && x <= left + boxWidth + tolerance &&
+      y >= top - tolerance && y <= top + boxHeight + tolerance) {
+      return { index, part: 'body' };
+    }
+  }
+  return null;
+}
