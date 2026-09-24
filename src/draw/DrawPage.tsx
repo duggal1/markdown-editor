@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent, type PointerEvent } from 'react';
 import { createImageZip, type ZipEntry } from './zip';
-import { drawAnnotation, renderExport, type Annotation, type ArrowAnnotation, type OutputFormat, type Point, type TextAnnotation } from './annotations';
+import { drawAnnotation, hitTestAnnotation, renderExport, type Annotation, type AnnotationHit, type ArrowAnnotation, type OutputFormat, type Point, type TextAnnotation } from './annotations';
 import './draw.css';
 
 type ImageItem = { id: string; name: string; file: File; url: string };
 type Drawing = { pointerId: number; imageId: string; arrow: ArrowAnnotation };
-type TextDraft = { imageId: string; x: number; y: number; color: string; value: string };
-type Tool = 'arrow' | 'text';
+type TextDraft = { imageId: string; x: number; y: number; color: string; value: string; editIndex?: number };
+type Selection = { imageId: string; index: number };
+type Move = { pointerId: number; imageId: string; index: number; part: AnnotationHit['part']; start: Point; original: Annotation; current: Annotation; moved: boolean };
+type Tool = 'select' | 'arrow' | 'text';
 type Fit = { width: number; height: number };
 type Pan = { pointerId: number; x: number; y: number; left: number; top: number };
 type Pinch = { distance: number; x: number; y: number };
 
-const COLORS = ['#fb7185', '#fbbf24', '#60a5fa', '#a3e635', '#c4b5fd', '#fafaf9'];
+const COLORS = ['#ff0000', '#fbbf24', '#60a5fa', '#a3e635', '#c4b5fd', '#fafaf9'];
 const clamp = (n: number) => Math.max(0, Math.min(1, n));
 
 function point(event: PointerEvent<HTMLCanvasElement>): Point {
@@ -64,6 +66,8 @@ export default function DrawPage() {
   const [format, setFormat] = useState<OutputFormat>('webp');
   const [projectName, setProjectName] = useState(initialName);
   const [textDraft, setTextDraft] = useState<TextDraft | null>(null);
+  const [selected, setSelected] = useState<Selection | null>(null);
+  const [singleBusyId, setSingleBusyId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
@@ -72,6 +76,10 @@ export default function DrawPage() {
   const [fit, setFit] = useState<Fit>({ width: 0, height: 0 });
 
   const input = useRef<HTMLInputElement>(null);
+  const textDraftRef = useRef<TextDraft | null>(null);
+  const selectedRef = useRef<Selection | null>(null);
+  const moveRef = useRef<Move | null>(null);
+  const historyRef = useRef<Record<string, Annotation[][]>>({});
   const textInput = useRef<HTMLTextAreaElement>(null);
   const frame = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
@@ -147,8 +155,37 @@ export default function DrawPage() {
     ctx.clearRect(0, 0, width, height);
     const image = activeRef.current;
     if (!image) return;
-    for (const item of annotationsRef.current[image.id] || []) {
-      drawAnnotation(ctx, item, width, height);
+    const onImage = annotationsRef.current[image.id] || [];
+    const moving = moveRef.current;
+    for (let i = 0; i < onImage.length; i++) {
+      drawAnnotation(ctx, moving?.imageId === image.id && moving.index === i
+        ? moving.current : onImage[i], width, height);
+    }
+    const sel = selectedRef.current;
+    if (sel?.imageId === image.id && onImage[sel.index]) {
+      const shape = moving?.imageId === image.id && moving.index === sel.index
+        ? moving.current : onImage[sel.index];
+      ctx.save();
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 1.25;
+      ctx.setLineDash([4, 3]);
+      if (shape.kind === 'arrow') {
+        ctx.beginPath();
+        ctx.moveTo(shape.x1 * width, shape.y1 * height);
+        ctx.lineTo(shape.x2 * width, shape.y2 * height);
+        ctx.stroke();
+      } else {
+        const scale = Math.min(width, height);
+        const font = Math.max(14, Math.min(48, scale * 0.026));
+        const lines = shape.text.split('\n').slice(0, 6);
+        ctx.font = '500 ' + font + 'px -apple-system, BlinkMacSystemFont, Arial, sans-serif';
+        const w = Math.min(width, Math.max(0, ...lines.map(line => ctx.measureText(line).width)) + font * 1.06);
+        const h = lines.length * font * 1.35 + font * 0.76;
+        const x = Math.max(0, Math.min(shape.x * width, width - w));
+        const y = Math.max(0, Math.min(shape.y * height, height - h));
+        ctx.strokeRect(x - 2, y - 2, w + 4, h + 4);
+      }
+      ctx.restore();
     }
     if (draftArrow.current && drawn.current?.imageId === image.id) {
       drawAnnotation(ctx, draftArrow.current, width, height);
@@ -303,7 +340,19 @@ export default function DrawPage() {
     };
   }, [zoomAt]);
 
-  function updateAnnotations(next: Record<string, Annotation[]>) {
+  function selectAnnotation(next: Selection | null) {
+    selectedRef.current = next;
+    setSelected(next);
+    requestPaint();
+  }
+
+  function updateAnnotations(next: Record<string, Annotation[]>, recordHistory = true) {
+    if (recordHistory) for (const id of Object.keys(next)) {
+      if (next[id] !== annotationsRef.current[id]) {
+        const history = historyRef.current[id] || [];
+        historyRef.current[id] = [...history.slice(-39), annotationsRef.current[id] || []];
+      }
+    }
     for (const id of Object.keys(next)) {
       if (next[id] !== annotationsRef.current[id]) {
         exportCache.current.delete(id + ':webp');
@@ -316,25 +365,70 @@ export default function DrawPage() {
     requestPaint();
   }
 
+  function openText(draft: TextDraft) {
+    textDraftRef.current = draft;
+    setTextDraft(draft);
+  }
+
   function commitText() {
-    const item = textDraft;
+    // A blur after Enter must not commit the same text twice.
+    const item = textDraftRef.current;
     if (!item) return;
+    textDraftRef.current = null;
     setTextDraft(null);
     const value = item.value.trim().slice(0, 240);
     if (!value) return;
     const annotation: TextAnnotation = {
       kind: 'text', color: item.color, x: item.x, y: item.y, text: value,
     };
-    updateAnnotations({
-      ...annotationsRef.current,
-      [item.imageId]: [...(annotationsRef.current[item.imageId] || []), annotation],
-    });
+    const existing = annotationsRef.current[item.imageId] || [];
+    if (item.editIndex !== undefined) {
+      if (!existing[item.editIndex] || existing[item.editIndex].kind !== 'text') return;
+      const updated = existing.slice();
+      updated[item.editIndex] = annotation;
+      if (JSON.stringify(existing[item.editIndex]) !== JSON.stringify(annotation)) {
+        updateAnnotations({ ...annotationsRef.current, [item.imageId]: updated });
+      }
+      selectAnnotation({ imageId: item.imageId, index: item.editIndex });
+    } else {
+      updateAnnotations({
+        ...annotationsRef.current, [item.imageId]: [...existing, annotation],
+      });
+      selectAnnotation({ imageId: item.imageId, index: existing.length });
+    }
+  }
+
+  function cancelText() {
+    textDraftRef.current = null;
+    setTextDraft(null);
+  }
+
+  function editSelectedText() {
+    const sel = selectedRef.current;
+    if (!sel) return;
+    const original = annotationsRef.current[sel.imageId]?.[sel.index];
+    if (!original || original.kind !== 'text') return;
+    openText({ imageId: sel.imageId, x: original.x, y: original.y,
+      color: original.color, value: original.text, editIndex: sel.index });
+  }
+
+  function deleteSelected() {
+    const sel = selectedRef.current;
+    if (!sel) return;
+    const existing = annotationsRef.current[sel.imageId] || [];
+    if (!existing[sel.index]) return;
+    cancelText();
+    updateAnnotations({ ...annotationsRef.current,
+      [sel.imageId]: existing.filter((_, i) => i !== sel.index) });
+    selectAnnotation(null);
   }
 
   function select(nextIndex: number) {
     commitText();
     drawn.current = null;
     draftArrow.current = null;
+    moveRef.current = null;
+    selectAnnotation(null);
     setIndex(nextIndex);
     zoomRef.current = 1;
     setZoom(1);
