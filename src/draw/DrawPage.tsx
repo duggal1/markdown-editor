@@ -950,9 +950,9 @@ export default function DrawPage() {
           </div>
           <div className="draw-edit-actions">
             <span className="draw-arrow-count">{count} note{count === 1 ? '' : 's'}</span>
-            {selected?.imageId === active?.id && (annotations[active.id]?.[selected.index]?.kind === 'text') &&
+            {active && selected && selected.imageId === active.id && (annotations[active.id]?.[selected.index]?.kind === 'text') &&
               <button type="button" className="draw-text-button" onClick={editSelectedText}>Edit text</button>}
-            {selected?.imageId === active?.id &&
+            {active && selected && selected.imageId === active.id &&
               <button type="button" className="draw-text-button draw-remove-annotation"
                 onClick={deleteSelected}>Delete selected</button>}
             <button type="button" className="draw-text-button"
@@ -1023,7 +1023,7 @@ export default function DrawPage() {
           </button>}
         </div>
         <footer className="draw-footer">
-          <span>{selected?.imageId === active?.id ?
+          <span>{active && selected && selected.imageId === active.id ?
             'Drag to move · Delete removes · Arrow keys nudge by 1 pixel · Enter edits text' :
             tool === 'arrow' ? 'Drag to draw · Select any annotation to move · Pinch / wheel to zoom' :
             tool === 'text' ? 'Tap to add text · Drag existing text to move · Pinch / wheel to zoom' :
