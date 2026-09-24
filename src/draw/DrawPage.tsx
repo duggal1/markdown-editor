@@ -29,6 +29,24 @@ function filename(project: string, index: number, format: OutputFormat) {
   return safe + ' ' + (index + 1) + (format === 'webp' ? '.webp' : '.jpg');
 }
 
+function moveAnnotation(
+  item: Annotation, deltaX: number, deltaY: number,
+  part: AnnotationHit['part'] = 'body',
+): Annotation {
+  if (item.kind === 'text') return { ...item,
+    x: clamp(item.x + deltaX), y: clamp(item.y + deltaY) };
+  if (part === 'start') return { ...item,
+    x1: clamp(item.x1 + deltaX), y1: clamp(item.y1 + deltaY) };
+  if (part === 'end') return { ...item,
+    x2: clamp(item.x2 + deltaX), y2: clamp(item.y2 + deltaY) };
+  const dx = Math.max(-Math.min(item.x1, item.x2),
+    Math.min(1 - Math.max(item.x1, item.x2), deltaX));
+  const dy = Math.max(-Math.min(item.y1, item.y2),
+    Math.min(1 - Math.max(item.y1, item.y2), deltaY));
+  return { ...item, x1: item.x1 + dx, y1: item.y1 + dy,
+    x2: item.x2 + dx, y2: item.y2 + dy };
+}
+
 function initialName(): string {
   try { return localStorage.getItem('flow.draw.project.v1') || 'Flow'; }
   catch { return 'Flow'; }
@@ -471,7 +489,8 @@ export default function DrawPage() {
         suppressTouch.current = true;
         drawn.current = null;
         draftArrow.current = null;
-        setTextDraft(null);
+        moveRef.current = null;
+        cancelText();
         const touches = Array.from(touchPoints.current.values());
         pinch.current = {
           distance: Math.max(1, Math.hypot(touches[1].x - touches[0].x,
@@ -495,12 +514,25 @@ export default function DrawPage() {
       return;
     }
     const pos = point(event);
-    if (tool === 'text') {
-      if (textDraft) commitText();
-      setTextDraft({ imageId: item.id, ...pos, color, value: '' });
+    if (textDraftRef.current) commitText();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const hit = hitTestAnnotation(annotationsRef.current[item.id] || [],
+      pos, rect.width / zoomRef.current, rect.height / zoomRef.current, zoomRef.current);
+    if (hit) {
+      const original = annotationsRef.current[item.id][hit.index];
+      selectAnnotation({ imageId: item.id, index: hit.index });
+      moveRef.current = { pointerId: event.pointerId, imageId: item.id,
+        index: hit.index, part: hit.part, start: pos, original,
+        current: original, moved: false };
+      event.currentTarget.setPointerCapture(event.pointerId);
       return;
     }
-    if (textDraft) commitText();
+    selectAnnotation(null);
+    if (tool === 'select') return;
+    if (tool === 'text') {
+      openText({ imageId: item.id, ...pos, color, value: '' });
+      return;
+    }
     const arrow: ArrowAnnotation = {
       kind: 'arrow', color, x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y,
     };
@@ -543,6 +575,21 @@ export default function DrawPage() {
       }
       return;
     }
+    const moving = moveRef.current;
+    if (moving?.pointerId === event.pointerId) {
+      const pos = point(event);
+      const dx = pos.x - moving.start.x;
+      const dy = pos.y - moving.start.y;
+      if (Math.hypot(dx * event.currentTarget.getBoundingClientRect().width,
+        dy * event.currentTarget.getBoundingClientRect().height) > 2) {
+        moving.moved = true;
+      }
+      if (moving.moved) {
+        moving.current = moveAnnotation(moving.original, dx, dy, moving.part);
+        requestPaint();
+      }
+      return;
+    }
     const current = drawn.current;
     if (!current || current.pointerId !== event.pointerId ||
       current.imageId !== activeRef.current?.id) return;
@@ -571,6 +618,24 @@ export default function DrawPage() {
       }
       return;
     }
+    const moving = moveRef.current;
+    if (moving?.pointerId === event.pointerId) {
+      moveRef.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      if (!cancelled && moving.moved &&
+        JSON.stringify(moving.current) !== JSON.stringify(moving.original)) {
+        const original = annotationsRef.current[moving.imageId] || [];
+        if (original[moving.index]) {
+          const next = original.slice();
+          next[moving.index] = moving.current;
+          updateAnnotations({ ...annotationsRef.current, [moving.imageId]: next });
+        }
+      }
+      requestPaint();
+      return;
+    }
     const current = drawn.current;
     if (!current || current.pointerId !== event.pointerId) return;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
@@ -593,18 +658,24 @@ export default function DrawPage() {
   }
 
   function undo() {
-    if (!active) return;
-    commitText();
-    const existing = annotationsRef.current[active.id] || [];
-    if (existing.length) updateAnnotations({
-      ...annotationsRef.current, [active.id]: existing.slice(0, -1),
-    });
+    const item = activeRef.current;
+    if (!item) return;
+    if (textDraftRef.current) { cancelText(); return; }
+    const history = historyRef.current[item.id] || [];
+    if (!history.length) return;
+    const previous = history[history.length - 1];
+    historyRef.current[item.id] = history.slice(0, -1);
+    updateAnnotations({ ...annotationsRef.current, [item.id]: previous }, false);
+    selectAnnotation(null);
   }
 
   function clear() {
-    if (!active) return;
-    setTextDraft(null);
-    updateAnnotations({ ...annotationsRef.current, [active.id]: [] });
+    const item = activeRef.current;
+    if (!item) return;
+    cancelText();
+    if (!(annotationsRef.current[item.id] || []).length) return;
+    updateAnnotations({ ...annotationsRef.current, [item.id]: [] });
+    selectAnnotation(null);
   }
 
   async function download() {
