@@ -328,6 +328,49 @@ export default function DrawPage() {
       if (!activeRef.current ||
         (event.target instanceof HTMLElement &&
           event.target.closest('input, textarea, select, [contenteditable="true"]'))) return;
+      if ((event.metaKey || event.ctrlKey) && !event.shiftKey &&
+        event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        undo();
+        return;
+      }
+      if (event.key === 'Escape') {
+        selectAnnotation(null);
+        return;
+      }
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        if (selectedRef.current) {
+          event.preventDefault();
+          deleteSelected();
+        }
+        return;
+      }
+      if (event.key === 'Enter' && selectedRef.current) {
+        event.preventDefault();
+        editSelectedText();
+        return;
+      }
+      if (!event.metaKey && !event.ctrlKey && !event.altKey &&
+        ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+        const sel = selectedRef.current;
+        const original = sel && annotationsRef.current[sel.imageId]?.[sel.index];
+        if (sel && original) {
+          event.preventDefault();
+          const amount = event.shiftKey ? 10 : 1;
+          const width = sourceImage.current?.naturalWidth || fitRef.current.width || 1;
+          const height = sourceImage.current?.naturalHeight || fitRef.current.height || 1;
+          const dx = event.key === 'ArrowLeft' ? -amount / width :
+            event.key === 'ArrowRight' ? amount / width : 0;
+          const dy = event.key === 'ArrowUp' ? -amount / height :
+            event.key === 'ArrowDown' ? amount / height : 0;
+          const changed = moveAnnotation(original, dx, dy);
+          const existing = annotationsRef.current[sel.imageId];
+          const updated = existing.slice();
+          updated[sel.index] = changed;
+          updateAnnotations({ ...annotationsRef.current, [sel.imageId]: updated });
+        }
+        return;
+      }
       if (event.code === 'Space') {
         event.preventDefault();
         spaceDown.current = true;
