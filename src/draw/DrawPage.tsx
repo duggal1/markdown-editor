@@ -16,7 +16,7 @@ type Pinch = { distance: number; x: number; y: number };
 const COLORS = ['#ff0000', '#fbbf24', '#60a5fa', '#a3e635', '#c4b5fd', '#fafaf9'];
 const clamp = (n: number) => Math.max(0, Math.min(1, n));
 
-function point(event: PointerEvent<HTMLCanvasElement>): Point {
+function point(event: { clientX: number; clientY: number; currentTarget: HTMLCanvasElement }): Point {
   const bounds = event.currentTarget.getBoundingClientRect();
   return {
     x: clamp((event.clientX - bounds.left) / bounds.width),
