@@ -474,6 +474,81 @@ export default function DrawPage() {
     setError('');
   }
 
+  function removeImage(id: string) {
+    if (busy || singleBusyId) return;
+    const at = images.findIndex(item => item.id === id);
+    if (at === -1) return;
+    const removed = images[at];
+    cancelText();
+    if (selectedRef.current?.imageId === id) selectAnnotation(null);
+    moveRef.current = null;
+    drawn.current = null;
+    draftArrow.current = null;
+    delete annotationsRef.current[id];
+    delete historyRef.current[id];
+    exportCache.current.delete(id + ':webp');
+    exportCache.current.delete(id + ':jpeg');
+    setAnnotations({ ...annotationsRef.current });
+    const remaining = images.filter(item => item.id !== id);
+    const newIndex = at < index ? index - 1 : at === index
+      ? Math.min(index, remaining.length - 1) : index;
+    setImages(remaining);
+    setIndex(Math.max(0, newIndex));
+    zoomRef.current = 1;
+    setZoom(1);
+    fitRef.current = { width: 0, height: 0 };
+    setFit(fitRef.current);
+    if (stage.current) { stage.current.scrollLeft = 0; stage.current.scrollTop = 0; }
+    urls.current = urls.current.filter(url => url !== removed.url);
+    requestAnimationFrame(() => URL.revokeObjectURL(removed.url));
+    downloaded.current = false;
+    requestPaint();
+  }
+
+  async function getEncoded(item: ImageItem, as: OutputFormat): Promise<Blob> {
+    const key = item.id + ':' + as;
+    const previous = exportCache.current.get(key);
+    if (previous) return previous;
+    const file = await renderExport(item.url, annotationsRef.current[item.id] || [], as);
+    exportCache.current.set(key, file);
+    while (exportCache.current.size > 8) {
+      const oldest = exportCache.current.keys().next().value;
+      if (oldest) exportCache.current.delete(oldest);
+      else break;
+    }
+    return file;
+  }
+
+  function saveBlob(blob: Blob, name: string) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = name;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  }
+
+  async function downloadSingle(item: ImageItem) {
+    if (busy || singleBusyId) return;
+    commitText();
+    setSingleBusyId(item.id);
+    setError('');
+    try {
+      const file = await getEncoded(item, format);
+      const at = images.findIndex(image => image.id === item.id);
+      if (at === -1) return;
+      saveBlob(file, filename(projectName, at, format));
+      // A single download should not suppress the navigation warning for other
+      // unsaved screenshots still in the batch.
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not download the image.');
+    } finally {
+      setSingleBusyId(null);
+    }
+  }
+
   function upload(event: ChangeEvent<HTMLInputElement>) {
     if (event.target.files) addFiles(event.target.files);
     event.target.value = '';
@@ -679,7 +754,7 @@ export default function DrawPage() {
   }
 
   async function download() {
-    if (!images.length || busy) return;
+    if (!images.length || busy || singleBusyId) return;
     commitText();
     setBusy(true);
     setError('');
@@ -687,7 +762,6 @@ export default function DrawPage() {
       // Two/three encoders in flight rather than forcing every image to wait for
       // the previous canvas to finish encoding. Keep ZIP entry order deterministic.
       const entries: ZipEntry[] = new Array(images.length);
-      const currentAnnotations = annotationsRef.current;
       let nextIndex = 0;
       let completed = 0;
       const workerCount = Math.min(3, images.length);
@@ -695,19 +769,7 @@ export default function DrawPage() {
         while (nextIndex < images.length) {
           const i = nextIndex++;
           const image = images[i];
-          const key = image.id + ':' + format;
-          let blob = exportCache.current.get(key);
-          if (!blob) {
-            blob = await renderExport(image.url, currentAnnotations[image.id] || [], format);
-            exportCache.current.set(key, blob);
-            // Only keep a few recent outputs; large batches must not retain
-            // two full-size encoded copies in memory indefinitely.
-            while (exportCache.current.size > 8) {
-              const oldest = exportCache.current.keys().next().value;
-              if (oldest) exportCache.current.delete(oldest);
-              else break;
-            }
-          }
+          const blob = await getEncoded(image, format);
           entries[i] = { name: filename(projectName, i, format), file: blob };
           completed++;
           setProgress('Exporting ' + completed + ' / ' + images.length);
@@ -715,15 +777,8 @@ export default function DrawPage() {
       }));
       setProgress('Packing ZIP…');
       const zip = await packZip(entries);
-      const url = URL.createObjectURL(zip);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = (projectName.trim().replace(/[/\\:*?"<>|\u0000-\u001f]/g, '_').slice(0, 90) ||
-        'Screenshots') + ' screenshots.zip';
-      document.body.append(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      saveBlob(zip, (projectName.trim().replace(/[/\\:*?"<>|\u0000-\u001f]/g, '_').slice(0, 90) ||
+        'Screenshots') + ' screenshots.zip');
       downloaded.current = true;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not export these screenshots.');
