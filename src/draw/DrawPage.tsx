@@ -851,7 +851,13 @@ export default function DrawPage() {
           Add images
         </button>
         <button className="draw-button draw-button-primary" type="button"
-          disabled={!images.length || busy} onClick={() => { void download(); }}>
+          disabled={!active || busy || !!singleBusyId}
+          onClick={() => { if (active) void downloadSingle(active); }}>
+          {singleBusyId === active?.id ? 'Exporting…' : 'Download image'}
+        </button>
+        <button className="draw-button" type="button"
+          disabled={!images.length || busy || !!singleBusyId}
+          onClick={() => { void download(); }}>
           {busy ? progress || 'Exporting…' : 'Download ZIP'}
         </button>
       </div>
@@ -872,17 +878,31 @@ export default function DrawPage() {
       <aside className="draw-rail" aria-label="Uploaded screenshots">
         <div className="draw-rail-heading">Screenshots <span>{images.length}</span></div>
         <div className="draw-image-list">
-          {images.map((item, i) => <button type="button" key={item.id}
-            className={'draw-image-item' + (index === i ? ' is-selected' : '')}
-            onClick={() => select(i)} aria-current={index === i ? 'true' : undefined}
-            title={item.name}>
-            <img src={item.url} alt="" loading="lazy" />
-            <span className="draw-image-item-info">
-              <span className="draw-image-item-name">{projectName.trim() || 'Screenshots'} {i + 1}</span>
-              <span className="draw-image-item-count">{(annotations[item.id] || []).length} note{(annotations[item.id] || []).length === 1 ? '' : 's'}</span>
-            </span>
-            <span className="draw-image-item-number">{String(i + 1).padStart(2, '0')}</span>
-          </button>)}
+          {images.map((item, i) => <div key={item.id}
+            className={'draw-image-item' + (index === i ? ' is-selected' : '')}>
+            <button type="button" className="draw-image-item-select"
+              onClick={() => select(i)} aria-current={index === i ? 'true' : undefined}
+              title={item.name} aria-label={'Open ' + filename(projectName, i, format)}>
+              <img src={item.url} alt="" loading="lazy" />
+              <span className="draw-image-item-info">
+                <span className="draw-image-item-name">{projectName.trim() || 'Screenshots'} {i + 1}</span>
+                <span className="draw-image-item-count">{(annotations[item.id] || []).length} note{(annotations[item.id] || []).length === 1 ? '' : 's'}</span>
+              </span>
+            </button>
+            <div className="draw-image-item-actions">
+              <button type="button" className="draw-image-item-action"
+                disabled={busy || !!singleBusyId}
+                aria-label={'Download ' + filename(projectName, i, format)}
+                title={'Download ' + filename(projectName, i, format)}
+                onClick={() => { void downloadSingle(item); }}>
+                {singleBusyId === item.id ? '…' : '↓'}
+              </button>
+              <button type="button" className="draw-image-item-action draw-image-remove"
+                disabled={busy || !!singleBusyId}
+                aria-label={'Remove ' + item.name} title={'Remove ' + item.name}
+                onClick={() => removeImage(item.id)}>×</button>
+            </div>
+          </div>)}
           {!images.length && <span className="draw-rail-empty">No screenshots yet.</span>}
         </div>
       </aside>
@@ -890,6 +910,9 @@ export default function DrawPage() {
       <section className="draw-workspace" aria-label="Annotate screenshot">
         <div className="draw-toolbar">
           <div className="draw-tools" role="group" aria-label="Annotation tool">
+            <button type="button" className={'draw-tool' + (tool === 'select' ? ' is-active' : '')}
+              aria-pressed={tool === 'select'}
+              onClick={() => { commitText(); setTool('select'); }}>↖ <span>Select</span></button>
             <button type="button" className={'draw-tool' + (tool === 'arrow' ? ' is-active' : '')}
               aria-pressed={tool === 'arrow'}
               onClick={() => { commitText(); setTool('arrow'); }}>↗ <span>Arrow</span></button>
@@ -927,7 +950,13 @@ export default function DrawPage() {
           </div>
           <div className="draw-edit-actions">
             <span className="draw-arrow-count">{count} note{count === 1 ? '' : 's'}</span>
-            <button type="button" className="draw-text-button" disabled={!count}
+            {selected?.imageId === active?.id && (annotations[active.id]?.[selected.index]?.kind === 'text') &&
+              <button type="button" className="draw-text-button" onClick={editSelectedText}>Edit text</button>}
+            {selected?.imageId === active?.id &&
+              <button type="button" className="draw-text-button draw-remove-annotation"
+                onClick={deleteSelected}>Delete selected</button>}
+            <button type="button" className="draw-text-button"
+              disabled={!historyRef.current[active?.id || '']?.length && !textDraft}
               onClick={undo}>Undo</button>
             <button type="button" className="draw-text-button"
               disabled={!count && !textDraft} onClick={clear}>Clear</button>
@@ -943,11 +972,25 @@ export default function DrawPage() {
                 transform: 'scale(' + zoom + ')', transformOrigin: 'top left' }}>
             <img ref={sourceImage} src={active.url} alt={active.name}
               draggable={false} onLoad={() => { measureFit(); requestPaint(); }} />
-            <canvas ref={canvas}
-              aria-label={tool === 'arrow' ? 'Drag to draw an arrow' : 'Tap to add text'}
+            <canvas ref={canvas} className={tool === 'select' ? 'draw-select-canvas' : ''}
+              aria-label={tool === 'arrow' ? 'Draw an arrow or move an existing annotation' :
+                tool === 'text' ? 'Add text or move an existing annotation' :
+                'Select, move or adjust an annotation'}
               onPointerDown={start} onPointerMove={move}
               onPointerUp={event => finish(event)}
-              onPointerCancel={event => finish(event, true)} />
+              onPointerCancel={event => finish(event, true)}
+              onDoubleClick={event => {
+                const item = activeRef.current;
+                if (!item) return;
+                const rect = event.currentTarget.getBoundingClientRect();
+                const hit = hitTestAnnotation(annotationsRef.current[item.id] || [],
+                  point(event), rect.width / zoomRef.current,
+                  rect.height / zoomRef.current, zoomRef.current);
+                if (hit && annotationsRef.current[item.id][hit.index]?.kind === 'text') {
+                  selectAnnotation({ imageId: item.id, index: hit.index });
+                  editSelectedText();
+                }
+              }} />
             {textDraft?.imageId === active.id && <textarea ref={textInput}
               className="draw-inline-text" aria-label="Screenshot annotation text"
               placeholder="Describe the issue…"
@@ -955,10 +998,15 @@ export default function DrawPage() {
               style={{ left: Math.min(70, textDraft.x * 100) + '%',
                 top: Math.min(82, textDraft.y * 100) + '%',
                 borderColor: textDraft.color }}
-              onChange={event => setTextDraft(previous => previous
-                ? { ...previous, value: event.target.value } : previous)}
+              onChange={event => {
+                const previous = textDraftRef.current;
+                if (!previous) return;
+                const next = { ...previous, value: event.target.value };
+                textDraftRef.current = next;
+                setTextDraft(next);
+              }}
               onKeyDown={event => {
-                if (event.key === 'Escape') { event.preventDefault(); setTextDraft(null); }
+                if (event.key === 'Escape') { event.preventDefault(); cancelText(); }
                 if (event.key === 'Enter' && !event.shiftKey) {
                   event.preventDefault(); commitText();
                 }
@@ -975,8 +1023,11 @@ export default function DrawPage() {
           </button>}
         </div>
         <footer className="draw-footer">
-          <span>{tool === 'arrow' ? 'Wheel / pinch to zoom · Space + drag to pan · + / − / 0' :
-            'Tap to place text · Wheel / pinch to zoom · Space + drag to pan'}</span>
+          <span>{selected?.imageId === active?.id ?
+            'Drag to move · Delete removes · Arrow keys nudge by 1 pixel · Enter edits text' :
+            tool === 'arrow' ? 'Drag to draw · Select any annotation to move · Pinch / wheel to zoom' :
+            tool === 'text' ? 'Tap to add text · Drag existing text to move · Pinch / wheel to zoom' :
+            'Click to select · Drag to move · Double-click text to edit'}</span>
           <span>{format === 'webp' ? 'WebP' : 'JPEG'} · {projectName.trim() || 'Screenshots'} 1–{images.length}</span>
         </footer>
         {error && <div className="draw-error" role="alert">{error}
