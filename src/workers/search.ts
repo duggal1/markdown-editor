@@ -6,6 +6,7 @@ type Incoming =
   | { type: 'metrics'; document: { id: string; markdown: string; updatedAt: number } }
   | { type: 'query'; query: string; requestId: number };
 const docs = new Map<string, IndexedDoc>();
+const titleIndex = new Map<string, string>();
 function countWords(value: string): number {
   let words = 0;
   let previousWhitespace = true;
@@ -27,24 +28,26 @@ self.onmessage = (event: MessageEvent<Incoming>) => {
   const message = event.data;
   if (message.type === 'index') {
     docs.clear();
-    for (const doc of message.documents) docs.set(doc.id, doc);
+    titleIndex.clear();
+    for (const doc of message.documents) { docs.set(doc.id, doc); titleIndex.set(doc.id, doc.title.toLowerCase()); }
   } else if (message.type === 'upsert') {
     docs.set(message.document.id, message.document);
+    titleIndex.set(message.document.id, message.document.title.toLowerCase());
     postMetrics(message.document);
   } else if (message.type === 'metrics') {
     postMetrics(message.document);
   } else if (message.type === 'remove') {
     docs.delete(message.id);
+    titleIndex.delete(message.id);
   } else {
-    const query = message.query.trim().toLocaleLowerCase();
+    const query = message.query.trim().toLowerCase();
     if (!query) {
       self.postMessage({ type: 'result', requestId: message.requestId, ids: [] });
       return;
     }
     const matches = [...docs.values()].filter(doc =>
-      doc.title.toLocaleLowerCase().includes(query) ||
-      doc.markdown.toLocaleLowerCase().includes(query),
-    ).sort((a, b) => b.updatedAt - a.updatedAt).map(doc => doc.id);
+      titleIndex.get(doc.id)?.includes(query) || doc.markdown.toLowerCase().includes(query),
+    ).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 500).map(doc => doc.id);
     self.postMessage({ type: 'result', requestId: message.requestId, ids: matches });
   }
 };
