@@ -10,7 +10,7 @@ import hljs from 'highlight.js';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Icon } from './Icons';
 import { detectRawCode } from '../lib/code';
-import { previewChunks } from '../lib/previewChunks';
+import { cachedPreview, immediatePreview, preparePreview, type PreparedPreview } from '../lib/previewPipeline';
 
 const safeMarkdownHtml = {
   ...defaultSchema,
@@ -76,10 +76,31 @@ const aliases: Record<string, string> = {
 function escapeHtml(value: string) {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+// Second bounded cache: repeated syntax blocks and virtualized code rows.
+const highlightCache = new Map<string, string>();
+const MAX_HIGHLIGHTS = 96;
 function highlight(value: string, language: string, limit = 1600) {
   if (!language || !hljs.getLanguage(language) || value.length > limit) return escapeHtml(value);
-  try { return hljs.highlight(value, { language, ignoreIllegals: true }).value; }
-  catch { return escapeHtml(value); }
+  const key = language + '\u0000' + value;
+  const cached = highlightCache.get(key);
+  if (cached !== undefined) {
+    highlightCache.delete(key);
+    highlightCache.set(key, cached);
+    return cached;
+  }
+  let html: string;
+  try { html = hljs.highlight(value, { language, ignoreIllegals: true }).value; }
+  catch { html = escapeHtml(value); }
+  // Cache only bounded fragments; large code and full trees are virtualized.
+  if (value.length <= 20_000) {
+    highlightCache.set(key, html);
+    while (highlightCache.size > MAX_HIGHLIGHTS) {
+      const oldest = highlightCache.keys().next().value;
+      if (oldest === undefined) break;
+      highlightCache.delete(oldest);
+    }
+  }
+  return html;
 }
 function useCopy(code: string) {
   const [copied, setCopied] = useState(false);
@@ -233,15 +254,22 @@ const MarkdownChunk = memo(function MarkdownChunk({ markdown, lineOffset = 0 }: 
 function VirtualMarkdown({ markdown, scrollRef }: {
   markdown: string; scrollRef: RefObject<HTMLDivElement | null>;
 }) {
-  const chunks = useMemo(() => previewChunks(markdown), [markdown]);
-  const firstLines = useMemo(() => {
-    let line = 1;
-    return chunks.map(chunk => {
-      const first = line;
-      for (let i = 0; i < chunk.length; i++) if (chunk.charCodeAt(i) === 10) line++;
-      return first;
+  // Small documents are instant. Large ones are prepared in a Web Worker,
+  // then reused by source identity on subsequent preview visits.
+  const immediate = useMemo(() => markdown.length < 80_000
+    ? immediatePreview(markdown) : cachedPreview(markdown), [markdown]);
+  const [workerResult, setWorkerResult] = useState<PreparedPreview | null>(null);
+  useEffect(() => {
+    if (immediate) return;
+    let cancelled = false;
+    void preparePreview(markdown).then(result => {
+      if (!cancelled) setWorkerResult(result);
     });
-  }, [chunks]);
+    return () => { cancelled = true; };
+  }, [markdown, immediate]);
+  const prepared = immediate || (workerResult?.source === markdown ? workerResult : null);
+  const chunks = prepared?.chunks || [];
+  const firstLines = prepared?.firstLines || [];
   const virtualizer = useVirtualizer({
     count: chunks.length,
     getScrollElement: () => scrollRef.current,
@@ -251,7 +279,7 @@ function VirtualMarkdown({ markdown, scrollRef }: {
   });
   useEffect(() => {
     const scroll = scrollRef.current;
-    if (!scroll) return;
+    if (!scroll || !chunks.length) return;
     let pending: number | null = null;
     function onPosition(event: Event) {
       if (!scroll) return;
@@ -290,6 +318,9 @@ function VirtualMarkdown({ markdown, scrollRef }: {
       if (pending !== null) cancelAnimationFrame(pending);
     };
   }, [firstLines, scrollRef, virtualizer]);
+  if (!prepared) return <article className="markdown-preview virtual-markdown" aria-busy="true">
+    <p className="preview-loading">Preparing preview…</p>
+  </article>;
   return <article className="markdown-preview virtual-markdown">
     <div className="virtual-markdown-canvas" style={{ height: virtualizer.getTotalSize() }}>
       {virtualizer.getVirtualItems().map(item => <div key={item.key}
