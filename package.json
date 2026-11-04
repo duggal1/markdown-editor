@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "test:format": "node scripts/test-auto-markdown.mjs",
     "test:icons": "node scripts/test-icons.mjs",
-    "test:workspace-ui": "node scripts/test-workspace-ui.mjs"
+    "test:workspace-ui": "node scripts/test-workspace-ui.mjs",
+    "test:preview": "node scripts/test-preview-pipeline.mjs",
+    "test:interactions": "node scripts/test-interactions.mjs"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.5.2",
