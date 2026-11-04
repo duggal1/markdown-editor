@@ -110,7 +110,7 @@ export default function WorkspaceTree(props: Props) {
     else onRenameDocument(id, value);
     setEditing(null);
   }
-  function field(kind: Kind, id: string, name: string) {
+  function field(kind: Kind, id: string) {
     return editing?.kind === kind && editing.id === id
       ? <Rename key={id} value={editing.name} commit={value => finishRename(kind, id, value)} cancel={() => setEditing(null)} />
       : null;
@@ -146,7 +146,7 @@ export default function WorkspaceTree(props: Props) {
       draggable={!(editing?.kind === 'document' && editing.id === doc.id)}
       onDragStart={event => dragDoc(event, doc.id)} onDragEnd={() => setDrop(null)}>
       <Icon name={doc.fileType === 'image' ? 'svg' : 'file'} size={14} />
-      {field('document', doc.id, doc.title) ||
+      {field('document', doc.id) ||
         <button className="filetree-label" type="button" title={doc.title} onClick={() => onOpen(doc.id)}>
           {doc.title || 'Untitled'}
         </button>}
@@ -184,7 +184,7 @@ export default function WorkspaceTree(props: Props) {
               <Icon name="chevron" size={13} />
             </button>
             <Icon name="folder" size={15} />
-            {field('workspace', ws.id, ws.name) ||
+            {field('workspace', ws.id) ||
               <button type="button" className="filetree-label filetree-workspace-label"
                 title={ws.name} onClick={() => { onSelectWorkspace(ws.id); if (!expanded) onToggle(ws.id); }}>
                 {ws.name}
@@ -209,7 +209,7 @@ export default function WorkspaceTree(props: Props) {
                       <Icon name="chevron" size={13} />
                     </button>
                     <Icon name="folder" size={14} />
-                    {field('folder', folder.id, folder.name) ||
+                    {field('folder', folder.id) ||
                       <button type="button" className="filetree-label" title={folder.name}
                         onClick={() => setCollapsedFolders(ids => open ? [...ids, folder.id] : ids.filter(id => id !== folder.id))}>
                         {folder.name}
