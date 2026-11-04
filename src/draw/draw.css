@@ -518,8 +518,13 @@
              transform .22s cubic-bezier(.22,1,.36,1);
 }
 .draw-image-item:hover { background:var(--draw-hover); }
-.draw-image-item.is-selected { background:var(--draw-active); }
+.draw-image-item.is-selected { background:transparent; }
+.draw-image-item.is-selected:hover { background:transparent; }
 .draw-image-item.is-selected::before { display:none; content:none; }
+.draw-row-selection {
+  position:absolute; inset:0; z-index:0; border-radius:10px;
+  background:var(--draw-active); pointer-events:none;
+}
 .draw-image-item img, .draw-image-item-select img { border-radius:6px; }
 .draw-image-item-select, .draw-image-item-actions { position:relative; z-index:1; }
 .draw-image-item-action { border-radius:7px; }
