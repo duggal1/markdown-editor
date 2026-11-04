@@ -58,6 +58,16 @@ export default function WorkspaceTree(props: Props) {
   const [menu, setMenu] = useState<Menu | null>(null);
   const [collapsedFolders, setCollapsedFolders] = useState<string[]>([]);
   const [drop, setDrop] = useState<string | null>(null);
+  const interaction = reducedMotion ? {} : {
+    whileHover: { scale: 1.045 },
+    whileTap: { scale: 0.96 },
+    transition: { duration: 0.17, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
+  };
+  const menuMotion = reducedMotion ? {} : {
+    whileHover: { x: 2 },
+    whileTap: { scale: 0.99 },
+    transition: { duration: 0.16, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
+  };
   const searching = Boolean(search.trim());
   const query = search.trim().toLowerCase();
 
@@ -136,9 +146,9 @@ export default function WorkspaceTree(props: Props) {
     else onMoveDocument(documentId, id);
   }
   function more(kind: Kind, id: string, label: string) {
-    return <button type="button" className="filetree-more" aria-label={'Actions for ' + label}
+    return <motion.button {...interaction} type="button" className="filetree-more" aria-label={'Actions for ' + label}
       aria-haspopup="menu" aria-expanded={menu?.kind === kind && menu.id === id}
-      onClick={event => openMenu(event, kind, id)}><Icon name="more" size={16} /></button>;
+      onClick={event => openMenu(event, kind, id)}><Icon name="more" size={16} /></motion.button>;
   }
   function documentRow(doc: FlowDocument) {
     return <div key={doc.id} role="treeitem" aria-selected={activeId === doc.id}
@@ -167,9 +177,9 @@ export default function WorkspaceTree(props: Props) {
   return <>
     <div className="filetree-heading">
       <span>Workspaces</span>
-      <button type="button" onClick={onNewWorkspace} aria-label="New workspace" title="New workspace">
+      <motion.button {...interaction} type="button" onClick={onNewWorkspace} aria-label="New workspace" title="New workspace">
         <Icon name="plus" size={16} />
-      </button>
+      </motion.button>
     </div>
     <div className="filetree-scroll" role="tree" aria-label="Workspace files">
       {visible.map(ws => {
@@ -194,12 +204,12 @@ export default function WorkspaceTree(props: Props) {
                 title={ws.name} onClick={() => { onSelectWorkspace(ws.id); if (!expanded) onToggle(ws.id); }}>
                 {ws.name}
               </button>}
-            <button type="button" className="filetree-add-page"
+            <motion.button {...interaction} type="button" className="filetree-add-page"
               aria-label={'Add page to ' + ws.name}
               title="Add page"
               onClick={event => { event.stopPropagation(); onNewDocument(ws.id); }}>
               <Icon name="plus" size={15} />
-            </button>
+            </motion.button>
             {more('workspace', ws.id, ws.name)}
           </div>
           <AnimatePresence initial={false}>
@@ -250,35 +260,35 @@ export default function WorkspaceTree(props: Props) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: reducedMotion ? 0 : 0.19, ease: [0.22, 1, 0.36, 1] }}>
       {menu.kind === 'workspace' && <>
-        <button role="menuitem" type="button" onClick={() => { onNewDocument(menu.id); setMenu(null); }}><Icon name="file" size={15} /> Add page</button>
-        <button role="menuitem" type="button" onClick={() => { onNewFolder(menu.id); setMenu(null); }}><Icon name="folder" size={15} /> New folder</button>
+        <motion.button {...menuMotion} role="menuitem" type="button" onClick={() => { onNewDocument(menu.id); setMenu(null); }}><Icon name="file" size={15} /> Add page</motion.button>
+        <motion.button {...menuMotion} role="menuitem" type="button" onClick={() => { onNewFolder(menu.id); setMenu(null); }}><Icon name="folder" size={15} /> New folder</motion.button>
       </>}
-      {menu.kind === 'folder' && <button role="menuitem" type="button"
+      {menu.kind === 'folder' && <motion.button {...menuMotion} role="menuitem" type="button"
         onClick={() => {
           const folder = folders.find(item => item.id === menu.id);
           if (folder) onNewDocument(folder.workspaceId, folder.id);
           setMenu(null);
-        }}><Icon name="file" size={15} /> Add page</button>}
+        }}><Icon name="file" size={15} /> Add page</motion.button>}
       {menu.kind === 'document' && (() => {
         const doc = documents.find(item => item.id === menu.id);
-        return doc?.folderId ? <button role="menuitem" type="button" onClick={() => {
+        return doc?.folderId ? <motion.button {...menuMotion} role="menuitem" type="button" onClick={() => {
           onMoveDocument(doc.id, doc.workspaceId); setMenu(null);
-        }}><Icon name="folder" size={15} /> Move to root</button> : null;
+        }}><Icon name="folder" size={15} /> Move to root</motion.button> : null;
       })()}
-      <button role="menuitem" type="button" onClick={() => {
+      <motion.button {...menuMotion} role="menuitem" type="button" onClick={() => {
         const item = menu.kind === 'workspace' ? workspaces.find(ws => ws.id === menu.id) :
           menu.kind === 'folder' ? folders.find(folder => folder.id === menu.id) :
           documents.find(doc => doc.id === menu.id);
         if (item) rename(menu.kind, menu.id, 'name' in item ? item.name : item.title);
-      }}><Icon name="edit" size={15} /> Rename</button>
-      <button role="menuitem" type="button" className="filetree-delete"
+      }}><Icon name="edit" size={15} /> Rename</motion.button>
+      <motion.button {...menuMotion} role="menuitem" type="button" className="filetree-delete"
         disabled={menu.kind === 'workspace' && workspaces.length < 2}
         onClick={() => {
           const { kind, id } = menu; setMenu(null);
           if (kind === 'workspace') onDeleteWorkspace(id);
           else if (kind === 'folder') onDeleteFolder(id);
           else onDeleteDocument(id);
-        }}><Icon name="trash" size={15} /> Delete</button>
+        }}><Icon name="trash" size={15} /> Delete</motion.button>
     </motion.div>, document.body)}
   </>;
 }
