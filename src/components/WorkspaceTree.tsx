@@ -244,27 +244,27 @@ export default function WorkspaceTree(props: Props) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: reducedMotion ? 0 : 0.19, ease: [0.22, 1, 0.36, 1] }}>
       {menu.kind === 'workspace' && <>
-        <button role="menuitem" type="button" onClick={() => { onNewDocument(menu.id); setMenu(null); }}>New document</button>
-        <button role="menuitem" type="button" onClick={() => { onNewFolder(menu.id); setMenu(null); }}>New folder</button>
+        <button role="menuitem" type="button" onClick={() => { onNewDocument(menu.id); setMenu(null); }}><Icon name="file" size={15} /> New document</button>
+        <button role="menuitem" type="button" onClick={() => { onNewFolder(menu.id); setMenu(null); }}><Icon name="folder" size={15} /> New folder</button>
       </>}
       {menu.kind === 'folder' && <button role="menuitem" type="button"
         onClick={() => {
           const folder = folders.find(item => item.id === menu.id);
           if (folder) onNewDocument(folder.workspaceId, folder.id);
           setMenu(null);
-        }}>New document</button>}
+        }}><Icon name="file" size={15} /> New document</button>}
       {menu.kind === 'document' && (() => {
         const doc = documents.find(item => item.id === menu.id);
         return doc?.folderId ? <button role="menuitem" type="button" onClick={() => {
           onMoveDocument(doc.id, doc.workspaceId); setMenu(null);
-        }}>Move to workspace root</button> : null;
+        }}><Icon name="folder" size={15} /> Move to root</button> : null;
       })()}
       <button role="menuitem" type="button" onClick={() => {
         const item = menu.kind === 'workspace' ? workspaces.find(ws => ws.id === menu.id) :
           menu.kind === 'folder' ? folders.find(folder => folder.id === menu.id) :
           documents.find(doc => doc.id === menu.id);
         if (item) rename(menu.kind, menu.id, 'name' in item ? item.name : item.title);
-      }}>Rename</button>
+      }}><Icon name="edit" size={15} /> Rename</button>
       <button role="menuitem" type="button" className="filetree-delete"
         disabled={menu.kind === 'workspace' && workspaces.length < 2}
         onClick={() => {
@@ -272,7 +272,7 @@ export default function WorkspaceTree(props: Props) {
           if (kind === 'workspace') onDeleteWorkspace(id);
           else if (kind === 'folder') onDeleteFolder(id);
           else onDeleteDocument(id);
-        }}>Delete</button>
+        }}><Icon name="trash" size={15} /> Delete</button>
     </motion.div>, document.body)}
   </>;
 }

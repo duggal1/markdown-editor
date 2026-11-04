@@ -1,14 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent, type PointerEvent } from 'react';
 import { createImageZip, type ZipEntry } from './zip';
 import { drawAnnotation, hitTestAnnotation, renderExport, type Annotation, type AnnotationHit, type ArrowAnnotation, type ArrowStyle, type OutputFormat, type Point, type TextAnnotation } from './annotations';
-import { HugeiconsIcon } from '@hugeicons/react';
-import {
-  ArrowLeft01Icon, ArrowRight01Icon, ArrowUpRight01Icon,
-  Cursor01Icon, TextIcon, Download01Icon, Add01Icon,
-  Delete02Icon, Undo02Icon, ImageAdd01Icon, Cancel01Icon,
-} from '@hugeicons/core-free-icons';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { FlowMark } from '../components/Icons';
+import { FlowMark, Icon } from '../components/Icons';
 import './draw.css';
 
 type ImageItem = { id: string; name: string; file: File; url: string };
@@ -882,7 +876,7 @@ export default function DrawPage() {
   return <div className="draw-page">
     <header className="draw-header">
       <div className="draw-heading">
-        <a href="/" className="draw-back" aria-label="Back to Flow"><HugeiconsIcon icon={ArrowLeft01Icon} size={17} strokeWidth={1.7} /></a>
+        <a href="/" className="draw-back" aria-label="Back to Flow"><Icon name="back" size={17} /></a>
         <span className="draw-wordmark"><span className="draw-logo"><FlowMark size={22} /></span>Draw<span className="draw-wordmark-stop">.</span></span>
         <span className="draw-heading-separator" aria-hidden="true" />
         <label className="draw-project-label" htmlFor="draw-project">Project</label>
@@ -895,17 +889,17 @@ export default function DrawPage() {
         <input ref={input} className="draw-file-input" type="file"
           accept="image/*,.svg" multiple onChange={upload} aria-label="Upload images" />
         <button className="draw-button" type="button" onClick={() => input.current?.click()}>
-          <HugeiconsIcon icon={ImageAdd01Icon} size={15} strokeWidth={1.7} /> Add images
+          <Icon name="imageAdd" size={15} /> Add images
         </button>
         <button className="draw-button draw-button-primary" type="button"
           disabled={!active || busy || !!singleBusyId}
           onClick={() => { if (active) void downloadSingle(active); }}>
-          <HugeiconsIcon icon={Download01Icon} size={15} strokeWidth={1.7} /> {singleBusyId === active?.id ? 'Exporting…' : 'Export image'}
+          <Icon name="download" size={15} /> {singleBusyId === active?.id ? 'Exporting…' : 'Export image'}
         </button>
         <button className="draw-button" type="button"
           disabled={!images.length || busy || !!singleBusyId}
           onClick={() => { void download(); }}>
-          <HugeiconsIcon icon={Download01Icon} size={15} strokeWidth={1.7} /> {busy ? progress || 'Exporting…' : 'Export all'}
+          <Icon name="download" size={15} /> {busy ? progress || 'Exporting…' : 'Export all'}
         </button>
       </div>
     </header>
@@ -947,12 +941,12 @@ export default function DrawPage() {
                 aria-label={'Download ' + filename(projectName, item, i, format)}
                 title={'Download ' + filename(projectName, item, i, format)}
                 onClick={() => { void downloadSingle(item); }}>
-                {singleBusyId === item.id ? '…' : <HugeiconsIcon icon={Download01Icon} size={14} strokeWidth={1.6} />}
+                {singleBusyId === item.id ? '…' : <Icon name="download" size={14} />}
               </button>
               <button type="button" className="draw-image-item-action draw-image-remove"
                 disabled={busy || !!singleBusyId}
                 aria-label={'Remove ' + item.name} title={'Remove ' + item.name}
-                onClick={() => removeImage(item.id)}><HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.6} /></button>
+                onClick={() => removeImage(item.id)}><Icon name="close" size={14} /></button>
             </div>
           </motion.div>)}
           {!images.length && <span className="draw-rail-empty">No screenshots yet.</span>}
@@ -966,13 +960,13 @@ export default function DrawPage() {
               transition={{ duration: reducedMotion ? 0 : 0.18, ease: [0.22, 1, 0.36, 1] }}
               type="button" className={'draw-tool' + (tool === 'select' ? ' is-active' : '')}
               aria-pressed={tool === 'select'}
-              onClick={() => { commitText(); setTool('select'); }}><HugeiconsIcon icon={Cursor01Icon} size={15} strokeWidth={1.8} /> <span>Select</span></motion.button>
+              onClick={() => { commitText(); setTool('select'); }}><Icon name="cursor" size={15} /> <span>Select</span></motion.button>
             <motion.button whileTap={tap} type="button" className={'draw-tool' + (tool === 'arrow' ? ' is-active' : '')}
               aria-pressed={tool === 'arrow'}
-              onClick={() => { commitText(); setTool('arrow'); }}><HugeiconsIcon icon={ArrowUpRight01Icon} size={15} strokeWidth={1.8} /> <span>Arrow</span></motion.button>
+              onClick={() => { commitText(); setTool('arrow'); }}><Icon name="arrowUpRight" size={15} /> <span>Arrow</span></motion.button>
             <motion.button whileTap={tap} type="button" className={'draw-tool' + (tool === 'text' ? ' is-active' : '')}
               aria-pressed={tool === 'text'} onClick={() => setTool('text')}>
-              <HugeiconsIcon icon={TextIcon} size={15} strokeWidth={1.8} /> <span>Text</span></motion.button>
+              <Icon name="text" size={15} /> <span>Text</span></motion.button>
           </div>
           <div className="draw-style-picker">
             <motion.button type="button" className="draw-style-trigger"
@@ -1024,11 +1018,11 @@ export default function DrawPage() {
         <div className="draw-subbar">
           <div className="draw-navigation">
             <button type="button" className="draw-button" disabled={index === 0 || !images.length}
-              onClick={() => select(index - 1)}><HugeiconsIcon icon={ArrowLeft01Icon} size={15} strokeWidth={1.7} /><span>Previous</span></button>
+              onClick={() => select(index - 1)}><Icon name="back" size={15} /><span>Previous</span></button>
             <span className="draw-pagination">{images.length ? index + 1 : 0} / {images.length}</span>
             <button type="button" className="draw-button"
               disabled={!images.length || index === images.length - 1}
-              onClick={() => select(index + 1)}><span>Next</span><HugeiconsIcon icon={ArrowRight01Icon} size={15} strokeWidth={1.7} /></button>
+              onClick={() => select(index + 1)}><span>Next</span><Icon name="forward" size={15} /></button>
           </div>
           <div className="draw-edit-actions">
             <span className="draw-arrow-count">{count} note{count === 1 ? '' : 's'}</span>
@@ -1036,12 +1030,12 @@ export default function DrawPage() {
               <button type="button" className="draw-text-button" onClick={editSelectedText}>Edit text</button>}
             {active && selected && selected.imageId === active.id &&
               <button type="button" className="draw-text-button draw-remove-annotation"
-                onClick={deleteSelected}><HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={1.7} /> Delete selected</button>}
+                onClick={deleteSelected}><Icon name="trash" size={14} /> Delete selected</button>}
             <button type="button" className="draw-text-button"
               disabled={!historyRef.current[active?.id || '']?.length && !textDraft}
-              onClick={undo}><HugeiconsIcon icon={Undo02Icon} size={14} strokeWidth={1.7} /> Undo</button>
+              onClick={undo}><Icon name="undo" size={14} /> Undo</button>
             <button type="button" className="draw-text-button"
-              disabled={!count && !textDraft} onClick={clear}><HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.7} /> Clear</button>
+              disabled={!count && !textDraft} onClick={clear}><Icon name="close" size={14} /> Clear</button>
           </div>
         </div>
 
@@ -1097,8 +1091,8 @@ export default function DrawPage() {
             </div>
           </div> : <button type="button" className="draw-empty"
             onClick={() => input.current?.click()}>
-            <span className="draw-empty-mark"><HugeiconsIcon icon={ImageAdd01Icon} size={36} strokeWidth={1.2} /></span>
-            <span className="draw-empty-title">Your canvas is ready.</span><span className="draw-empty-action"><HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={1.7} /> Add screenshots</span>
+            <span className="draw-empty-mark"><Icon name="imageAdd" size={36} /></span>
+            <span className="draw-empty-title">Your canvas is ready.</span><span className="draw-empty-action"><Icon name="plus" size={14} /> Add screenshots</span>
             <span className="draw-empty-hint">
               Add an image, point to the detail, and export annotated screenshots.
             </span>
@@ -1113,7 +1107,7 @@ export default function DrawPage() {
           <span>{format === 'webp' ? 'WebP' : 'JPEG'} · {images.length} image{images.length === 1 ? '' : 's'}</span>
         </footer>
         {error && <div className="draw-error" role="alert">{error}
-          <button type="button" onClick={() => setError('')} aria-label="Dismiss error"><HugeiconsIcon icon={Cancel01Icon} size={15} strokeWidth={1.7} /></button>
+          <button type="button" onClick={() => setError('')} aria-label="Dismiss error"><Icon name="close" size={15} /></button>
         </div>}
       </section>
     </main>

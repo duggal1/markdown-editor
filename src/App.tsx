@@ -7,6 +7,8 @@ import { FlowMark, Icon, type IconName } from './components/Icons';
 import { downloadMarkdown } from './lib/document';
 import { detectRawCode, isMarkdownFile, languageForFile } from './lib/code';
 import { svgPreviewDocument } from './lib/svgPreview';
+import { readTextImport } from './lib/textImport';
+import { formatPlainTextAsMarkdown } from './lib/autoMarkdown';
 import {
   clearRecovery, loadWorkspace, readPrefs, removeDoc, removeFolder, removeWorkspace,
   saveDoc, saveFolder, savePrefs, saveRecovery, saveWorkspace, uid, wordCount,
@@ -14,7 +16,6 @@ import {
 } from './lib/store';
 
 const MarkdownPreview = lazy(() => import('./components/MarkdownPreview'));
-const SPINNER = ['▣', '▪', '▫'];
 const FORMATS: { name: Format; icon?: IconName; label: string; shortcut?: string }[] = [
   { name: 'heading', label: 'Heading', shortcut: '#' },
   { name: 'bold', label: 'Bold' },
@@ -27,13 +28,7 @@ const FORMATS: { name: Format; icon?: IconName; label: string; shortcut?: string
 ];
 
 function TerminalLoader({ loading }: { loading: boolean }) {
-  const [frame, setFrame] = useState(0);
-  useEffect(() => {
-    if (!loading) { setFrame(0); return; }
-    const interval = window.setInterval(() => setFrame(current => (current + 1) % SPINNER.length), 80);
-    return () => window.clearInterval(interval);
-  }, [loading]);
-  return loading ? <span className="terminal-loader" aria-hidden="true">{SPINNER[frame]}</span> : null;
+  return loading ? <span className="pixel-save-loader" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /></span> : null;
 }
 function AssetPreview({ document: doc, src, onExport, theme }: {
   document: FlowDocument; src: string | null; onExport: () => void; theme: Theme;
@@ -284,6 +279,37 @@ export default function App() {
     }, doc.markdown.length > 100000 ? 700 : 430));
   }, [flush]);
 
+  // Repair legacy Markdown imports that were stored as binary assets. Files
+  // remain intact if decoding fails; successful conversions become editable.
+  useEffect(() => {
+    if (!loaded || !activeId) return;
+    const doc = live.current.get(activeId);
+    if (!doc?.asset || !isMarkdownFile(doc.fileName || '')) return;
+    let cancelled = false;
+    void readTextImport(doc.asset, doc.fileName).then(value => {
+      if (cancelled) return;
+      const current = live.current.get(doc.id);
+      if (value === null) {
+        setNotice('This Markdown file uses an unsupported encoding. The original download is preserved.');
+        return;
+      }
+      if (!current?.asset || current.asset !== doc.asset) return;
+      const next: FlowDocument = {
+        ...current, asset: undefined, fileType: 'text',
+        markdown: value, language: undefined, updatedAt: Date.now(),
+      };
+      scheduleSave(next);
+      setDocs(items => items.map(item => item.id === doc.id ? next : item));
+      if (activeIdRef.current === doc.id) {
+        setPreviewText(value);
+        setWords(wordCount(value));
+      }
+    }).catch(() => {
+      if (!cancelled) setNotice('Could not decode this Markdown file. The original is preserved.');
+    });
+    return () => { cancelled = true; };
+  }, [activeId, loaded, scheduleSave]);
+
   const onEditorChange = useCallback((value: string, id: string) => {
     const current = live.current.get(id);
     if (!current || current.markdown === value) return;
@@ -520,6 +546,28 @@ export default function App() {
     }
     setNotice('Exported');
   }
+  function autoFormatDocument() {
+    const view = editorRef.current;
+    const current = live.current.get(activeIdRef.current);
+    if (!view || !current || current.asset) {
+      setNotice('Open an editable text document to format.');
+      return;
+    }
+    const source = view.state.doc.toString();
+    if (source.length > 180_000) {
+      setNotice('Auto Markdown is limited to 180,000 characters per pass.');
+      return;
+    }
+    const formatted = formatPlainTextAsMarkdown(source, { atDocumentStart: true });
+    if (formatted === source) {
+      setNotice('Already formatted, or this looks like code.');
+      return;
+    }
+    // A single CodeMirror transaction is undoable (Cmd/Ctrl+Z).
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: formatted } });
+    view.focus();
+    setNotice('Formatted as Markdown · Undo to revert');
+  }
   async function importFiles(incoming: File[]) {
     if (!incoming.length || importInFlight.current) return;
     importInFlight.current = true;
@@ -542,13 +590,12 @@ export default function App() {
           let binary = !image && Boolean(file.type && !recognizedText);
           let markdown = '';
           if (!image && !binary) {
-            const sample = new Uint8Array(await file.slice(0, 4096).arrayBuffer());
-            binary = sample.includes(0);
-            if (!binary) {
-              try { new TextDecoder('utf-8', { fatal: true }).decode(sample); }
-              catch { binary = true; }
+            const decoded = await readTextImport(file, file.name);
+            binary = decoded === null;
+            if (decoded !== null) {
+              const plainText = /\.txt$/i.test(file.name) && !languageForFile(file.name);
+              markdown = plainText ? formatPlainTextAsMarkdown(decoded, { atDocumentStart: true }) : decoded;
             }
-            if (!binary) markdown = await file.text();
           }
           const now = Date.now();
           const fileType = image ? 'image' : binary ? 'binary' : 'text';
@@ -725,9 +772,14 @@ export default function App() {
   return <div className="flow-shell" onDragOver={event => event.preventDefault()} onDrop={onDrop}>
     <motion.aside className={'sidebar' + (sidebarOpen ? ' is-open' : '')}
       initial={false} animate={{ width: sidebarOpen ? 256 : 0 }}
-      transition={motionOff ? { duration: 0 } : { duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+      transition={motionOff ? { duration: 0 } : { duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
+      aria-hidden={!sidebarOpen}
       aria-label="Workspaces and documents">
-      <div className="sidebar-inner">
+      <motion.div className="sidebar-inner" initial={false}
+        animate={{ opacity: sidebarOpen ? 1 : 0, x: sidebarOpen ? 0 : -12,
+          filter: motionOff ? 'blur(0px)' : sidebarOpen ? 'blur(0px)' : 'blur(5px)' }}
+        transition={motionOff ? { duration: 0 } : { duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
+        style={{ pointerEvents: sidebarOpen ? 'auto' : 'none' }}>
         <div className="sidebar-brand">
           <motion.div className="brand-lockup" initial={false} animate={{ opacity: sidebarOpen ? 1 : 0, x: sidebarOpen ? 0 : -8 }} transition={motionOff ? { duration: 0 } : { duration: 0.18 }}><span className="brand-mark"><FlowMark size={18} /></span><span>Flow<span className="brand-period">.</span></span></motion.div>
         </div>
@@ -783,7 +835,7 @@ export default function App() {
           <button className="sidebar-bottom-action" onClick={() => makeDocument(workspaceId)}><Icon name="plus" size={16} /> New document</button>
           <button className="sidebar-bottom-action" onClick={() => { if (recentIds[1]) selectDocument(recentIds[1]); }} disabled={!recentIds[1]}><Icon name="history" size={16} /> Previous document</button>
         </div>
-      </div>
+      </motion.div>
     </motion.aside>
     {sidebarOpen && <button className="mobile-backdrop" aria-label="Close sidebar" onClick={() => setSidebarOpen(false)} />}
     <div className="main-shell">
@@ -794,7 +846,8 @@ export default function App() {
           <input ref={titleRef} className="document-title" aria-label="Document title" spellCheck={false}
             value={active?.title || ''} onChange={event => changeTitle(event.target.value)} placeholder="Untitled" />
           <span className="save-indicator" data-save-state={saveState} aria-label={saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : 'Save failed'} role="status">
-            {saveState === 'saving' && <TerminalLoader loading />}{saveState === 'error' ? 'Not saved' : saveState === 'saving' ? 'Saving' : 'Saved'}
+            {saveState === 'saving' && <TerminalLoader loading />}
+            <span className="save-label">{saveState === 'error' ? 'Not saved' : saveState === 'saving' ? 'Saving' : 'Saved'}</span>
           </span>
         </div>
         <div className="header-actions">
@@ -821,6 +874,12 @@ export default function App() {
               : <span className={format.name === 'bold' ? 'format-bold' : 'format-italic'}>{format.name === 'bold' ? 'B' : 'I'}</span>}
           </motion.button>)}
           <span className="format-divider" />
+          <motion.button type="button" {...pressMotion} className="auto-markdown-button"
+            title="Auto Markdown · clean whitespace and format unstyled text"
+            aria-label="Auto Markdown" disabled={Boolean(active?.asset)}
+            onClick={autoFormatDocument}>
+            <Icon name="format" size={16} /> <span>Auto Markdown</span>
+          </motion.button>
           <motion.button {...pressMotion} title="Import files" aria-label="Import files" onClick={() => fileRef.current?.click()}><Icon name="upload" size={16} /></motion.button>
         </div>
         <span className="word-stat">{active?.fileType === 'image' ? 'Image' : active?.fileType === 'binary' ? 'File' : `${words.toLocaleString()} words`}</span>

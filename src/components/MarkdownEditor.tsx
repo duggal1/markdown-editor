@@ -8,6 +8,7 @@ import { indentWithTab } from '@codemirror/commands';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
 import { detectRawCode, type CodeLanguage } from '../lib/code';
+import { formatPlainTextAsMarkdown, shouldAutoFormatPaste } from '../lib/autoMarkdown';
 
 
 const flowHighlight = HighlightStyle.define([
@@ -162,6 +163,21 @@ function MarkdownEditor({
           languageSlot.of(markdown({ codeLanguages: languages })),
           syntaxHighlighting(flowHighlight),
           EditorView.lineWrapping,
+          // Multi-line plain text becomes structured Markdown as it is pasted.
+          // Code, existing Markdown and single-line edits stay untouched.
+          EditorView.domEventHandlers({
+            paste(event, target) {
+              const text = event.clipboardData?.getData('text/plain');
+              if (!text || !shouldAutoFormatPaste(text)) return false;
+              const empty = target.state.doc.length === 0;
+              const atStart = empty && target.state.selection.main.from === 0;
+              const formatted = formatPlainTextAsMarkdown(text, { atDocumentStart: atStart });
+              if (formatted === text) return false;
+              event.preventDefault();
+              target.dispatch(target.state.replaceSelection(formatted));
+              return true;
+            },
+          }),
           keymap.of([indentWithTab]),
           placeholder('Start writing…'),
           EditorView.updateListener.of(update => {
