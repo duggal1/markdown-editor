@@ -145,6 +145,11 @@ export default function WorkspaceTree(props: Props) {
       className={'filetree-row filetree-file' + (activeId === doc.id ? ' is-active' : '')}
       draggable={!(editing?.kind === 'document' && editing.id === doc.id)}
       onDragStart={event => dragDoc(event, doc.id)} onDragEnd={() => setDrop(null)}>
+      {activeId === doc.id && <motion.span
+        className="filetree-selection" layoutId="flow-active-document"
+        initial={false}
+        transition={reducedMotion ? { duration: 0 } :
+          { type: 'tween', duration: 0.24, ease: [0.22, 1, 0.36, 1] }} />}
       <Icon name={doc.fileType === 'image' ? 'svg' : 'file'} size={14} />
       {field('document', doc.id) ||
         <button className="filetree-label" type="button" title={doc.title} onClick={() => onOpen(doc.id)}>
@@ -233,8 +238,11 @@ export default function WorkspaceTree(props: Props) {
       })}
       {searching && !visible.length && <div className="filetree-empty">No matches</div>}
     </div>
-    {menu && createPortal(<div role="menu" className="filetree-menu"
-      style={{ top: menu.top, left: menu.left }} aria-label="File actions">
+    {menu && createPortal(<motion.div role="menu" className="filetree-menu"
+      style={{ top: menu.top, left: menu.left }} aria-label="File actions"
+      initial={reducedMotion ? false : { opacity: 0, y: -5 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: reducedMotion ? 0 : 0.19, ease: [0.22, 1, 0.36, 1] }}>
       {menu.kind === 'workspace' && <>
         <button role="menuitem" type="button" onClick={() => { onNewDocument(menu.id); setMenu(null); }}>New document</button>
         <button role="menuitem" type="button" onClick={() => { onNewFolder(menu.id); setMenu(null); }}>New folder</button>
@@ -265,6 +273,6 @@ export default function WorkspaceTree(props: Props) {
           else if (kind === 'folder') onDeleteFolder(id);
           else onDeleteDocument(id);
         }}>Delete</button>
-    </div>, document.body)}
+    </motion.div>, document.body)}
   </>;
 }
