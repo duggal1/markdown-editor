@@ -291,8 +291,44 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .virtual-code-text { display: block; min-width: max-content; padding-right: 18px; color: var(--code-ink); }
 
 .empty-preview, .preview-loading { padding-top: 4px; color: var(--quiet); }
-.notice { position: absolute; right: 20px; bottom: 21px; z-index: 15; display: flex; align-items: center; gap: 14px; padding: 9px 12px; background: var(--strong); color: var(--background); border-radius: 5px; font-size: 12px; box-shadow: 0 7px 25px #0001; }
-.notice button { display: grid; place-items: center; padding: 0; background: transparent; border: 0; color: inherit; }
+/* Toast: one quiet neutral surface. No white inversion, stacked borders,
+   icon tile, shadow, or unnecessary header. Motion is handled by motion/react. */
+.notice {
+  position:absolute; right:20px; bottom:21px; z-index:15;
+  display:flex; align-items:center; gap:11px;
+  width:max-content; max-width:min(400px,calc(100% - 40px));
+  min-height:44px; padding:8px 8px 8px 14px;
+  background:#1b1b1b; color:#ededed;
+  border:0; border-radius:10px; box-shadow:none;
+  font-size:12px; line-height:1.45; letter-spacing:-.01em;
+}
+.notice-mark {
+  display:block; flex:0 0 10px; width:10px; height:10px;
+  background:#8e8e8e;
+  -webkit-mask-image:linear-gradient(#000 0 0);
+  mask-image:linear-gradient(#000 0 0);
+  clip-path:polygon(0 0,40% 0,40% 40%,0 40%,0 0,
+    60% 0,100% 0,100% 40%,60% 40%,60% 0,
+    0 60%,40% 60%,40% 100%,0 100%,0 60%,
+    60% 60%,100% 60%,100% 100%,60% 100%,60% 60%);
+}
+.notice-text { flex:1; min-width:0; overflow-wrap:anywhere; }
+.notice button {
+  display:grid; flex:0 0 27px; place-items:center;
+  width:27px; height:27px; padding:0; border:0;
+  border-radius:7px; background:transparent; color:#a3a3a3;
+  transition:background-color .18s cubic-bezier(.22,1,.36,1),
+             color .18s cubic-bezier(.22,1,.36,1);
+}
+.notice button:hover, .notice button:focus-visible {
+  background:#2c2c2c; color:#f5f5f5;
+}
+:root[data-theme='light'] .notice { background:#e6e6e6; color:#171717; }
+:root[data-theme='light'] .notice-mark { background:#5d5d5d; }
+:root[data-theme='light'] .notice button { color:#666; }
+:root[data-theme='light'] .notice button:hover,
+:root[data-theme='light'] .notice button:focus-visible { background:#d7d7d7; color:#171717; }
+@media (prefers-reduced-motion:reduce) { .notice button { transition:none; } }
 .dialog-backdrop { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 16px; background: #0000001a; backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
 :root[data-theme='dark'] .dialog-backdrop { background: #00000066; }
 .delete-dialog { width: min(100%, 370px); padding: 16px 17px; background: var(--dialog-surface); color: var(--text); border: 0; border-radius: 6px; box-shadow: none; }
@@ -481,8 +517,8 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   .asset-preview { max-width: 100%; min-height: 100%; padding: 15px; }
   .asset-preview img { max-height: 62dvh; }
   .notice {
-    right: 12px; left: 12px; bottom: calc(14px + env(safe-area-inset-bottom, 0px));
-    justify-content: space-between; max-width: calc(100% - 24px);
+    right:12px; left:12px; bottom:calc(14px + env(safe-area-inset-bottom, 0px));
+    width:auto; max-width:calc(100% - 24px);
   }
   .dialog-backdrop {
     padding: max(16px, env(safe-area-inset-left, 0px))
