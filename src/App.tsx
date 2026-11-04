@@ -623,6 +623,7 @@ export default function App() {
   async function importFiles(incoming: File[]) {
     if (!incoming.length || importInFlight.current) return;
     importInFlight.current = true;
+    setSaveDuration(0);
     setSaveState('saving');
     const imported: FlowDocument[] = [];
     const errors: string[] = [];
@@ -912,7 +913,7 @@ export default function App() {
             <span className="save-prefix" aria-hidden="true" />
             <span className="save-label">{saveState === 'error' ? 'Not saved' : saveState === 'saving' ? 'Saving' : 'Saved'}</span>
             {saveState === 'saving' && <TerminalLoader loading />}
-            <span className="save-duration">in <NumberFlow value={saveDuration}
+            <span className={'save-duration' + (saveDuration <= 0 ? ' is-empty' : '')}>in <NumberFlow value={saveDuration}
               animated={!motionOff}
               spinTiming={{ duration: 260, easing: 'ease-out' }}
               transformTiming={{ duration: 260, easing: 'ease-out' }}
