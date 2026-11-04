@@ -66,3 +66,34 @@
 :root[data-theme='light'] .filetree-menu button:hover:not(:disabled),
 :root[data-theme='light'] .filetree-menu button:focus-visible { background:#ededed; color:#171717; }
 :root[data-theme='light'] .filetree-menu button.filetree-delete { color:#ae344c; }
+
+
+/* Ranked full-content search. A quiet two-line row, not a separate dialog.
+   Snippets reveal the reason for each result; no card shadows or badges. */
+.filetree-results { gap:3px; padding:0 3px 10px; }
+.filetree-result { width:100%; min-width:0; border-radius:9px; }
+.filetree-result-open {
+  display:flex; align-items:flex-start; gap:10px;
+  width:100%; min-width:0; padding:10px 9px;
+  border:0; border-radius:9px;
+  background:transparent; text-align:left; color:var(--text);
+  transition:background-color .18s cubic-bezier(.22,1,.36,1);
+}
+.filetree-result-open > .pixel-huge-icon { margin-top:2px; color:var(--muted); }
+.filetree-result-open:hover, .filetree-result-open:focus-visible { background:var(--neutral-100); }
+.filetree-result.is-active .filetree-result-open { background:var(--active); }
+.filetree-result.is-active .filetree-result-open:hover { background:var(--neutral-200); }
+.filetree-result-copy { display:flex; flex:1; min-width:0; flex-direction:column; gap:4px; }
+.filetree-result-title {
+  color:var(--text); font-size:12px; line-height:16px;
+  overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
+}
+.filetree-result-snippet {
+  color:var(--muted); font-size:11px; line-height:16px;
+  overflow:hidden; display:-webkit-box;
+  -webkit-line-clamp:2; -webkit-box-orient:vertical;
+  overflow-wrap:anywhere;
+}
+@media(prefers-reduced-motion:reduce) {
+  .filetree-result-open { transition:none; }
+}
