@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type PointerEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import NumberFlow from '@number-flow/react';
 import type { EditorView } from '@codemirror/view';
 import MarkdownEditor, { formatEditor, type Format } from './components/MarkdownEditor';
 import WorkspaceTree from './components/WorkspaceTree';
@@ -16,6 +17,12 @@ import {
 } from './lib/store';
 
 const MarkdownPreview = lazy(() => import('./components/MarkdownPreview'));
+
+// Warm the preview's module on idle without blocking the editor or changing
+// mobile layout. This removes a cold-import pause on the first preview.
+function warmPreviewModule() {
+  void import('./components/MarkdownPreview');
+}
 const FORMATS: { name: Format; icon?: IconName; label: string; shortcut?: string }[] = [
   { name: 'heading', label: 'Heading', shortcut: '#' },
   { name: 'bold', icon: 'bold', label: 'Bold' },
@@ -84,7 +91,9 @@ export default function App() {
   const [searchResults, setSearchResults] = useState<string[]>([]);
   const [previewText, setPreviewText] = useState('');
   const [words, setWords] = useState(0);
-  const [saveState, setSaveState] = useState<'saving' | 'saved' | 'error'>('saved');
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [saveDuration, setSaveDuration] = useState(0);
+  const saveStarted = useRef(new Map<string, number>());
   const [notice, setNotice] = useState('');
   const [pendingDelete, setPendingDelete] = useState<{ kind: 'document' | 'workspace'; id: string; title: string; count?: number } | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -111,6 +120,25 @@ export default function App() {
   const previewTimer = useRef<number | null>(null);
   const pendingPreview = useRef<{ id: string; markdown: string } | null>(null);
   const motionOff = useReducedMotion();
+
+  // No progress UI is permanently pinned in the toolbar. A real successful
+  // IndexedDB write is shown for five seconds, then the reserved slot clears.
+  useEffect(() => {
+    if (saveState !== 'saved') return;
+    const timer = window.setTimeout(() => {
+      setSaveState(current => current === 'saved' ? 'idle' : current);
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [saveState, saveDuration]);
+
+  useEffect(() => {
+    const start = () => {
+      if (document.visibilityState !== 'visible') return;
+      warmPreviewModule();
+    };
+    const timeout = window.setTimeout(start, 950);
+    return () => window.clearTimeout(timeout);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -237,12 +265,18 @@ export default function App() {
       if (saveQueue.current.get(id) === next) saveQueue.current.delete(id);
       const latest = live.current.get(id);
       if (latest && latest.updatedAt === doc.updatedAt) {
-        if (activeIdRef.current === id) setSaveState('saved');
+        if (activeIdRef.current === id) {
+          const started = saveStarted.current.get(id);
+          if (started !== undefined) setSaveDuration(Math.max(1, Math.round(performance.now() - started)));
+          setSaveState('saved');
+        }
+        saveStarted.current.delete(id);
         clearRecovery(id);
       }
     }).catch(() => {
       if (saveQueue.current.get(id) === next) saveQueue.current.delete(id);
       if (activeIdRef.current === id) setSaveState('error');
+      saveStarted.current.delete(id);
     });
   }, []);
 
@@ -260,6 +294,8 @@ export default function App() {
 
   const scheduleSave = useCallback((doc: FlowDocument) => {
     live.current.set(doc.id, doc);
+    saveStarted.current.set(doc.id, performance.now());
+    setSaveDuration(0);
     setSaveState('saving');
     const old = saveTimers.current.get(doc.id);
     if (old !== undefined) clearTimeout(old);
@@ -361,7 +397,7 @@ export default function App() {
     setPreviewText(doc.markdown);
     setWords(doc.markdown.length < 25000 ? wordCount(doc.markdown) : 0);
     if (doc.markdown.length >= 25000) workerRef.current?.postMessage({ type: 'metrics', document: { id: doc.id, markdown: doc.markdown, updatedAt: doc.updatedAt } });
-    setSaveState('saved');
+    setSaveState('idle');
     if (window.innerWidth < 800) setSidebarOpen(false);
   }, [flush]);
 
@@ -850,9 +886,17 @@ export default function App() {
             onClick={() => setSidebarOpen(current => !current)}><Icon name="sidebar" size={18} /></motion.button>
           <input ref={titleRef} className="document-title" aria-label="Page title" spellCheck={false}
             value={active?.title || ''} onChange={event => changeTitle(event.target.value)} placeholder="Untitled" />
-          <span className="save-indicator" data-save-state={saveState} aria-label={saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : 'Save failed'} role="status">
-            {saveState === 'saving' && <TerminalLoader loading />}
+          <span className="save-indicator" data-save-state={saveState}
+            aria-label={saveState === 'saving' ? 'Saving page' : saveState === 'saved' ? 'Page saved in ' + saveDuration + ' milliseconds' : saveState === 'error' ? 'Save failed' : undefined}
+            role="status" aria-live="polite">
+            <span className="save-prefix" aria-hidden="true" />
             <span className="save-label">{saveState === 'error' ? 'Not saved' : saveState === 'saving' ? 'Saving' : 'Saved'}</span>
+            {saveState === 'saving' && <TerminalLoader loading />}
+            <span className="save-duration">in <NumberFlow value={saveDuration}
+              animated={!motionOff}
+              spinTiming={{ duration: 260, easing: 'ease-out' }}
+              transformTiming={{ duration: 260, easing: 'ease-out' }}
+              opacityTiming={{ duration: 160, easing: 'ease-out' }} /> ms</span>
           </span>
         </div>
         <div className="header-actions">
