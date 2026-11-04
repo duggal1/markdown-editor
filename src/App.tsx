@@ -378,6 +378,8 @@ export default function App() {
     // A page created from a collapsed workspace must be visible in its tree.
     // Keep the existing folder assignment and show the containing workspace.
     setExpandedIds(ids => ids.includes(target) ? ids : [...ids, target]);
+    // Clear any filtered tree so the new page cannot be hidden by search.
+    setQuery('');
     selectDocument(doc.id);
     void saveDoc(doc).catch(() => setSaveState('error'));
     window.requestAnimationFrame(() => editorRef.current?.focus());
