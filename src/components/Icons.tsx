@@ -40,16 +40,24 @@ const glyphs = {
 export type IconName = keyof typeof glyphs;
 
 /**
- * Original Hugeicons vectors, with no raster conversion or pixel overlay.
- * Wrapping the SVG preserves the existing tree and toolbar layout while
- * letting currentColor, hover, and themes work natively.
+ * Subtle pixel treatment shared by Flow and Draw.
+ *
+ * Keep the original Hugeicons SVG as the only icon geometry. Square joins and
+ * pixel-snapped edges echo the earlier Draw toolbar, without resampling an
+ * icon onto a tiny bitmap (which destroyed detail at 14–16px).
+ *
+ * The sidebar control adds a restrained three-cell rail, making its function
+ * clearer than the generic rectangle-with-divider glyph on its own.
  */
 export function Icon({ name, size = 17, className = '', active = false }: {
   name: IconName; size?: number; className?: string; active?: boolean;
 }) {
-  return <span className={'pixel-huge-icon ' + className} aria-hidden="true"
-    style={{ width: size, height: size }}>
-    <HugeiconsIcon icon={glyphs[name]} size={size} strokeWidth={active ? 2 : 1.8} />
+  return <span
+    className={'pixel-huge-icon pixel-huge-icon-subtle' +
+      (name === 'sidebar' ? ' pixel-sidebar-toggle' : '') +
+      (className ? ' ' + className : '')}
+    aria-hidden="true" style={{ width: size, height: size }}>
+    <HugeiconsIcon icon={glyphs[name]} size={size} strokeWidth={active ? 1.9 : 1.65} />
   </span>;
 }
 
