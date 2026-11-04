@@ -43,8 +43,11 @@ function sourceLine(node?: SourceNode): number {
 }
 type BlockProps = { children?: ReactNode; node?: SourceNode; className?: string };
 type PositionEvent = CustomEvent<{ line: number; total: number; kind: 'scroll' | 'cursor' }>;
-function locatePreview(scroll: HTMLDivElement, line: number, kind: 'scroll' | 'cursor') {
-  const anchored = Array.from(scroll.querySelectorAll<HTMLElement>('[data-source-line]'));
+function locatePreview(scroll: HTMLDivElement, line: number, kind: 'scroll' | 'cursor',
+  section?: HTMLElement) {
+  // The virtual preview can have hundreds of anchors. Only examine the
+  // requested mounted section instead of querying every visible chunk.
+  const anchored = (section || scroll).querySelectorAll<HTMLElement>('[data-source-line]');
   if (!anchored.length) {
     if (line <= 1) scroll.scrollTop = 0;
     return;
@@ -57,15 +60,19 @@ function locatePreview(scroll: HTMLDivElement, line: number, kind: 'scroll' | 'c
     current = anchored[i];
   }
   const start = Number(current.dataset.sourceLine || 1);
-  const top = current.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop;
-  const nextTop = next ? next.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop
+  const scrollTop = scroll.scrollTop;
+  const scrollY = scroll.getBoundingClientRect().top;
+  const top = current.getBoundingClientRect().top - scrollY + scrollTop;
+  const nextTop = next ? next.getBoundingClientRect().top - scrollY + scrollTop
     : top + Math.max(40, current.offsetHeight);
   const end = next ? Number(next.dataset.sourceLine || start + 1) : start + 1;
   const fraction = Math.max(0, Math.min(1, (line - start) / Math.max(1, end - start)));
   const target = top + (nextTop - top) * fraction;
   if (kind === 'cursor' && target >= scroll.scrollTop + scroll.clientHeight * 0.12 &&
     target <= scroll.scrollTop + scroll.clientHeight * 0.78) return;
-  scroll.scrollTop = Math.max(0, target - scroll.clientHeight * (kind === 'cursor' ? 0.30 : 0.12));
+  const destination = Math.max(0, target - scroll.clientHeight * (kind === 'cursor' ? 0.30 : 0.12));
+  // Avoid a subpixel scroll write and layout invalidation every frame.
+  if (Math.abs(destination - scrollTop) > 2) scroll.scrollTop = destination;
 }
 
 const aliases: Record<string, string> = {
@@ -274,21 +281,27 @@ function VirtualMarkdown({ markdown, scrollRef }: {
     count: chunks.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: index => Math.max(80, Math.ceil(chunks[index].length / 90) * 27),
-    overscan: 2,
+    // Only a few complete Markdown blocks are mounted. A small read-ahead
+    // prevents blank flashes during rapid wheel and iOS momentum scrolling.
+    overscan: 3,
     useFlushSync: false,
   });
   useEffect(() => {
     const scroll = scrollRef.current;
     if (!scroll || !chunks.length) return;
     let pending: number | null = null;
-    function onPosition(event: Event) {
-      if (!scroll) return;
-      const { line, total, kind } = (event as PositionEvent).detail;
-      if (pending !== null) cancelAnimationFrame(pending);
+    let settle: number | null = null;
+    let latest: PositionEvent['detail'] | null = null;
+
+    function sync() {
+      pending = null;
+      if (!scroll || !latest) return;
+      const { line, total, kind } = latest;
       if (line >= total - 1) {
         virtualizer.scrollToIndex(chunks.length - 1, { align: 'end' });
-        pending = requestAnimationFrame(() => {
-          pending = null;
+        if (settle !== null) cancelAnimationFrame(settle);
+        settle = requestAnimationFrame(() => {
+          settle = null;
           if (scroll) scroll.scrollTop = scroll.scrollHeight - scroll.clientHeight;
         });
         return;
@@ -301,34 +314,50 @@ function VirtualMarkdown({ markdown, scrollRef }: {
       }
       const index = low;
       const selector = `.virtual-markdown-section[data-index="${index}"]`;
-      // Avoid a visible jump to the beginning of the same chunk on every scroll tick.
-      if (scroll.querySelector(selector)) {
-        locatePreview(scroll, line, kind);
+      const section = scroll.querySelector<HTMLElement>(selector);
+      if (section) {
+        locatePreview(scroll, line, kind, section);
         return;
       }
       virtualizer.scrollToIndex(index, { align: 'start' });
-      pending = requestAnimationFrame(() => {
-        pending = null;
-        if (scroll && scroll.querySelector(selector)) locatePreview(scroll, line, kind);
+      if (settle !== null) cancelAnimationFrame(settle);
+      settle = requestAnimationFrame(() => {
+        settle = null;
+        const mounted = scroll?.querySelector<HTMLElement>(selector);
+        if (scroll && mounted) locatePreview(scroll, line, kind, mounted);
       });
+    }
+    function onPosition(event: Event) {
+      latest = (event as PositionEvent).detail;
+      // Editor-to-preview sync is advisory. Coalesce incoming events instead
+      // of forcing layout/querySelector on every wheel event.
+      if (pending === null) pending = requestAnimationFrame(sync);
     }
     scroll.addEventListener('flow-preview-position', onPosition);
     return () => {
       scroll.removeEventListener('flow-preview-position', onPosition);
       if (pending !== null) cancelAnimationFrame(pending);
+      if (settle !== null) cancelAnimationFrame(settle);
     };
-  }, [firstLines, scrollRef, virtualizer]);
+  }, [firstLines, chunks.length, scrollRef, virtualizer]);
+
+  const visible = virtualizer.getVirtualItems();
+  const firstStart = visible[0]?.start || 0;
   if (!prepared) return <article className="markdown-preview virtual-markdown" aria-busy="true">
     <p className="preview-loading">Preparing preview…</p>
   </article>;
   return <article className="markdown-preview virtual-markdown">
     <div className="virtual-markdown-canvas" style={{ height: virtualizer.getTotalSize() }}>
-      {virtualizer.getVirtualItems().map(item => <div key={item.key}
-        ref={virtualizer.measureElement} data-index={item.index}
-        className="virtual-markdown-section"
-        style={{ transform: 'translateY(' + item.start + 'px)' }}>
-        <MarkdownChunk markdown={chunks[item.index]} lineOffset={firstLines[item.index] - 1} />
-      </div>)}
+      {visible.length > 0 && <div className="virtual-markdown-window"
+        style={{ transform: 'translateY(' + firstStart + 'px)' }}>
+        {visible.map(item => <div key={item.key}
+          ref={virtualizer.measureElement} data-index={item.index}
+          className={'virtual-markdown-section' +
+            (prepared.continuations[item.index] ? ' continues-list' : '') +
+            (prepared.continuations[item.index + 1] ? ' followed-by-list' : '')}>
+          <MarkdownChunk markdown={chunks[item.index]} lineOffset={firstLines[item.index] - 1} />
+        </div>)}
+      </div>}
     </div>
   </article>;
 }
