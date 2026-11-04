@@ -8,7 +8,7 @@ import { downloadMarkdown } from './lib/document';
 import { detectRawCode, isMarkdownFile, languageForFile } from './lib/code';
 import { svgPreviewDocument } from './lib/svgPreview';
 import {
-  clearRecovery, inferTitle, loadWorkspace, readPrefs, removeDoc, removeFolder, removeWorkspace,
+  clearRecovery, loadWorkspace, readPrefs, removeDoc, removeFolder, removeWorkspace,
   saveDoc, saveFolder, savePrefs, saveRecovery, saveWorkspace, uid, wordCount,
   type FlowDocument, type Folder, type Mode, type Theme, type Workspace,
 } from './lib/store';
@@ -289,8 +289,8 @@ export default function App() {
     if (!current || current.markdown === value) return;
     const next: FlowDocument = {
       ...current, markdown: value, updatedAt: Date.now(),
-      title: current.titleAuto || !current.title.trim() || current.title === 'Untitled' ? inferTitle(value) : current.title,
-      titleAuto: current.titleAuto || !current.title.trim() || current.title === 'Untitled',
+      // Titles are user-controlled. Editing content never renames a document.
+      titleAuto: false,
     };
     scheduleSave(next);
     // Coalesce edits to one preview update per animation frame, never after an idle delay.
@@ -344,7 +344,7 @@ export default function App() {
     const target = targetWorkspace || workspaceId || workspaces[0].id;
     const stamp = Date.now();
     const doc: FlowDocument = {
-      id: uid(), workspaceId: target, folderId: targetFolder, title: 'Untitled', titleAuto: true,
+      id: uid(), workspaceId: target, folderId: targetFolder, title: 'Untitled', titleAuto: false,
       markdown: '', createdAt: stamp, updatedAt: stamp,
     };
     live.current.set(doc.id, doc);
@@ -750,7 +750,7 @@ export default function App() {
           onRenameDocument={renameDocument}
           onMoveDocument={(id, targetWorkspace) => {
             const original = live.current.get(id);
-            if (!original || original.workspaceId === targetWorkspace) return;
+            if (!original || (original.workspaceId === targetWorkspace && !original.folderId)) return;
             const moved = { ...original, workspaceId: targetWorkspace, folderId: undefined, updatedAt: Date.now() };
             scheduleSave(moved);
             setDocs(items => items.map(doc => doc.id === id ? moved : doc));
