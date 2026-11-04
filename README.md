@@ -1,8 +1,8 @@
 <div align="center">
   <img src="./public/flow.svg" alt="Flow logo" width="80" height="80" />
   <h1>Flow</h1>
-  <p><strong>A quieter place to write, think, and make things.</strong></p>
-  <p>A local-first Markdown workspace with a serious code editor, a considered preview, and a focused screenshot annotation studio.</p>
+ 
+ <p>A local-first Markdown workspace for professional writing, coding, live preview, and screenshot annotation.</p>
 </div>
 
 <p align="center">
