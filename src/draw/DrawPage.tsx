@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent, type PointerEvent } from 'react';
 import { createImageZip, type ZipEntry } from './zip';
 import { drawAnnotation, hitTestAnnotation, renderExport, type Annotation, type AnnotationHit, type ArrowAnnotation, type OutputFormat, type Point, type TextAnnotation } from './annotations';
+import { HugeiconsIcon } from '@hugeicons/react';
+import {
+  ArrowLeft01Icon, ArrowRight01Icon, ArrowUpRight01Icon,
+  Cursor01Icon, TextIcon, Download01Icon, Add01Icon,
+  Delete02Icon, Undo02Icon, ImageAdd01Icon, Cancel01Icon,
+} from '@hugeicons/core-free-icons';
+import { motion, useReducedMotion } from 'motion/react';
+import { FlowMark } from '../components/Icons';
 import './draw.css';
 
 type ImageItem = { id: string; name: string; file: File; url: string };
@@ -832,11 +840,13 @@ export default function DrawPage() {
   }
 
   const count = active ? (annotations[active.id] || []).length : 0;
+  const reducedMotion = useReducedMotion();
+  const tap = reducedMotion ? undefined : { scale: 0.97 };
   return <div className="draw-page">
     <header className="draw-header">
       <div className="draw-heading">
-        <a href="/" className="draw-back" aria-label="Back to Flow">←</a>
-        <span className="draw-wordmark">Draw</span>
+        <a href="/" className="draw-back" aria-label="Back to Flow"><HugeiconsIcon icon={ArrowLeft01Icon} size={17} strokeWidth={1.7} /></a>
+        <span className="draw-wordmark"><span className="draw-logo"><FlowMark size={22} /></span>Draw<span className="draw-wordmark-stop">.</span></span>
         <span className="draw-heading-separator" aria-hidden="true" />
         <label className="draw-project-label" htmlFor="draw-project">Project</label>
         <input id="draw-project" className="draw-project-input" value={projectName}
@@ -848,17 +858,17 @@ export default function DrawPage() {
         <input ref={input} className="draw-file-input" type="file"
           accept="image/*,.svg" multiple onChange={upload} aria-label="Upload images" />
         <button className="draw-button" type="button" onClick={() => input.current?.click()}>
-          Add images
+          <HugeiconsIcon icon={ImageAdd01Icon} size={15} strokeWidth={1.7} /> Add images
         </button>
         <button className="draw-button draw-button-primary" type="button"
           disabled={!active || busy || !!singleBusyId}
           onClick={() => { if (active) void downloadSingle(active); }}>
-          {singleBusyId === active?.id ? 'Exporting…' : 'Download image'}
+          <HugeiconsIcon icon={Download01Icon} size={15} strokeWidth={1.7} /> {singleBusyId === active?.id ? 'Exporting…' : 'Export image'}
         </button>
         <button className="draw-button" type="button"
           disabled={!images.length || busy || !!singleBusyId}
           onClick={() => { void download(); }}>
-          {busy ? progress || 'Exporting…' : 'Download ZIP'}
+          <HugeiconsIcon icon={Download01Icon} size={15} strokeWidth={1.7} /> {busy ? progress || 'Exporting…' : 'Export all'}
         </button>
       </div>
     </header>
@@ -876,7 +886,7 @@ export default function DrawPage() {
       if (!event.currentTarget.contains(event.relatedTarget as Node)) setOver(false);
     }}>
       <aside className="draw-rail" aria-label="Uploaded screenshots">
-        <div className="draw-rail-heading">Screenshots <span>{images.length}</span></div>
+        <div className="draw-rail-heading"><span>Files</span> <span>{images.length}</span></div>
         <div className="draw-image-list">
           {images.map((item, i) => <div key={item.id}
             className={'draw-image-item' + (index === i ? ' is-selected' : '')}>
@@ -895,12 +905,12 @@ export default function DrawPage() {
                 aria-label={'Download ' + filename(projectName, i, format)}
                 title={'Download ' + filename(projectName, i, format)}
                 onClick={() => { void downloadSingle(item); }}>
-                {singleBusyId === item.id ? '…' : '↓'}
+                {singleBusyId === item.id ? '…' : <HugeiconsIcon icon={Download01Icon} size={14} strokeWidth={1.6} />}
               </button>
               <button type="button" className="draw-image-item-action draw-image-remove"
                 disabled={busy || !!singleBusyId}
                 aria-label={'Remove ' + item.name} title={'Remove ' + item.name}
-                onClick={() => removeImage(item.id)}>×</button>
+                onClick={() => removeImage(item.id)}><HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.6} /></button>
             </div>
           </div>)}
           {!images.length && <span className="draw-rail-empty">No screenshots yet.</span>}
@@ -910,15 +920,15 @@ export default function DrawPage() {
       <section className="draw-workspace" aria-label="Annotate screenshot">
         <div className="draw-toolbar">
           <div className="draw-tools" role="group" aria-label="Annotation tool">
-            <button type="button" className={'draw-tool' + (tool === 'select' ? ' is-active' : '')}
+            <motion.button whileTap={tap} type="button" className={'draw-tool' + (tool === 'select' ? ' is-active' : '')}
               aria-pressed={tool === 'select'}
-              onClick={() => { commitText(); setTool('select'); }}>↖ <span>Select</span></button>
-            <button type="button" className={'draw-tool' + (tool === 'arrow' ? ' is-active' : '')}
+              onClick={() => { commitText(); setTool('select'); }}><HugeiconsIcon icon={Cursor01Icon} size={15} strokeWidth={1.8} /> <span>Select</span></motion.button>
+            <motion.button whileTap={tap} type="button" className={'draw-tool' + (tool === 'arrow' ? ' is-active' : '')}
               aria-pressed={tool === 'arrow'}
-              onClick={() => { commitText(); setTool('arrow'); }}>↗ <span>Arrow</span></button>
-            <button type="button" className={'draw-tool' + (tool === 'text' ? ' is-active' : '')}
+              onClick={() => { commitText(); setTool('arrow'); }}><HugeiconsIcon icon={ArrowUpRight01Icon} size={15} strokeWidth={1.8} /> <span>Arrow</span></motion.button>
+            <motion.button whileTap={tap} type="button" className={'draw-tool' + (tool === 'text' ? ' is-active' : '')}
               aria-pressed={tool === 'text'} onClick={() => setTool('text')}>
-              T <span>Text</span></button>
+              <HugeiconsIcon icon={TextIcon} size={15} strokeWidth={1.8} /> <span>Text</span></motion.button>
           </div>
           <div className="draw-swatches" role="group" aria-label="Annotation color">
             {COLORS.map(c => <button key={c} type="button"
@@ -942,11 +952,11 @@ export default function DrawPage() {
         <div className="draw-subbar">
           <div className="draw-navigation">
             <button type="button" className="draw-button" disabled={index === 0 || !images.length}
-              onClick={() => select(index - 1)}>Previous</button>
+              onClick={() => select(index - 1)}><HugeiconsIcon icon={ArrowLeft01Icon} size={15} strokeWidth={1.7} /><span>Previous</span></button>
             <span className="draw-pagination">{images.length ? index + 1 : 0} / {images.length}</span>
             <button type="button" className="draw-button"
               disabled={!images.length || index === images.length - 1}
-              onClick={() => select(index + 1)}>Next</button>
+              onClick={() => select(index + 1)}><span>Next</span><HugeiconsIcon icon={ArrowRight01Icon} size={15} strokeWidth={1.7} /></button>
           </div>
           <div className="draw-edit-actions">
             <span className="draw-arrow-count">{count} note{count === 1 ? '' : 's'}</span>
@@ -954,12 +964,12 @@ export default function DrawPage() {
               <button type="button" className="draw-text-button" onClick={editSelectedText}>Edit text</button>}
             {active && selected && selected.imageId === active.id &&
               <button type="button" className="draw-text-button draw-remove-annotation"
-                onClick={deleteSelected}>Delete selected</button>}
+                onClick={deleteSelected}><HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={1.7} /> Delete selected</button>}
             <button type="button" className="draw-text-button"
               disabled={!historyRef.current[active?.id || '']?.length && !textDraft}
-              onClick={undo}>Undo</button>
+              onClick={undo}><HugeiconsIcon icon={Undo02Icon} size={14} strokeWidth={1.7} /> Undo</button>
             <button type="button" className="draw-text-button"
-              disabled={!count && !textDraft} onClick={clear}>Clear</button>
+              disabled={!count && !textDraft} onClick={clear}><HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.7} /> Clear</button>
           </div>
         </div>
 
@@ -1015,10 +1025,10 @@ export default function DrawPage() {
             </div>
           </div> : <button type="button" className="draw-empty"
             onClick={() => input.current?.click()}>
-            <span className="draw-empty-mark">↗</span>
-            <span>Drop screenshots here, or select files</span>
+            <span className="draw-empty-mark"><HugeiconsIcon icon={ImageAdd01Icon} size={36} strokeWidth={1.2} /></span>
+            <span className="draw-empty-title">Your canvas is ready.</span><span className="draw-empty-action"><HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={1.7} /> Add screenshots</span>
             <span className="draw-empty-hint">
-              Point to a UI issue, describe it, and send the exported screenshots to your coding agent.
+              Add an image, point to the detail, and export annotated screenshots.
             </span>
           </button>}
         </div>
@@ -1031,7 +1041,7 @@ export default function DrawPage() {
           <span>{format === 'webp' ? 'WebP' : 'JPEG'} · {projectName.trim() || 'Screenshots'} 1–{images.length}</span>
         </footer>
         {error && <div className="draw-error" role="alert">{error}
-          <button type="button" onClick={() => setError('')} aria-label="Dismiss error">×</button>
+          <button type="button" onClick={() => setError('')} aria-label="Dismiss error"><HugeiconsIcon icon={Cancel01Icon} size={15} strokeWidth={1.7} /></button>
         </div>}
       </section>
     </main>
