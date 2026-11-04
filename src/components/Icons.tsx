@@ -47,7 +47,8 @@ const rasterCache = new Map<string, string>();
  * not a painted bitmap: currentColor still updates instantly on hover,
  * selection, theme changes, and reduced-motion mode.
  *
- * All icons preserve a visible vector fallback until rasterization completes.
+ * The real Hugeicons SVG stays visible even after the subtle mask loads.
+ * This progressive overlay is cosmetic, not a replacement for essential UI.
  * The cache makes repeated tree items inexpensive to mount.
  */
 export function PixelatedIcon({ name, size = 17, className = '', active = false }: {
@@ -108,8 +109,9 @@ export function PixelatedIcon({ name, size = 17, className = '', active = false 
 
   return <span className={'pixel-huge-icon ' + className} aria-hidden="true"
     style={{ width: size, height: size }}>
-    <span ref={source} className="pixel-huge-icon-source"
-      style={{ visibility: ready ? 'hidden' : 'visible' }}>
+    {/* Keep Hugeicons visible at all times. A cached mask must never be
+        allowed to replace or hide the real icon if canvas/masking fails. */}
+    <span ref={source} className="pixel-huge-icon-source">
       <HugeiconsIcon icon={glyphs[name]} size={size} strokeWidth={active ? 2 : 1.8} />
     </span>
     {ready && <span className="pixel-huge-icon-paint" style={maskStyle} />}
