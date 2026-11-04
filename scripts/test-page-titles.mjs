@@ -58,5 +58,7 @@ assert.match(app, /navigator\.clipboard\?\.writeText/);
 assert.match(app, /document\.execCommand\('copy'\)/);
 assert.match(app, /setNotice\('Entire page copied'\)/);
 assert.match(css, /\.formatting-actions \.copy-all-button \{/);
-assert.match(css, /\.formatting-actions \.copy-all-button span \{ display:none; \}/);
+assert.match(css, /\.formatting-actions \.copy-all-button > span:not\(\.pixel-huge-icon\) \{ display:none; \}/);
+assert.match(css, /\.formatting-actions \.auto-markdown-button > span:not\(\.pixel-huge-icon\)/);
+assert.doesNotMatch(css, /\.copy-all-button span \{ display:none; \}/, 'Mobile must never hide Copy icons');
 console.log('Auto titles, manual-title protection, long-page copy and iOS toolbar checks passed.');
