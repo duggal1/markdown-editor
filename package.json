@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test:format": "node scripts/test-auto-markdown.mjs"
+    "test:format": "node scripts/test-auto-markdown.mjs",
+    "test:icons": "node scripts/test-icons.mjs"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.5.2",

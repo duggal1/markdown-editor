@@ -13,4 +13,5 @@ jobs:
           node-version: '22'
       - run: npm install --no-audit --no-fund
       - run: npm run test:format
+      - run: npm run test:icons
       - run: npm run build

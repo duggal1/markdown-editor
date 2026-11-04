@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import type { CSSProperties } from 'react';
 import { HugeiconsIcon } from '@hugeicons/react';
 import {
   SidebarLeft01Icon, Search01Icon, Add01Icon, File01Icon, Folder01Icon,
@@ -20,8 +20,7 @@ export function FlowMark({ size = 22, style }: { size?: number; style?: CSSPrope
   </svg>;
 }
 
-// Every UI glyph has a real Hugeicons skeleton. Pixelation is a rendering
-// treatment; no one-off hand-drawn path data is used for UI icons.
+// Every UI control uses the original Hugeicons vector geometry.
 const glyphs = {
   sidebar: SidebarLeft01Icon, search: Search01Icon, plus: Add01Icon,
   file: File01Icon, folder: Folder01Icon,
@@ -39,84 +38,20 @@ const glyphs = {
 } as const;
 
 export type IconName = keyof typeof glyphs;
-const rasterCache = new Map<string, string>();
 
 /**
- * Render Hugeicons first, rasterize at 88% of the display resolution, and
- * threshold alpha to a crisp pixel skeleton. The raster becomes a CSS mask,
- * not a painted bitmap: currentColor still updates instantly on hover,
- * selection, theme changes, and reduced-motion mode.
- *
- * All icons preserve a visible vector fallback until rasterization completes.
- * The cache makes repeated tree items inexpensive to mount.
+ * Original Hugeicons vectors, with no raster conversion or pixel overlay.
+ * Wrapping the SVG preserves the existing tree and toolbar layout while
+ * letting currentColor, hover, and themes work natively.
  */
-export function PixelatedIcon({ name, size = 17, className = '', active = false }: {
+export function Icon({ name, size = 17, className = '', active = false }: {
   name: IconName; size?: number; className?: string; active?: boolean;
 }) {
-  const source = useRef<HTMLSpanElement>(null);
-  const resolution = Math.max(13, Math.round(size * 0.88));
-  const cacheKey = name + ':' + resolution + ':' + (active ? '1' : '0');
-  const [raster, setRaster] = useState<{ key: string; data: string } | null>(null);
-  const matched = raster?.key === cacheKey ? raster.data : rasterCache.get(cacheKey);
-
-  useEffect(() => {
-    const cached = rasterCache.get(cacheKey);
-    if (cached) { setRaster({ key: cacheKey, data: cached }); return; }
-    const svg = source.current?.querySelector('svg');
-    if (!svg || typeof Image === 'undefined') return;
-
-    const copy = svg.cloneNode(true);
-    if (!(copy instanceof SVGElement)) return;
-    copy.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-    copy.setAttribute('color', '#000000');
-    copy.setAttribute('width', String(resolution));
-    copy.setAttribute('height', String(resolution));
-    const image = new Image();
-    let disposed = false;
-    image.onload = () => {
-      if (disposed) return;
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = resolution; canvas.height = resolution;
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        if (!ctx) return;
-        ctx.clearRect(0, 0, resolution, resolution);
-        ctx.drawImage(image, 0, 0, resolution, resolution);
-        const pixels = ctx.getImageData(0, 0, resolution, resolution);
-        for (let i = 0; i < pixels.data.length; i += 4) {
-          pixels.data[i] = 0;
-          pixels.data[i + 1] = 0;
-          pixels.data[i + 2] = 0;
-          pixels.data[i + 3] = pixels.data[i + 3] >= 84 ? 255 : 0;
-        }
-        ctx.putImageData(pixels, 0, 0);
-        const data = canvas.toDataURL('image/png');
-        rasterCache.set(cacheKey, data);
-        setRaster({ key: cacheKey, data });
-      } catch { /* Keep the genuine Hugeicons SVG when canvas is unavailable. */ }
-    };
-    image.src = 'data:image/svg+xml;charset=utf-8,' +
-      encodeURIComponent(new XMLSerializer().serializeToString(copy));
-    return () => { disposed = true; image.onload = null; };
-  }, [cacheKey, resolution]);
-
-  const ready = Boolean(matched);
-  const maskStyle: CSSProperties | undefined = matched ? {
-    WebkitMaskImage: 'url("' + matched + '")',
-    maskImage: 'url("' + matched + '")',
-  } : undefined;
-
   return <span className={'pixel-huge-icon ' + className} aria-hidden="true"
     style={{ width: size, height: size }}>
-    <span ref={source} className="pixel-huge-icon-source"
-      style={{ visibility: ready ? 'hidden' : 'visible' }}>
-      <HugeiconsIcon icon={glyphs[name]} size={size} strokeWidth={active ? 2 : 1.8} />
-    </span>
-    {ready && <span className="pixel-huge-icon-paint" style={maskStyle} />}
+    <HugeiconsIcon icon={glyphs[name]} size={size} strokeWidth={active ? 2 : 1.8} />
   </span>;
 }
-
-export const Icon = PixelatedIcon;
 
 /**
  * User-provided exact SVGs. Their paint inherits currentColor, which means
