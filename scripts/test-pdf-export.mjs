@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
 
 const { buildPdfDefinition, pdfImageUrls, parsePdfMarkdown } = await import('../src/lib/pdfDocument.ts');
@@ -100,6 +100,10 @@ const actual = await new Promise((resolve, reject) => {
 });
 assert.equal(Buffer.from(actual).subarray(0, 5).toString('ascii'), '%PDF-');
 assert.ok(actual.length > 4000, 'PDF output must not be empty');
+if (process.env.CI) {
+  mkdirSync('test-artifacts', { recursive: true });
+  writeFileSync('test-artifacts/pdf-style-review.pdf', Buffer.from(actual));
+}
 console.log('Styled PDF generation and page-spacing regression checks passed.', {
   samplePdfBytes: actual.length, longPlanCharacters: many.length,
   longPlanPreparationMs: +prepTime.toFixed(1),
