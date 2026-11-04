@@ -1,5 +1,4 @@
 import { restoreDocument } from './document';
-import { detectRawCode } from './code';
 
 export type Theme = 'light' | 'dark';
 export type Mode = 'write' | 'split' | 'preview';
@@ -176,29 +175,7 @@ export async function loadWorkspace(): Promise<{ workspaces: Workspace[]; folder
   }
   return { workspaces, folders, documents };
 }
-export function inferTitle(markdown: string): string {
-  const head = markdown.slice(0, 8000);
-  const heading = /^\s*#\s+(.+)$/m.exec(head);
-  if (heading) return heading[1].replace(/[*_~\x60]/g, '').trim().slice(0, 76) || 'Untitled';
-  const language = detectRawCode(head);
-  if (language) {
-    const symbol = language === 'swift'
-      ? /\b(?:struct|class|enum|protocol)\s+([A-Za-z_$][\w$]*)/.exec(head)
-      : /\b(?:class|function|fn|def|interface)\s+([A-Za-z_$][\w$]*)/.exec(head);
-    if (symbol) return symbol[1];
-    return language === 'typescript' ? 'TypeScript code' : language.charAt(0).toUpperCase() + language.slice(1) + ' code';
-  }
-  const fence = /^\s*\x60{3,}([^\s\x60]*)/.exec(head);
-  if (fence) {
-    const lang = fence[1].toLowerCase();
-    return lang ? lang === 'ts' ? 'TypeScript code' : lang === 'js' ? 'JavaScript code'
-      : lang.charAt(0).toUpperCase() + lang.slice(1) + ' code' : 'Code';
-  }
-  const first = head.split('\n').find(line => line.trim() && !/^\s*[-*_]{3,}\s*$/.test(line));
-  return first
-    ? first.replace(/^[#>*\-\s]+/, '').replace(/[*_~\x60]/g, '').trim().slice(0, 76) || 'Untitled'
-    : 'Untitled';
-}
+export { inferTitle } from './title';
 export function wordCount(value: string): number {
   let words = 0;
   let whitespace = true;
