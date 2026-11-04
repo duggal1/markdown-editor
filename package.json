@@ -14,7 +14,8 @@
     "test:interactions": "node scripts/test-interactions.mjs",
     "test:titles": "node scripts/test-page-titles.mjs",
     "test:long-scroll": "node scripts/test-long-scroll.mjs",
-    "test:search": "node scripts/test-search.mjs"
+    "test:search": "node scripts/test-search.mjs",
+    "test:pdf": "node --import tsx scripts/test-pdf-export.mjs"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.5.2",
@@ -47,6 +48,7 @@
     "@vitejs/plugin-react": "^6.0.0",
     "typescript": "^5.9.0",
     "vite": "^8.1.0",
-    "@types/pdfmake": "^0.2.13"
+    "@types/pdfmake": "^0.2.13",
+    "tsx": "^4.20.6"
   }
 }
