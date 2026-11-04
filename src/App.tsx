@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type PointerEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { createPortal } from 'react-dom';
 import NumberFlow from '@number-flow/react';
 import type { EditorView } from '@codemirror/view';
 import MarkdownEditor, { formatEditor, type Format } from './components/MarkdownEditor';
@@ -98,6 +99,8 @@ export default function App() {
   const [saveDuration, setSaveDuration] = useState(0);
   const saveStarted = useRef(new Map<string, number>());
   const [notice, setNotice] = useState('');
+  const [exportMenu, setExportMenu] = useState<{ top: number; right: number } | null>(null);
+  const [pdfExporting, setPdfExporting] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<{ kind: 'document' | 'workspace'; id: string; title: string; count?: number } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const deletionInFlight = useRef(false);
@@ -600,6 +603,57 @@ export default function App() {
       setDeleting(false);
     }
   }
+  function toggleExport(event: React.MouseEvent<HTMLButtonElement>) {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    setExportMenu(current => current ? null : {
+      top: Math.max(8, Math.min(bounds.bottom + 8, window.innerHeight - 120)),
+      right: Math.max(9, window.innerWidth - bounds.right),
+    });
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLButtonElement>('.flow-export-menu button:not(:disabled)')?.focus();
+    });
+  }
+  useEffect(() => {
+    if (!exportMenu) return;
+    const outside = (event: globalThis.PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && !target.closest('.flow-export-menu,.export-button')) setExportMenu(null);
+    };
+    const dismiss = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') setExportMenu(null);
+    };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', dismiss);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', dismiss);
+    };
+  }, [exportMenu]);
+
+  async function exportPdf(doc: FlowDocument) {
+    setExportMenu(null);
+    if (pdfExporting) return;
+    if (doc.asset) {
+      setNotice('PDF export works with text and Markdown pages.');
+      return;
+    }
+    const source = doc.id === activeIdRef.current
+      ? editorRef.current?.state.doc.toString() ?? doc.markdown
+      : doc.markdown;
+    setPdfExporting(true);
+    setNotice('Preparing PDF…');
+    try {
+      const { downloadStyledPdf } = await import('./lib/pdfExport');
+      await downloadStyledPdf(source, doc.title);
+      setNotice('PDF exported');
+    } catch (error) {
+      console.error('PDF export failed', error);
+      setNotice('Could not export PDF. Try again.');
+    } finally {
+      setPdfExporting(false);
+    }
+  }
+
   function exportDocument(doc: FlowDocument) {
     flush(doc.id);
     if (doc.asset || doc.fileName) {
@@ -1040,8 +1094,11 @@ export default function App() {
             transition={motionOff ? { duration: 0 } : { duration: 0.17, ease: [0.22, 1, 0.36, 1] }}>
             <Icon name="edit" size={15}/><span>Draw</span></motion.a>
           <motion.button {...pressMotion} type="button" className="export-button"
-            title="Export page" aria-label="Export page"
-            onClick={() => { const doc = live.current.get(activeIdRef.current); if (doc) exportDocument(doc); }}><Icon name="download" size={15} /> <span>Export</span></motion.button>
+            title="Export page" aria-label="Export page" aria-haspopup="menu"
+            aria-expanded={Boolean(exportMenu)} disabled={pdfExporting}
+            onClick={toggleExport}>
+            <Icon name="download" size={15} /> <span>{pdfExporting ? 'Exporting' : 'Export'}</span>
+          </motion.button>
           <motion.button {...pressMotion} type="button" className="square-button theme-toggle" title={theme === 'light' ? 'Dark mode' : 'Light mode'} aria-label={theme === 'light' ? 'Dark mode' : 'Light mode'} onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')}>
             <AnimatePresence initial={false} mode="wait"><motion.span key={theme} className="theme-icon" initial={motionOff ? false : { opacity: 0, rotate: -25 }} animate={{ opacity: 1, rotate: 0 }} exit={motionOff ? undefined : { opacity: 0, rotate: 25 }} transition={{ duration: motionOff ? 0 : 0.15 }}><Icon name={theme === 'light' ? 'moon' : 'sun'} size={17} /></motion.span></AnimatePresence>
           </motion.button>
@@ -1113,6 +1170,26 @@ export default function App() {
             setStoredSplitPercent(splitNext.current);
           }}><span className="split-grip" /></div>}
       </motion.main>
+      {createPortal(<AnimatePresence initial={false}>
+        {exportMenu && <motion.div role="menu" aria-label="Export page as"
+          className="flow-export-menu" style={{ top: exportMenu.top, right: exportMenu.right }}
+          initial={motionOff ? false : { opacity: 0, y: -5, scale: 0.985 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={motionOff ? undefined : { opacity: 0, y: -3, scale: 0.99 }}
+          transition={{ duration: motionOff ? 0 : 0.17, ease: [0.22, 1, 0.36, 1] }}>
+          <button type="button" role="menuitem"
+            onClick={() => {
+              setExportMenu(null);
+              const current = live.current.get(activeIdRef.current);
+              if (current) exportDocument(current);
+            }}><Icon name="file" size={15}/><span>Markdown</span><small>.md</small></button>
+          <button type="button" role="menuitem" disabled={pdfExporting}
+            onClick={() => {
+              const current = live.current.get(activeIdRef.current);
+              if (current) void exportPdf(current);
+            }}><Icon name="download" size={15}/><span>Export as PDF</span><small>.pdf</small></button>
+        </motion.div>}
+      </AnimatePresence>, document.body)}
       <AnimatePresence initial={false}>
       {pendingDelete && <motion.div className="dialog-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: motionOff ? 0 : 0.16 }}
         onMouseDown={event => { if (event.target === event.currentTarget && !deleting) setPendingDelete(null); }}>
