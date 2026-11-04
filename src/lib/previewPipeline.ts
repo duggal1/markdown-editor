@@ -1,9 +1,10 @@
-import { previewChunks } from './previewChunks';
+import { previewParts } from './previewChunks';
 
 export type PreparedPreview = {
   source: string;
   chunks: string[];
   firstLines: number[];
+  continuations: boolean[];
 };
 
 /**
@@ -18,16 +19,20 @@ const MAX_ENTRIES = 4;
 const MAX_SOURCE_CHARS = 2_000_000;
 
 export function buildPreviewSections(source: string): PreparedPreview {
-  const chunks = previewChunks(source);
+  const parts = previewParts(source);
+  const chunks: string[] = [];
   const firstLines: number[] = [];
+  const continuations: boolean[] = [];
   let line = 1;
-  for (const chunk of chunks) {
+  for (const part of parts) {
+    chunks.push(part.markdown);
     firstLines.push(line);
-    for (let i = 0; i < chunk.length; i++) {
-      if (chunk.charCodeAt(i) === 10) line++;
+    continuations.push(part.continuesList);
+    for (let i = 0; i < part.markdown.length; i++) {
+      if (part.markdown.charCodeAt(i) === 10) line++;
     }
   }
-  return { source, chunks, firstLines };
+  return { source, chunks, firstLines, continuations };
 }
 
 export function cachedPreview(source: string): PreparedPreview | null {
@@ -67,13 +72,14 @@ function availableWorker(): Worker | null {
   try {
     const worker = new Worker(new URL('../workers/preview.ts', import.meta.url), { type: 'module' });
     worker.onmessage = (event: MessageEvent<{
-      requestId: number; chunks: string[]; firstLines: number[];
+      requestId: number; chunks: string[]; firstLines: number[]; continuations: boolean[];
     }>) => {
       const request = inFlight.get(event.data.requestId);
       if (!request) return;
       inFlight.delete(event.data.requestId);
       // Source is held only by the promise closure, not copied back by worker.
-      request.resolve({ source: '', chunks: event.data.chunks, firstLines: event.data.firstLines });
+      request.resolve({ source: '', chunks: event.data.chunks, firstLines: event.data.firstLines,
+        continuations: event.data.continuations });
     };
     worker.onerror = () => {
       for (const task of inFlight.values()) task.reject(new Error('Preview worker unavailable'));
