@@ -16,7 +16,7 @@ assert.match(app, /whileHover: compact \? undefined : \{ y: -1 \}/, 'No syntheti
 assert.match(app, /filter: motionOff \|\| compact/, 'iOS sidebar must not run an expensive blur');
 assert.match(app, /window\.requestAnimationFrame\(measure\)/, 'Viewport resize should be batched');
 assert.match(draw, /hoverCapable = window\.matchMedia\('\(hover: hover\) and \(pointer: fine\)'\)/);
-assert.match(draw, /<motion\.button \{\.\.\.hoverMotion\} className="draw-button"/);
+assert.match(draw, /<motion\.button \{\.\.\.hoverMotion\} type="button" className="draw-button"/);
 assert.match(tree, /<motion\.button \{\.\.\.interaction\} type="button" className="filetree-add-page"/);
 assert.match(css, /\.save-prefix\s*\{[\s\S]*?border-radius:1px; background:#ea580c;/);
 assert.match(css, /\.save-indicator\[data-save-state='saving'\] \.save-label/);
@@ -27,4 +27,6 @@ assert.match(drawCss, /\.draw-rail, \.draw-workspace \{ border-radius:11px;/);
 assert.match(preview, /preparePreview\(markdown\)/);
 assert.match(preview, /MAX_HIGHLIGHTS = 96/);
 assert.match(pipeline, /const MAX_ENTRIES = 4/);
+assert.match(css, /:root\[data-theme='light'\] \.notice \{ background:#ffffff; color:#181818; \}/);
+assert.match(css, /background:#121212; color:#f0f0f0;/);
 console.log('Motion, five-second save status, iOS geometry and preview cache checks passed.');
