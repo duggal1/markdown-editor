@@ -375,6 +375,11 @@ export default function App() {
     };
     live.current.set(doc.id, doc);
     setDocs(current => [doc, ...current]);
+    // A page created from a collapsed workspace must be visible in its tree.
+    // Keep the existing folder assignment and show the containing workspace.
+    setExpandedIds(ids => ids.includes(target) ? ids : [...ids, target]);
+    // Clear any filtered tree so the new page cannot be hidden by search.
+    setQuery('');
     selectDocument(doc.id);
     void saveDoc(doc).catch(() => setSaveState('error'));
     window.requestAnimationFrame(() => editorRef.current?.focus());
@@ -411,7 +416,7 @@ export default function App() {
         id: doc.id, workspaceId: doc.workspaceId, title: doc.title,
         markdown: doc.markdown, updatedAt: doc.updatedAt,
       } });
-      setNotice('Could not delete the document. It is still available.');
+      setNotice("Couldn't delete the page. It's still here.");
     }
   }
   function toggleWorkspace(id: string) {
@@ -550,12 +555,12 @@ export default function App() {
     const view = editorRef.current;
     const current = live.current.get(activeIdRef.current);
     if (!view || !current || current.asset) {
-      setNotice('Open an editable text document to format.');
+      setNotice('Open an editable page to format.');
       return;
     }
     const source = view.state.doc.toString();
     if (source.length > 180_000) {
-      setNotice('Auto Markdown is limited to 180,000 characters per pass.');
+      setNotice('This page is too large to auto-format at once.');
       return;
     }
     const formatted = formatPlainTextAsMarkdown(source, { atDocumentStart: true });
@@ -566,7 +571,7 @@ export default function App() {
     // A single CodeMirror transaction is undoable (Cmd/Ctrl+Z).
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: formatted } });
     view.focus();
-    setNotice('Formatted as Markdown · Undo to revert');
+    setNotice('Markdown formatted · Undo to revert');
   }
   async function importFiles(incoming: File[]) {
     if (!incoming.length || importInFlight.current) return;
@@ -774,7 +779,7 @@ export default function App() {
       initial={false} animate={{ width: sidebarOpen ? 256 : 0 }}
       transition={motionOff ? { duration: 0 } : { duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
       aria-hidden={!sidebarOpen}
-      aria-label="Workspaces and documents">
+      aria-label="Workspaces and pages">
       <motion.div className="sidebar-inner" initial={false}
         animate={{ opacity: sidebarOpen ? 1 : 0, x: sidebarOpen ? 0 : -12,
           filter: motionOff ? 'blur(0px)' : sidebarOpen ? 'blur(0px)' : 'blur(5px)' }}
@@ -784,7 +789,7 @@ export default function App() {
           <motion.div className="brand-lockup" initial={false} animate={{ opacity: sidebarOpen ? 1 : 0, x: sidebarOpen ? 0 : -8 }} transition={motionOff ? { duration: 0 } : { duration: 0.18 }}><span className="brand-mark"><FlowMark size={18} /></span><span>Flow<span className="brand-period">.</span></span></motion.div>
         </div>
         <label className="search-field"><Icon name="search" size={16} />
-          <input ref={searchRef} value={query} onChange={event => setQuery(event.target.value)} placeholder="Search documents" aria-label="Search documents" />
+          <input ref={searchRef} value={query} onChange={event => setQuery(event.target.value)} placeholder="Search pages" aria-label="Search pages" />
         </label>
         <WorkspaceTree
           workspaces={workspaces} documents={matching} folders={folders} newFolderId={newFolderId}
@@ -832,8 +837,8 @@ export default function App() {
         />
         <div className="sidebar-bottom">
           <a className="draw-sidebar-entry" href="/draw"><Icon name="edit" size={16} /> Draw screenshots</a>
-          <button className="sidebar-bottom-action" onClick={() => makeDocument(workspaceId)}><Icon name="plus" size={16} /> New document</button>
-          <button className="sidebar-bottom-action" onClick={() => { if (recentIds[1]) selectDocument(recentIds[1]); }} disabled={!recentIds[1]}><Icon name="history" size={16} /> Previous document</button>
+          <button className="sidebar-bottom-action" onClick={() => makeDocument(workspaceId)}><Icon name="plus" size={16} /> Add page</button>
+          <button className="sidebar-bottom-action" onClick={() => { if (recentIds[1]) selectDocument(recentIds[1]); }} disabled={!recentIds[1]}><Icon name="history" size={16} /> Previous page</button>
         </div>
       </motion.div>
     </motion.aside>
@@ -843,7 +848,7 @@ export default function App() {
         <div className="document-meta">
           <motion.button {...pressMotion} className="square-button sidebar-toggle" title={sidebarOpen ? 'Hide sidebar' : 'Open sidebar'} aria-label={sidebarOpen ? 'Hide sidebar' : 'Open sidebar'}
             onClick={() => setSidebarOpen(current => !current)}><Icon name="sidebar" size={18} /></motion.button>
-          <input ref={titleRef} className="document-title" aria-label="Document title" spellCheck={false}
+          <input ref={titleRef} className="document-title" aria-label="Page title" spellCheck={false}
             value={active?.title || ''} onChange={event => changeTitle(event.target.value)} placeholder="Untitled" />
           <span className="save-indicator" data-save-state={saveState} aria-label={saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : 'Save failed'} role="status">
             {saveState === 'saving' && <TerminalLoader loading />}
@@ -929,8 +934,8 @@ export default function App() {
         <motion.section className="delete-dialog" initial={motionOff ? false : { opacity: 0, y: 9, scale: 0.985 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={motionOff ? undefined : { opacity: 0, y: 5, scale: 0.99 }}
           transition={motionOff ? { duration: 0 } : { duration: 0.21, ease: [0.22, 1, 0.36, 1] }} role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title" aria-describedby="delete-dialog-description">
           <div className="dialog-header"><Icon name="trash" size={17} /><button type="button" aria-label="Close dialog" disabled={deleting} onClick={() => setPendingDelete(null)}><Icon name="close" size={15} /></button></div>
-          <h2 id="delete-dialog-title">Delete {pendingDelete.kind}?</h2>
-          <p id="delete-dialog-description">“{pendingDelete.title}”{pendingDelete.kind === 'workspace' ? ` and ${pendingDelete.count || 0} document${pendingDelete.count === 1 ? '' : 's'}` : ''} will be removed from this browser. This cannot be undone.</p>
+          <h2 id="delete-dialog-title">Delete {pendingDelete.kind === 'document' ? 'page' : 'workspace'}?</h2>
+          <p id="delete-dialog-description">“{pendingDelete.title}”{pendingDelete.kind === 'workspace' ? ` and ${pendingDelete.count || 0} page${pendingDelete.count === 1 ? '' : 's'}` : ''} will be removed from this browser. This can't be undone.</p>
           <div className="dialog-actions">
             <button autoFocus type="button" disabled={deleting} className="dialog-cancel" onClick={() => setPendingDelete(null)}>Cancel</button>
             <button type="button" disabled={deleting} className="dialog-delete" aria-label={deleting ? 'Deleting' : 'Delete'} onClick={() => { void confirmDelete(); }}>
@@ -940,7 +945,18 @@ export default function App() {
         </motion.section>
       </motion.div>}
       </AnimatePresence>
-      {notice && <div role="status" className="notice"><span>{notice}</span><button title="Dismiss" aria-label="Dismiss" onClick={() => setNotice('')}><Icon name="close" size={14} /></button></div>}
+      <AnimatePresence initial={false}>
+        {notice && <motion.div key={notice} role="status" className="notice" aria-live="polite"
+          initial={motionOff ? false : { opacity: 0, y: 7 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={motionOff ? undefined : { opacity: 0, y: 4 }}
+          transition={motionOff ? { duration: 0 } : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }}>
+          <span className="notice-mark" aria-hidden="true" />
+          <span className="notice-text">{notice}</span>
+          <button type="button" title="Dismiss" aria-label="Dismiss message"
+            onClick={() => setNotice('')}><Icon name="close" size={14} /></button>
+        </motion.div>}
+      </AnimatePresence>
     </div>
   </div>;
 }
