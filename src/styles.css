@@ -862,3 +862,49 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 @media (max-width:800px) {
   .sidebar-inner { will-change:opacity,transform; }
 }
+
+
+/* Mobile header: preserve the existing two-row structure. A third shortcut
+   has an explicit grid cell instead of falling into an implicit overflow row.
+   Export is a real compact button, not the desktop orange capsule. */
+@media (max-width:800px) {
+  .topbar {
+    grid-template-columns:minmax(0,1fr) 38px 38px 38px;
+    column-gap:5px;
+  }
+  .topbar .draw-entry {
+    grid-row:1; grid-column:2; align-self:center; justify-self:center;
+    display:inline-flex; align-items:center; justify-content:center;
+    width:38px; height:38px; min-height:38px; min-width:38px;
+    padding:0; gap:0; border-radius:7px;
+    background:var(--neutral-100); color:var(--strong);
+    touch-action:manipulation;
+  }
+  .topbar .draw-entry:hover,
+  .topbar .draw-entry:focus-visible {
+    background:var(--neutral-200);
+  }
+  .topbar .draw-entry span:not(.pixel-huge-icon) { display:none; }
+  .topbar .draw-entry .pixel-huge-icon { width:17px!important; height:17px!important; }
+  .topbar .export-button {
+    grid-row:1; grid-column:3; align-self:center;
+    display:inline-flex; align-items:center; justify-content:center;
+    width:38px; height:38px; min-width:38px; min-height:38px;
+    padding:0; border-radius:7px; border:0;
+    background:var(--flow-accent); color:var(--flow-accent-ink);
+    touch-action:manipulation;
+  }
+  .topbar .export-button:hover,
+  .topbar .export-button:focus-visible { background:var(--flow-accent); }
+  .topbar .theme-toggle {
+    grid-row:1; grid-column:4; align-self:center; justify-self:center;
+    width:38px; height:38px; min-width:38px;
+  }
+  .topbar .mode-switch { grid-row:2; grid-column:1/-1; }
+  .document-meta { min-width:0; }
+  .document-title { min-width:0; }
+  .save-indicator[data-save-state='idle'] { display:none; }
+}
+@media (max-width:360px) {
+  .topbar { column-gap:3px; padding-inline:8px; }
+}
