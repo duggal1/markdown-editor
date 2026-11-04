@@ -41,4 +41,8 @@ assert.match(css, /\.topbar \.theme-toggle\s*\{\s*grid-row:1; grid-column:4;/,
   'Theme must stay in the first row');
 assert.match(app, /className="export-button"\s*title="Export page" aria-label="Export page"/,
   'The mobile icon-only Export button needs an accessible name');
+assert.match(css, /\.topbar \.draw-entry > \.pixel-huge-icon,\s*\.topbar \.export-button > \.pixel-huge-icon\s*\{\s*display:inline-flex!important;/,
+  'Mobile must not hide native Hugeicons wrappers inside Draw and Export');
+assert.match(css, /\.save-indicator\[data-save-state='saving'\]\s*\{\s*flex:0 0 48px;/,
+  'A mobile Saving indicator must not displace the page title');
 console.log('Motion, five-second save status, iOS geometry and preview cache checks passed.');
