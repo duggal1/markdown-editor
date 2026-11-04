@@ -1,7 +1,7 @@
 .draw-page {
-  --draw-bg: #0a0a0a; --draw-panel: #171717; --draw-line: #262626;
+  --draw-bg: #0a0a0a; --draw-panel: #111111; --draw-line: #242424;
   --draw-text: #fafafa; --draw-strong: #fafafa; --draw-muted: #a3a3a3;
-  --draw-hover: #262626; --draw-active: #1f1f1f; --draw-accent: #ff6a00;
+  --draw-hover: #1d1d1d; --draw-active: #232323; --draw-accent: #ff6a00;
   --draw-ink-on-accent: #0a0a0a;
   display: flex; flex-direction: column; width: 100%; height: 100dvh;
   min-height: 0; overflow: hidden; background: var(--draw-bg); color: var(--draw-text);
@@ -296,7 +296,7 @@
   outline: none; font: 400 13px/1.45 'Geist Variable', sans-serif;
   resize: both;
 }
-.draw-inline-text::placeholder { color: #a8a29e; }
+.draw-inline-text::placeholder { color: var(--draw-muted); }
 .draw-inline-text:focus { outline: none; }
 .draw-image-item-count { font-variant-numeric: tabular-nums; }
 .draw-footer { font-variant-numeric: tabular-nums; }
@@ -446,7 +446,6 @@
 .draw-image-item { margin: 3px 0; min-height: 61px; border-radius: 9px; border: 0; transition: background .14s ease-out; }
 .draw-image-item:hover { background: var(--draw-hover); }
 .draw-image-item.is-selected { background: var(--draw-active); position: relative; }
-.draw-image-item.is-selected::before { content: ''; position: absolute; width: 3px; height: 15px; top: 50%; left: 0; transform: translateY(-50%); background: var(--draw-accent); }
 .draw-image-item img, .draw-image-item-select img { border-radius: 5px; }
 .draw-image-item-name { color: var(--draw-strong); font-size: 12px; }
 .draw-image-item-count { color: var(--draw-muted); font-size: 11px; }
@@ -500,76 +499,149 @@
 }
 
 
-/* Draw refinement: the screenshot, not the controls, owns the canvas. */
-.draw-header { min-height:64px; padding:0 24px; background:#111; }
-.draw-layout { gap:0; padding:0; }
-.draw-rail { background:#101010; border:0; border-radius:0; }
-.draw-rail-heading { min-height:46px; padding:0 18px; }
-.draw-image-list { padding:0 8px 12px; gap:2px; }
-.draw-image-item { border-radius:5px; margin:1px 0; min-height:58px; }
-.draw-image-item.is-selected { background:#1f1f1f; }
-.draw-image-item img, .draw-image-item-select img { border-radius:2px; }
-.draw-workspace { background:#0a0a0a; border-radius:0; }
-.draw-toolbar { flex-wrap:wrap; min-height:54px; flex:0 0 auto; padding:8px 20px; background:#111; gap:17px; }
-.draw-tools, .draw-format { display:flex; align-items:center; gap:3px; padding:0; border:0; border-radius:0; background:transparent; }
-.draw-tools button, .draw-format button { height:30px; min-height:30px; padding:0 11px; border:0; border-radius:5px; background:transparent; color:var(--draw-muted); }
-.draw-tools button.is-active, .draw-format button.is-active { background:#242424; color:var(--draw-strong); }
-.draw-tools button:hover:not(.is-active), .draw-format button:hover:not(.is-active) { background:#1f1f1f; }
-.draw-swatches { gap:9px; }
-.draw-swatch { width:16px; height:16px; border-radius:3px; border:0; }
-.draw-swatch.is-active { outline:1px solid var(--draw-strong); outline-offset:3px; }
-.draw-custom-color { width:18px; height:18px; border-radius:3px; border:0; }
-.draw-project-input { background:#202020; min-width:115px; width:185px; border-radius:5px; }
-.draw-project-input:focus { background:#262626; }
-.draw-heading-separator { background:#262626; }
-.draw-button { border-radius:6px; padding:0 11px; background:#202020; }
-.draw-button:hover:not(:disabled) { background:#292929; }
-.draw-button-primary { border-radius:6px; background:var(--draw-accent); }
-.draw-subbar { min-height:43px; padding:0 20px; background:#111; }
-.draw-text-button { min-height:25px; height:25px; padding:0 7px; border-radius:4px; }
-.draw-text-button:hover:not(:disabled) { background:#242424; }
-.draw-navigation .draw-button { padding:0 6px; }
-.draw-stage { background:#0a0a0a; }
-.draw-footer { min-height:34px; padding:0 20px; background:#111; }
-.draw-empty { background:transparent; border-radius:0; min-height:205px; padding:24px 16px; gap:10px; }
-.draw-empty-mark { width:35px; height:35px; }
-.draw-empty-title { font-size:16px; }
-.draw-empty-hint { margin-top:2px; }
-.draw-empty-action { height:30px; border-radius:5px; }
+/* Draw: restore the rounded surfaces and quiet neutral motion language.
+   A selected image is a surface change, never an orange edge marker. */
+.draw-page {
+  --draw-bg:#0a0a0a; --draw-panel:#111111;
+  --draw-hover:#1d1d1d; --draw-active:#232323; --draw-line:#242424;
+}
+.draw-header { min-height:68px; padding:0 24px; background:var(--draw-panel); }
+.draw-layout { gap:8px; padding:8px; background:var(--draw-bg); }
+.draw-rail {
+  background:var(--draw-panel); border:0; border-radius:14px; overflow:hidden;
+}
+.draw-rail-heading { min-height:50px; padding:0 17px; }
+.draw-image-list { padding:0 9px 13px; gap:3px; }
+.draw-image-item {
+  position:relative; border-radius:10px; margin:1px 0; min-height:61px;
+  transition:background-color .2s cubic-bezier(.22,1,.36,1),
+             transform .22s cubic-bezier(.22,1,.36,1);
+}
+.draw-image-item:hover { background:var(--draw-hover); }
+.draw-image-item.is-selected { background:var(--draw-active); }
+.draw-image-item.is-selected::before { display:none; content:none; }
+.draw-image-item img, .draw-image-item-select img { border-radius:6px; }
+.draw-image-item-select, .draw-image-item-actions { position:relative; z-index:1; }
+.draw-image-item-action { border-radius:7px; }
+.draw-image-item-action:hover:not(:disabled) { background:var(--draw-hover); }
+.draw-image-item-action, .draw-image-item-action svg {
+  transition:color .2s cubic-bezier(.22,1,.36,1),
+             background-color .2s cubic-bezier(.22,1,.36,1);
+}
+.draw-workspace { background:var(--draw-panel); border:0; border-radius:14px; overflow:hidden; }
+.draw-toolbar {
+  flex:0 0 auto; flex-wrap:wrap; min-height:58px; padding:9px 22px;
+  background:var(--draw-panel); gap:14px; border:0;
+}
+.draw-tools, .draw-format {
+  display:flex; align-items:center; gap:3px; padding:3px;
+  border:0; border-radius:999px; background:var(--draw-hover);
+}
+.draw-tools button, .draw-format button {
+  height:30px; min-height:30px; padding:0 12px; border:0;
+  border-radius:999px; background:transparent; color:var(--draw-muted);
+  transition:background-color .2s cubic-bezier(.22,1,.36,1),
+             color .2s cubic-bezier(.22,1,.36,1);
+}
+.draw-tools button.is-active, .draw-format button.is-active {
+  background:var(--draw-active); color:var(--draw-strong);
+}
+.draw-tools button:hover:not(.is-active), .draw-format button:hover:not(.is-active) {
+  background:var(--draw-active); color:var(--draw-strong);
+}
+.draw-swatches { gap:8px; }
+.draw-swatch { width:17px; height:17px; border-radius:50%; border:0; }
+.draw-swatch.is-active { outline:2px solid var(--draw-strong); outline-offset:3px; }
+.draw-custom-color { width:19px; height:19px; border-radius:50%; border:0; }
+.draw-project-input {
+  background:var(--draw-hover); min-width:115px; width:185px; border-radius:9px;
+  transition:background-color .2s cubic-bezier(.22,1,.36,1);
+}
+.draw-project-input:hover, .draw-project-input:focus { background:var(--draw-active); }
+.draw-heading-separator { background:var(--draw-line); }
+.draw-button {
+  border:0; border-radius:999px; padding:0 14px;
+  background:var(--draw-hover); color:var(--draw-strong);
+  transition:background-color .21s cubic-bezier(.22,1,.36,1),
+             transform .21s cubic-bezier(.22,1,.36,1);
+}
+.draw-button:hover:not(:disabled) { background:var(--draw-active); }
+.draw-button-primary { background:var(--draw-accent); color:var(--draw-ink-on-accent) !important; }
+.draw-button-primary:hover:not(:disabled) { background:var(--draw-accent); filter:brightness(.97); }
+.draw-subbar { min-height:46px; padding:0 22px; background:var(--draw-panel); border:0; }
+.draw-text-button {
+  min-height:26px; height:26px; padding:0 8px; border-radius:8px;
+  transition:background-color .2s cubic-bezier(.22,1,.36,1),
+             color .2s cubic-bezier(.22,1,.36,1);
+}
+.draw-text-button:hover:not(:disabled) { background:var(--draw-hover); color:var(--draw-strong); }
+.draw-navigation .draw-button { padding:0 8px; }
+.draw-stage { background:var(--draw-bg); min-height:0; }
+.draw-stage.is-drop-target { outline:2px solid var(--draw-line); outline-offset:-8px; }
+.draw-image-frame { border-radius:9px; overflow:hidden; }
+.draw-footer {
+  min-height:38px; padding:0 22px; background:var(--draw-panel);
+}
+.draw-empty {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  width:min(420px,90%); min-height:228px; padding:30px 24px; margin:auto;
+  border:0; border-radius:16px; background:var(--draw-panel);
+  gap:11px; color:var(--draw-strong);
+}
+.draw-empty-mark { width:44px; height:44px; }
+.draw-empty-title { font-size:18px; }
+.draw-empty-hint { margin-top:1px; }
+.draw-empty-action { height:33px; padding:0 15px; border-radius:999px; }
 .draw-style-picker { position:relative; flex:0 0 auto; }
-.draw-style-trigger { display:flex; align-items:center; gap:8px; height:30px; padding:0 10px; border:0; border-radius:5px; background:transparent; color:var(--draw-strong); font-size:12px; cursor:pointer; }
-.draw-style-trigger:hover, .draw-style-trigger[aria-expanded='true'] { background:#242424; }
-.draw-style-trigger svg { display:block; color:var(--draw-accent); }
+.draw-style-trigger {
+  display:flex; align-items:center; gap:8px; height:34px; padding:0 11px;
+  border:0; border-radius:9px; background:transparent; color:var(--draw-strong);
+  font-size:12px; cursor:pointer;
+  transition:background-color .2s cubic-bezier(.22,1,.36,1);
+}
+.draw-style-trigger:hover, .draw-style-trigger[aria-expanded='true'] { background:var(--draw-hover); }
+.draw-style-trigger svg { display:block; color:var(--draw-strong); }
 .draw-style-chevron { color:var(--draw-muted); font-size:15px; line-height:1; padding-left:4px; }
-.draw-style-menu { position:absolute; z-index:40; top:calc(100% + 8px); left:0; width:184px; padding:5px; border:0; border-radius:7px; background:#292929; }
-.draw-style-menu button { display:flex; align-items:center; width:100%; gap:11px; height:37px; padding:0 10px; border:0; border-radius:4px; background:transparent; color:var(--draw-strong); font-size:12px; text-align:left; }
+.draw-style-menu {
+  position:absolute; z-index:40; top:calc(100% + 8px); left:0;
+  width:190px; padding:5px; border:0; border-radius:12px;
+  background:var(--draw-active); overflow:hidden;
+}
+.draw-style-menu button {
+  display:flex; align-items:center; width:100%; gap:11px; height:38px;
+  padding:0 11px; border:0; border-radius:8px;
+  background:transparent; color:var(--draw-strong); font-size:12px; text-align:left;
+  transition:background-color .18s cubic-bezier(.22,1,.36,1);
+}
 .draw-style-menu button svg { flex:0 0 39px; }
-.draw-style-menu button:hover, .draw-style-menu button:focus-visible { background:#383838; }
-.draw-style-menu button.is-selected { color:#ff8a3d; }
+.draw-style-menu button:hover, .draw-style-menu button:focus-visible { background:var(--draw-hover); }
+.draw-style-menu button.is-selected { background:var(--draw-hover); color:var(--draw-strong); }
+
 :root[data-theme='light'] .draw-header,
 :root[data-theme='light'] .draw-toolbar,
 :root[data-theme='light'] .draw-subbar,
-:root[data-theme='light'] .draw-footer { background:#f4f4f4; }
-:root[data-theme='light'] .draw-rail { background:#ededed; }
-:root[data-theme='light'] .draw-workspace, :root[data-theme='light'] .draw-stage { background:#f4f4f4; }
-:root[data-theme='light'] .draw-tools button.is-active,
-:root[data-theme='light'] .draw-format button.is-active,
-:root[data-theme='light'] .draw-style-trigger:hover { background:#dadada; }
-:root[data-theme='light'] .draw-style-trigger svg { color:#bf3f00; }
+:root[data-theme='light'] .draw-footer { background:#ffffff; }
+:root[data-theme='light'] .draw-rail { background:#ffffff; }
+:root[data-theme='light'] .draw-workspace { background:#ffffff; }
+:root[data-theme='light'] .draw-stage { background:#f4f4f4; }
 :root[data-theme='light'] .draw-style-menu { background:#e3e3e3; }
-:root[data-theme='light'] .draw-style-menu button:hover { background:#dadada; }
-:root[data-theme='light'] .draw-project-input,
-:root[data-theme='light'] .draw-button:not(.draw-button-primary) { background:#e3e3e3; }
-:root[data-theme='light'] .draw-image-item.is-selected { background:#dadada; }
+:root[data-theme='light'] .draw-style-trigger:hover,
+:root[data-theme='light'] .draw-style-menu button:hover { background:#ebebeb; }
+
 @media (max-width:800px) {
-  .draw-header { padding:8px 12px; }
-  .draw-layout { gap:0; padding:0; }
-  .draw-rail, .draw-workspace { border-radius:0; }
+  .draw-header { padding:8px 12px; min-height:64px; }
+  .draw-layout { gap:5px; padding:5px; }
+  .draw-rail, .draw-workspace { border-radius:11px; }
   .draw-toolbar { padding:7px 10px; gap:9px; }
+  .draw-tools button, .draw-format button { padding:0 9px; }
   .draw-subbar { padding:5px 10px; }
-  .draw-style-trigger { padding:0 6px; gap:5px; }
+  .draw-stage { padding:12px; }
+  .draw-empty { padding:24px 14px; }
+  .draw-footer { padding:6px 10px; }
   .draw-project-input { width:114px; }
 }
 @media (prefers-reduced-motion:reduce) {
-  .draw-style-menu, .draw-style-trigger { transition:none !important; }
+  .draw-page *, .draw-page *::before, .draw-page *::after {
+    transition:none !important; animation:none !important;
+  }
 }
