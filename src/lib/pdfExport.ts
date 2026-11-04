@@ -24,6 +24,10 @@ async function pdfEngine() {
     // PDF's built-in Courier is actually monospaced, unlike a sans-serif
     // that merely shrinks in code blocks. No additional font download.
     engine.addFonts({
+      Roboto: {
+        normal: 'Roboto-Regular.ttf', bold: 'Roboto-Medium.ttf',
+        italics: 'Roboto-Italic.ttf', bolditalics: 'Roboto-MediumItalic.ttf',
+      },
       Courier: {
         normal: 'Courier', bold: 'Courier-Bold',
         italics: 'Courier-Oblique', bolditalics: 'Courier-BoldOblique',
