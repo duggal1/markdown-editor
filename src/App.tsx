@@ -628,8 +628,26 @@ export default function App() {
       return;
     }
     try {
-      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
-      await navigator.clipboard.writeText(text);
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // Support older iOS WebViews without the asynchronous Clipboard API.
+        const input = document.createElement('textarea');
+        input.value = text;
+        input.readOnly = true;
+        input.setAttribute('aria-hidden', 'true');
+        Object.assign(input.style, {
+          position: 'fixed', left: '-9999px', top: '0', opacity: '0',
+        });
+        document.body.appendChild(input);
+        try {
+          input.focus({ preventScroll: true });
+          input.select();
+          if (!document.execCommand('copy')) throw new Error('Copy denied');
+        } finally {
+          input.remove();
+        }
+      }
       setNotice('Entire page copied');
     } catch {
       setNotice('Could not copy. Check browser clipboard access.');
