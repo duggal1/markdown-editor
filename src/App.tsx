@@ -76,7 +76,7 @@ export default function App() {
   const [workspaceId, setWorkspaceId] = useState('');
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [newWorkspaceId, setNewWorkspaceId] = useState<string | null>(null);
-  const [theme, setTheme] = useState<Theme>('light');
+  const [theme, setTheme] = useState<Theme>('dark');
   const [mode, setMode] = useState<Mode>('write');
   const [splitPercent, setSplitPercent] = useState(50);
   const [storedSplitPercent, setStoredSplitPercent] = useState(50);
@@ -160,7 +160,7 @@ export default function App() {
       setWorkspaceId(chosenWorkspace.id);
       setRecentIds(Array.isArray(prefs.recentIds) ? prefs.recentIds.filter(id => live.current.has(id)) : [first.id]);
       setTheme(prefs.theme === 'dark' || prefs.theme === 'light' ? prefs.theme
-        : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        : 'dark');
       // Never restore a desktop-open drawer over the entire phone editor.
       setSidebarOpen(window.matchMedia('(max-width: 800px)').matches ? false : prefs.sidebarOpen !== false);
       modeRef.current = restoredMode;
@@ -779,6 +779,7 @@ export default function App() {
           }}
         />
         <div className="sidebar-bottom">
+          <a className="draw-sidebar-entry" href="/draw"><Icon name="edit" size={16} /> Draw screenshots</a>
           <button className="sidebar-bottom-action" onClick={() => makeDocument(workspaceId)}><Icon name="plus" size={16} /> New document</button>
           <button className="sidebar-bottom-action" onClick={() => { if (recentIds[1]) selectDocument(recentIds[1]); }} disabled={!recentIds[1]}><Icon name="history" size={16} /> Previous document</button>
         </div>
@@ -804,6 +805,7 @@ export default function App() {
               <span className="mode-label">{item.charAt(0).toUpperCase() + item.slice(1)}</span>
             </motion.button>)}
           </div>
+          <a href="/draw" className="draw-entry" title="Open Draw screenshot annotator" aria-label="Open Draw screenshot annotator"><Icon name="edit" size={15}/><span>Draw</span></a>
           <motion.button {...pressMotion} type="button" className="export-button" onClick={() => { const doc = live.current.get(activeIdRef.current); if (doc) exportDocument(doc); }}><Icon name="download" size={15} /> <span>Export</span></motion.button>
           <motion.button {...pressMotion} type="button" className="square-button theme-toggle" title={theme === 'light' ? 'Dark mode' : 'Light mode'} aria-label={theme === 'light' ? 'Dark mode' : 'Light mode'} onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')}>
             <AnimatePresence initial={false} mode="wait"><motion.span key={theme} className="theme-icon" initial={motionOff ? false : { opacity: 0, rotate: -25 }} animate={{ opacity: 1, rotate: 0 }} exit={motionOff ? undefined : { opacity: 0, rotate: 25 }} transition={{ duration: motionOff ? 0 : 0.15 }}><Icon name={theme === 'light' ? 'moon' : 'sun'} size={17} /></motion.span></AnimatePresence>

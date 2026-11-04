@@ -25,7 +25,9 @@
     "@lezer/highlight": "^1.2.0",
     "rehype-raw": "^7.0.0",
     "rehype-sanitize": "^6.0.0",
-    "@tanstack/react-virtual": "^3.13.12"
+    "@tanstack/react-virtual": "^3.13.12",
+    "@hugeicons/react": "^1.1.10",
+    "@hugeicons/core-free-icons": "^4.2.1"
   },
   "devDependencies": {
     "@types/react": "^19.2.0",
