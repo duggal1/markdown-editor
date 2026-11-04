@@ -233,14 +233,25 @@ export default function App() {
       return;
     }
     const viewport = window.visualViewport;
-    const update = () => {
-      const height = viewport?.height || window.innerHeight;
-      document.documentElement.style.setProperty('--flow-viewport-height', Math.round(height) + 'px');
+    let frame: number | null = null;
+    let lastHeight = -1;
+    // iOS keyboard can emit dozens of visualViewport resizes. Batch writes
+    // to one frame and skip unchanged heights to avoid forced relayout.
+    const measure = () => {
+      frame = null;
+      const height = Math.round(viewport?.height || window.innerHeight);
+      if (height === lastHeight) return;
+      lastHeight = height;
+      document.documentElement.style.setProperty('--flow-viewport-height', height + 'px');
     };
-    update();
-    viewport?.addEventListener('resize', update);
-    window.addEventListener('resize', update);
+    const update = () => {
+      if (frame === null) frame = window.requestAnimationFrame(measure);
+    };
+    measure();
+    viewport?.addEventListener('resize', update, { passive: true });
+    window.addEventListener('resize', update, { passive: true });
     return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
       viewport?.removeEventListener('resize', update);
       window.removeEventListener('resize', update);
       document.documentElement.style.removeProperty('--flow-viewport-height');
@@ -808,7 +819,13 @@ export default function App() {
   const mobileGridRows = presentationMode === 'split' ? 'minmax(0, 1fr) minmax(0, 1fr)'
     : presentationMode === 'preview' ? 'minmax(0, 0fr) minmax(0, 1fr)'
       : 'minmax(0, 1fr) minmax(0, 0fr)';
-  const pressMotion = motionOff ? {} : { whileTap: { scale: 0.98 } };
+  // Compositor-friendly transforms only on true hover devices. The phone
+  // keeps the exact same controls and never gets sticky synthetic hover.
+  const pressMotion = motionOff ? {} : {
+    whileHover: compact ? undefined : { y: -1 },
+    whileTap: { scale: 0.985 },
+    transition: { duration: 0.17, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
+  };
   if (!loaded) return <main className="boot"><FlowMark size={30} /><span>Opening workspace…</span></main>;
   return <div className="flow-shell" onDragOver={event => event.preventDefault()} onDrop={onDrop}>
     <motion.aside className={'sidebar' + (sidebarOpen ? ' is-open' : '')}
@@ -818,7 +835,7 @@ export default function App() {
       aria-label="Workspaces and pages">
       <motion.div className="sidebar-inner" initial={false}
         animate={{ opacity: sidebarOpen ? 1 : 0, x: sidebarOpen ? 0 : -12,
-          filter: motionOff ? 'blur(0px)' : sidebarOpen ? 'blur(0px)' : 'blur(5px)' }}
+          filter: motionOff || compact ? 'blur(0px)' : sidebarOpen ? 'blur(0px)' : 'blur(5px)' }}
         transition={motionOff ? { duration: 0 } : { duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
         style={{ pointerEvents: sidebarOpen ? 'auto' : 'none' }}>
         <div className="sidebar-brand">
@@ -902,12 +919,19 @@ export default function App() {
         <div className="header-actions">
           <div className="mode-switch" role="group" aria-label="Editor mode">
             {(['write', 'split', 'preview'] as const).map(item => <motion.button key={item} type="button" aria-pressed={mode === item}
-              className={mode === item ? 'selected' : ''} whileTap={motionOff ? undefined : { scale: 0.96 }} onClick={() => changeMode(item)}>
+              className={mode === item ? 'selected' : ''} whileTap={motionOff ? undefined : { scale: 0.985 }}
+              whileHover={motionOff || compact ? undefined : { y: -1 }}
+              transition={motionOff ? { duration: 0 } : { duration: 0.17, ease: [0.22, 1, 0.36, 1] }}
+              onClick={() => changeMode(item)}>
               {mode === item && <motion.span layoutId="mode-highlight" className="mode-highlight" transition={motionOff ? { duration: 0 } : { duration: 0.22, ease: [0.23, 1, 0.32, 1] }} />}
               <span className="mode-label">{item.charAt(0).toUpperCase() + item.slice(1)}</span>
             </motion.button>)}
           </div>
-          <a href="/draw" className="draw-entry" title="Open Draw screenshot annotator" aria-label="Open Draw screenshot annotator"><Icon name="edit" size={15}/><span>Draw</span></a>
+          <motion.a href="/draw" className="draw-entry" title="Open Draw screenshot annotator" aria-label="Open Draw screenshot annotator"
+            whileHover={motionOff || compact ? undefined : { y: -1 }}
+            whileTap={motionOff ? undefined : { scale: 0.985 }}
+            transition={motionOff ? { duration: 0 } : { duration: 0.17, ease: [0.22, 1, 0.36, 1] }}>
+            <Icon name="edit" size={15}/><span>Draw</span></motion.a>
           <motion.button {...pressMotion} type="button" className="export-button" onClick={() => { const doc = live.current.get(activeIdRef.current); if (doc) exportDocument(doc); }}><Icon name="download" size={15} /> <span>Export</span></motion.button>
           <motion.button {...pressMotion} type="button" className="square-button theme-toggle" title={theme === 'light' ? 'Dark mode' : 'Light mode'} aria-label={theme === 'light' ? 'Dark mode' : 'Light mode'} onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')}>
             <AnimatePresence initial={false} mode="wait"><motion.span key={theme} className="theme-icon" initial={motionOff ? false : { opacity: 0, rotate: -25 }} animate={{ opacity: 1, rotate: 0 }} exit={motionOff ? undefined : { opacity: 0, rotate: 25 }} transition={{ duration: motionOff ? 0 : 0.15 }}><Icon name={theme === 'light' ? 'moon' : 'sun'} size={17} /></motion.span></AnimatePresence>
@@ -917,7 +941,10 @@ export default function App() {
       </header>
       <div className="subbar">
         <div className="formatting-actions" role="toolbar" aria-label="Markdown formatting">
-          {FORMATS.map(format => <motion.button key={format.name} type="button" whileTap={motionOff ? undefined : { scale: 0.94 }} title={format.label + (format.shortcut ? ' · ' + format.shortcut : '')} aria-label={format.label}
+          {FORMATS.map(format => <motion.button key={format.name} type="button" whileTap={motionOff ? undefined : { scale: 0.985 }}
+            whileHover={motionOff || compact ? undefined : { y: -1 }}
+            transition={motionOff ? { duration: 0 } : { duration: 0.17, ease: [0.22, 1, 0.36, 1] }}
+            title={format.label + (format.shortcut ? ' · ' + format.shortcut : '')} aria-label={format.label}
             onClick={() => { if (mode === 'preview') changeMode('write'); window.requestAnimationFrame(() => formatEditor(editorRef.current, format.name)); }}>
             {format.icon ? <Icon name={format.icon} size={16} /> : format.name === 'heading' ? <span className="format-heading">H<span>1</span></span>
               : <span className={format.name === 'bold' ? 'format-bold' : 'format-italic'}>{format.name === 'bold' ? 'B' : 'I'}</span>}
