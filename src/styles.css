@@ -304,13 +304,11 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 }
 .notice-mark {
   display:block; flex:0 0 10px; width:10px; height:10px;
-  background:#8e8e8e;
-  -webkit-mask-image:linear-gradient(#000 0 0);
-  mask-image:linear-gradient(#000 0 0);
-  clip-path:polygon(0 0,40% 0,40% 40%,0 40%,0 0,
-    60% 0,100% 0,100% 40%,60% 40%,60% 0,
-    0 60%,40% 60%,40% 100%,0 100%,0 60%,
-    60% 60%,100% 60%,100% 100%,60% 100%,60% 60%);
+  background:
+    linear-gradient(#8e8e8e 0 0) left top/4px 4px no-repeat,
+    linear-gradient(#8e8e8e 0 0) right top/4px 4px no-repeat,
+    linear-gradient(#8e8e8e 0 0) left bottom/4px 4px no-repeat,
+    linear-gradient(#8e8e8e 0 0) right bottom/4px 4px no-repeat;
 }
 .notice-text { flex:1; min-width:0; overflow-wrap:anywhere; }
 .notice button {
@@ -324,7 +322,7 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   background:#2c2c2c; color:#f5f5f5;
 }
 :root[data-theme='light'] .notice { background:#e6e6e6; color:#171717; }
-:root[data-theme='light'] .notice-mark { background:#5d5d5d; }
+:root[data-theme='light'] .notice-mark { filter:brightness(.68); }
 :root[data-theme='light'] .notice button { color:#666; }
 :root[data-theme='light'] .notice button:hover,
 :root[data-theme='light'] .notice button:focus-visible { background:#d7d7d7; color:#171717; }
