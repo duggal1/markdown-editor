@@ -580,7 +580,7 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 @media (max-width:800px) { .draw-entry {padding:0 9px; height:30px; gap:5px} .draw-entry span {display:none} }
 
 /* A measured two-weight type hierarchy, instead of flattening every label. */
-.brand-lockup, .document-title, .draw-entry, .tree-workspace-name, .tree-folder-name, .markdown-preview h1, .markdown-preview h2, .markdown-preview h3 { font-weight: 500; }
+.brand-lockup, .document-title, .draw-entry, .filetree-workspace-label, .markdown-preview h1, .markdown-preview h2, .markdown-preview h3 { font-weight: 500; }
 .markdown-preview strong { font-weight: 500; }
 .export-button, .mode-switch button.selected { font-weight: 500; }
 
