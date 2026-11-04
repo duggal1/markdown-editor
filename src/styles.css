@@ -695,14 +695,29 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 }
 
 
-/* Standard Hugeicons vectors. No masks, canvas or pixel filtering.
-   Keep existing layout selectors stable for tree, toolbar and Draw. */
+/* One restrained pixel skeleton for both Flow and Draw, modeled on the
+   original Draw toolbar: square end caps and crisp edges, not raster upscaling.
+   The SVG remains native Hugeicons; currentColor and theme states still work. */
 .pixel-huge-icon {
-  display:inline-flex; flex:0 0 auto;
+  position:relative; display:inline-flex; flex:0 0 auto;
   align-items:center; justify-content:center; vertical-align:middle;
   color:inherit; pointer-events:none;
 }
 .pixel-huge-icon svg { display:block; flex:none; }
+.pixel-huge-icon-subtle svg { shape-rendering:crispEdges; }
+.pixel-huge-icon-subtle svg :is(path,line,polyline,polygon,rect,circle) {
+  stroke-linecap:square;
+  stroke-linejoin:miter;
+}
+/* Pixel rail distinguishes the sidebar from a generic split-panel icon.
+   Three source-aligned cells, no tinted badge or oversized block treatment. */
+.pixel-sidebar-toggle::after {
+  content:'';
+  position:absolute; left:24%; top:29%;
+  width:2px; height:2px; background:currentColor;
+  box-shadow:0 4px 0 currentColor,0 8px 0 currentColor;
+  pointer-events:none;
+}
 
 /* Saved stays typographic. A compact orange pixel grid carries the status,
    not a colored badge. Saving uses a stationary horizontal scan. */
