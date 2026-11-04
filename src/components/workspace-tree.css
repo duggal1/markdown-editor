@@ -28,6 +28,22 @@
 .filetree-file > .pixel-huge-icon, .filetree-file > .filetree-label, .filetree-file > .filetree-more, .filetree-file > .filetree-rename { position:relative; z-index:1; }
 .filetree-file { position:relative; }
 .filetree-file.is-active > .pixel-huge-icon { color:var(--text); }
+/* Workspace quick-create sits directly left of More. Reserved width prevents
+   row movement as actions reveal on hover, focus, and touch. */
+.filetree-add-page {
+  display:grid; flex:0 0 24px; place-items:center;
+  width:24px; height:26px; padding:0; border:0; border-radius:8px;
+  background:transparent; color:var(--muted); opacity:0;
+  transition:opacity .18s cubic-bezier(.22,1,.36,1),
+             color .18s cubic-bezier(.22,1,.36,1),
+             background-color .18s cubic-bezier(.22,1,.36,1);
+}
+.filetree-root:hover .filetree-add-page,
+.filetree-root:focus-within .filetree-add-page,
+.filetree-add-page:focus-visible { opacity:1; }
+.filetree-add-page:hover, .filetree-add-page:focus-visible {
+  background:var(--neutral-200); color:var(--strong);
+}
 .filetree-more { display:grid; flex:0 0 24px; place-items:center; width:24px; height:26px; padding:0; border:0; border-radius:8px; background:transparent; color:var(--muted); opacity:0; transition:opacity .18s cubic-bezier(.22,1,.36,1), color .18s cubic-bezier(.22,1,.36,1), background-color .18s cubic-bezier(.22,1,.36,1); }
 .filetree-row:hover .filetree-more, .filetree-row:focus-within .filetree-more, .filetree-more[aria-expanded='true'] { opacity:1; }
 .filetree-more:hover { background:var(--neutral-200); color:var(--strong); }
@@ -41,8 +57,8 @@
 .filetree-menu button .pixel-huge-icon { flex:0 0 15px; color:var(--muted); }
 .filetree-menu button.filetree-delete .pixel-huge-icon { color:#e899a4; }
 .filetree-menu button:disabled { opacity:.36; }
-@media (hover:none) { .filetree-more { opacity:1; } }
-@media (prefers-reduced-motion:reduce) { .filetree-row,.filetree-more,.filetree-chevron svg { transition:none; } }
+@media (hover:none) { .filetree-more, .filetree-add-page { opacity:1; } }
+@media (prefers-reduced-motion:reduce) { .filetree-row,.filetree-more,.filetree-add-page,.filetree-chevron svg { transition:none; } }
 
 :root[data-theme='light'] .filetree-selection { background:#e1e1e1; }
 :root[data-theme='light'] .filetree-menu { background:#f5f5f5; border:0; box-shadow:none; }
