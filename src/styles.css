@@ -35,7 +35,7 @@
   --brand-head: #ffffff; --flow-accent: #f05a00; --flow-accent-ink: #0a0a0a;
   color: var(--text); background: var(--background);
 }
-*, *::before, *::after { box-sizing: border-box; font-weight: 400 !important; }
+*, *::before, *::after { box-sizing: border-box; }
 html, body, #root { width: 100%; height: 100%; margin: 0; }
 body { color: var(--text); background: var(--background); }
 button, input, textarea { font: inherit; }
@@ -725,3 +725,9 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .draw-sidebar-entry { display:flex; align-items:center; gap:9px; height:36px; padding:0 10px; border-radius:7px; color:var(--text); text-decoration:none; font-size:12px; }
 .draw-sidebar-entry:hover { background:var(--neutral-100); }
 @media (max-width:800px) { .draw-entry {padding:0 9px; height:30px; gap:5px} .draw-entry span {display:none} }
+
+/* A measured two-weight type hierarchy, instead of flattening every label. */
+.brand-lockup, .document-title, .draw-entry, .tree-workspace-name, .tree-folder-name, .markdown-preview h1, .markdown-preview h2, .markdown-preview h3 { font-weight: 500; }
+.tree-folder .tree-folder-name { font-weight: 500; }
+.markdown-preview strong { font-weight: 500; }
+.export-button, .mode-switch button.selected { font-weight: 500; }
