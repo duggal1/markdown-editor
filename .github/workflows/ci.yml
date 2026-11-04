@@ -20,4 +20,5 @@ jobs:
       - run: npm run test:search
       - run: npm run test:interactions
       - run: npm run test:titles
+      - run: npm run test:pdf
       - run: npm run build
