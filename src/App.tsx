@@ -903,7 +903,10 @@ export default function App() {
             onClick={() => setSidebarOpen(current => !current)}><Icon name="sidebar" size={18} /></motion.button>
           <input ref={titleRef} className="document-title" aria-label="Page title" spellCheck={false}
             value={active?.title || ''} onChange={event => changeTitle(event.target.value)} placeholder="Untitled" />
-          <span className="save-indicator" data-save-state={saveState}
+          <motion.span className="save-indicator" data-save-state={saveState}
+            initial={false} aria-hidden={saveState === 'idle'}
+            animate={{ opacity: saveState === 'idle' ? 0 : 1, y: saveState === 'idle' ? -2 : 0 }}
+            transition={motionOff ? { duration: 0 } : { duration: 0.19, ease: [0.22, 1, 0.36, 1] }}
             aria-label={saveState === 'saving' ? 'Saving page' : saveState === 'saved' ? 'Page saved in ' + saveDuration + ' milliseconds' : saveState === 'error' ? 'Save failed' : undefined}
             role="status" aria-live="polite">
             <span className="save-prefix" aria-hidden="true" />
@@ -914,7 +917,7 @@ export default function App() {
               spinTiming={{ duration: 260, easing: 'ease-out' }}
               transformTiming={{ duration: 260, easing: 'ease-out' }}
               opacityTiming={{ duration: 160, easing: 'ease-out' }} /> ms</span>
-          </span>
+          </motion.span>
         </div>
         <div className="header-actions">
           <div className="mode-switch" role="group" aria-label="Editor mode">
