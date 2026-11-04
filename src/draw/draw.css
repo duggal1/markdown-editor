@@ -498,3 +498,78 @@
 @media (prefers-reduced-motion: reduce) {
   .draw-page * { transition: none !important; animation: none !important; }
 }
+
+
+/* Draw refinement: the screenshot, not the controls, owns the canvas. */
+.draw-header { min-height:64px; padding:0 24px; background:#111; }
+.draw-layout { gap:0; padding:0; }
+.draw-rail { background:#101010; border:0; border-radius:0; }
+.draw-rail-heading { min-height:46px; padding:0 18px; }
+.draw-image-list { padding:0 8px 12px; gap:2px; }
+.draw-image-item { border-radius:5px; margin:1px 0; min-height:58px; }
+.draw-image-item.is-selected { background:#1f1f1f; }
+.draw-image-item img, .draw-image-item-select img { border-radius:2px; }
+.draw-workspace { background:#0a0a0a; border-radius:0; }
+.draw-toolbar { flex-wrap:wrap; min-height:54px; flex:0 0 auto; padding:8px 20px; background:#111; gap:17px; }
+.draw-tools, .draw-format { display:flex; align-items:center; gap:3px; padding:0; border:0; border-radius:0; background:transparent; }
+.draw-tools button, .draw-format button { height:30px; min-height:30px; padding:0 11px; border:0; border-radius:5px; background:transparent; color:var(--draw-muted); }
+.draw-tools button.is-active, .draw-format button.is-active { background:#242424; color:var(--draw-strong); }
+.draw-tools button:hover:not(.is-active), .draw-format button:hover:not(.is-active) { background:#1f1f1f; }
+.draw-swatches { gap:9px; }
+.draw-swatch { width:16px; height:16px; border-radius:3px; border:0; }
+.draw-swatch.is-active { outline:1px solid var(--draw-strong); outline-offset:3px; }
+.draw-custom-color { width:18px; height:18px; border-radius:3px; border:0; }
+.draw-project-input { background:#202020; min-width:115px; width:185px; border-radius:5px; }
+.draw-project-input:focus { background:#262626; }
+.draw-heading-separator { background:#262626; }
+.draw-button { border-radius:6px; padding:0 11px; background:#202020; }
+.draw-button:hover:not(:disabled) { background:#292929; }
+.draw-button-primary { border-radius:6px; background:var(--draw-accent); }
+.draw-subbar { min-height:43px; padding:0 20px; background:#111; }
+.draw-text-button { min-height:25px; height:25px; padding:0 7px; border-radius:4px; }
+.draw-text-button:hover:not(:disabled) { background:#242424; }
+.draw-navigation .draw-button { padding:0 6px; }
+.draw-stage { background:#0a0a0a; }
+.draw-footer { min-height:34px; padding:0 20px; background:#111; }
+.draw-empty { background:transparent; border-radius:0; min-height:205px; padding:24px 16px; gap:10px; }
+.draw-empty-mark { width:35px; height:35px; }
+.draw-empty-title { font-size:16px; }
+.draw-empty-hint { margin-top:2px; }
+.draw-empty-action { height:30px; border-radius:5px; }
+.draw-style-picker { position:relative; flex:0 0 auto; }
+.draw-style-trigger { display:flex; align-items:center; gap:8px; height:30px; padding:0 10px; border:0; border-radius:5px; background:transparent; color:var(--draw-strong); font-size:12px; cursor:pointer; }
+.draw-style-trigger:hover, .draw-style-trigger[aria-expanded='true'] { background:#242424; }
+.draw-style-trigger svg { display:block; color:var(--draw-accent); }
+.draw-style-chevron { color:var(--draw-muted); font-size:15px; line-height:1; padding-left:4px; }
+.draw-style-menu { position:absolute; z-index:40; top:calc(100% + 8px); left:0; width:184px; padding:5px; border:0; border-radius:7px; background:#292929; }
+.draw-style-menu button { display:flex; align-items:center; width:100%; gap:11px; height:37px; padding:0 10px; border:0; border-radius:4px; background:transparent; color:var(--draw-strong); font-size:12px; text-align:left; }
+.draw-style-menu button svg { flex:0 0 39px; }
+.draw-style-menu button:hover, .draw-style-menu button:focus-visible { background:#383838; }
+.draw-style-menu button.is-selected { color:#ff8a3d; }
+:root[data-theme='light'] .draw-header,
+:root[data-theme='light'] .draw-toolbar,
+:root[data-theme='light'] .draw-subbar,
+:root[data-theme='light'] .draw-footer { background:#f4f4f4; }
+:root[data-theme='light'] .draw-rail { background:#ededed; }
+:root[data-theme='light'] .draw-workspace, :root[data-theme='light'] .draw-stage { background:#f4f4f4; }
+:root[data-theme='light'] .draw-tools button.is-active,
+:root[data-theme='light'] .draw-format button.is-active,
+:root[data-theme='light'] .draw-style-trigger:hover { background:#dadada; }
+:root[data-theme='light'] .draw-style-trigger svg { color:#bf3f00; }
+:root[data-theme='light'] .draw-style-menu { background:#e3e3e3; }
+:root[data-theme='light'] .draw-style-menu button:hover { background:#dadada; }
+:root[data-theme='light'] .draw-project-input,
+:root[data-theme='light'] .draw-button:not(.draw-button-primary) { background:#e3e3e3; }
+:root[data-theme='light'] .draw-image-item.is-selected { background:#dadada; }
+@media (max-width:800px) {
+  .draw-header { padding:8px 12px; }
+  .draw-layout { gap:0; padding:0; }
+  .draw-rail, .draw-workspace { border-radius:0; }
+  .draw-toolbar { padding:7px 10px; gap:9px; }
+  .draw-subbar { padding:5px 10px; }
+  .draw-style-trigger { padding:0 6px; gap:5px; }
+  .draw-project-input { width:114px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .draw-style-menu, .draw-style-trigger { transition:none !important; }
+}
