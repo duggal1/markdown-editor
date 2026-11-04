@@ -74,6 +74,12 @@ assert.equal(JSON.stringify(hugeDef).length > 0, true);
 
 const codeDoc = buildPdfDefinition('```rust\nfn main() { println!("ready"); }\n```', 'Rust code');
 assert.ok(codeDoc.content.some(x => x.table && x.table.body?.[0]?.[0]?.stack?.some(y=>y.style==='code')));
+const rawSwift = buildPdfDefinition(
+  'import SwiftUI\nstruct Sample: View { var body: some View { Text("Ready") } }', 'Swift code');
+assert.ok(rawSwift.content.some(x => x.table && x.table.body?.[0]?.[0]?.stack?.some(y =>
+  y.style === 'code' && y.text.includes('import SwiftUI'))),
+  'Raw Swift input must be rendered as an intact code block.');
+assert.equal(definition.styles.code.font, 'Courier', 'Code needs genuine monospaced typography.');
 const imageData = new Map([['https://example.com/test.png', 'data:image/png;base64,aGVsbG8=']]);
 const imageDoc = buildPdfDefinition('![Diagram](https://example.com/test.png)', 'Diagram', imageData);
 assert.ok(imageDoc.content.some(x => x.image), 'Embedded PNG data should become a PDF image.');
@@ -93,6 +99,12 @@ assert.match(css, /\.flow-export-menu/);
 const lib = (await import('pdfmake/build/pdfmake.js')).default;
 const fonts = (await import('pdfmake/build/vfs_fonts.js')).default;
 lib.addVirtualFileSystem(fonts);
+lib.addFonts({
+  Courier: {
+    normal: 'Courier', bold: 'Courier-Bold',
+    italics: 'Courier-Oblique', bolditalics: 'Courier-BoldOblique',
+  },
+});
 const actual = await new Promise((resolve, reject) => {
   try {
     lib.createPdf(definition).getBuffer(buffer => resolve(buffer));
