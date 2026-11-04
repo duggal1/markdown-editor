@@ -885,7 +885,14 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
     background:var(--neutral-200);
   }
   .topbar .draw-entry span:not(.pixel-huge-icon) { display:none; }
-  .topbar .draw-entry .pixel-huge-icon { width:17px!important; height:17px!important; }
+  /* Older narrow-screen rules hid every span, including the SVG wrapper.
+     Explicitly restore the actual Hugeicons skeletons for Draw and Export. */
+  .topbar .draw-entry > .pixel-huge-icon,
+  .topbar .export-button > .pixel-huge-icon {
+    display:inline-flex!important;
+    align-items:center; justify-content:center;
+    width:17px!important; height:17px!important;
+  }
   .topbar .export-button {
     grid-row:1; grid-column:3; align-self:center;
     display:inline-flex; align-items:center; justify-content:center;
@@ -904,6 +911,12 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   .document-meta { min-width:0; }
   .document-title { min-width:0; }
   .save-indicator[data-save-state='idle'] { display:none; }
+  /* Show a compact scanning pixel indicator while typing without pushing
+     the page title out of the first header row on a 320px iPhone. */
+  .save-indicator[data-save-state='saving'] {
+    flex:0 0 48px; width:48px; min-width:48px; gap:3px;
+  }
+  .save-indicator[data-save-state='saving'] .save-label { display:none; }
 }
 @media (max-width:360px) {
   .topbar { column-gap:3px; padding-inline:8px; }
