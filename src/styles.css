@@ -764,7 +764,7 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   font:500 11px/1 var(--mono); font-variant-numeric:tabular-nums;
 }
 .save-indicator::before { display:none!important; content:none!important; }
-.save-indicator[data-save-state='idle'] { visibility:hidden; }
+.save-indicator[data-save-state='idle'] { pointer-events:none; }
 .save-prefix {
   display:block; width:5px; height:5px; flex:0 0 5px;
   border-radius:1px; background:#ea580c;
@@ -825,4 +825,10 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   .save-indicator[data-save-state='saving'] .save-label {
     background:none; -webkit-text-fill-color:currentColor;
   }
+}
+
+/* Motion uses transforms and opacity. Keep the established iOS geometry and
+   avoid allocating an expensive blur layer while the keyboard is open. */
+@media (max-width:800px) {
+  .sidebar-inner { will-change:opacity,transform; }
 }
