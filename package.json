@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "test:format": "node scripts/test-auto-markdown.mjs",
     "test:icons": "node scripts/test-icons.mjs",
-    "test:workspace-ui": "node scripts/test-workspace-ui.mjs"
+    "test:workspace-ui": "node scripts/test-workspace-ui.mjs",
+    "test:preview": "node scripts/test-preview-pipeline.mjs",
+    "test:interactions": "node scripts/test-interactions.mjs"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.5.2",
@@ -30,7 +32,8 @@
     "rehype-sanitize": "^6.0.0",
     "@tanstack/react-virtual": "^3.13.12",
     "@hugeicons/react": "^1.1.10",
-    "@hugeicons/core-free-icons": "^4.2.1"
+    "@hugeicons/core-free-icons": "^4.2.1",
+    "@number-flow/react": "^0.6.2"
   },
   "devDependencies": {
     "@types/react": "^19.2.0",

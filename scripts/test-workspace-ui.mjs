@@ -27,9 +27,9 @@ assert.match(treeCss, /@media \(hover:none\)[^\n]*\.filetree-add-page/);
 
 // Toast has a neutral surface, accessible close action, and a reduced-motion
 // exit, without the previous inverted white panel / artificial drop shadow.
-assert.match(style, /\.notice \{[\s\S]*?background:#1b1b1b; color:#ededed;/);
+assert.match(style, /\.notice \{[\s\S]*?background:#121212; color:#f0f0f0;/);
 assert.match(style, /\.notice \{[\s\S]*?border:0; border-radius:10px; box-shadow:none;/);
-assert.match(style, /:root\[data-theme='light'\] \.notice \{ background:#e6e6e6;/);
+assert.match(style, /:root\[data-theme='light'\] \.notice \{ background:#ffffff;/);
 assert.match(app, /<AnimatePresence initial=\{false\}>\s*\{notice && <motion\.div/);
 assert.match(app, /aria-label="Dismiss message"/);
 console.log('Workspace quick-add and neutral toast regression checks passed.');

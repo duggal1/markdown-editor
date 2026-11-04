@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type PointerEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import NumberFlow from '@number-flow/react';
 import type { EditorView } from '@codemirror/view';
 import MarkdownEditor, { formatEditor, type Format } from './components/MarkdownEditor';
 import WorkspaceTree from './components/WorkspaceTree';
@@ -16,6 +17,12 @@ import {
 } from './lib/store';
 
 const MarkdownPreview = lazy(() => import('./components/MarkdownPreview'));
+
+// Warm the preview's module on idle without blocking the editor or changing
+// mobile layout. This removes a cold-import pause on the first preview.
+function warmPreviewModule() {
+  void import('./components/MarkdownPreview');
+}
 const FORMATS: { name: Format; icon?: IconName; label: string; shortcut?: string }[] = [
   { name: 'heading', label: 'Heading', shortcut: '#' },
   { name: 'bold', icon: 'bold', label: 'Bold' },
@@ -84,7 +91,9 @@ export default function App() {
   const [searchResults, setSearchResults] = useState<string[]>([]);
   const [previewText, setPreviewText] = useState('');
   const [words, setWords] = useState(0);
-  const [saveState, setSaveState] = useState<'saving' | 'saved' | 'error'>('saved');
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [saveDuration, setSaveDuration] = useState(0);
+  const saveStarted = useRef(new Map<string, number>());
   const [notice, setNotice] = useState('');
   const [pendingDelete, setPendingDelete] = useState<{ kind: 'document' | 'workspace'; id: string; title: string; count?: number } | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -111,6 +120,25 @@ export default function App() {
   const previewTimer = useRef<number | null>(null);
   const pendingPreview = useRef<{ id: string; markdown: string } | null>(null);
   const motionOff = useReducedMotion();
+
+  // No progress UI is permanently pinned in the toolbar. A real successful
+  // IndexedDB write is shown for five seconds, then the reserved slot clears.
+  useEffect(() => {
+    if (saveState !== 'saved') return;
+    const timer = window.setTimeout(() => {
+      setSaveState(current => current === 'saved' ? 'idle' : current);
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [saveState, saveDuration]);
+
+  useEffect(() => {
+    const start = () => {
+      if (document.visibilityState !== 'visible') return;
+      warmPreviewModule();
+    };
+    const timeout = window.setTimeout(start, 950);
+    return () => window.clearTimeout(timeout);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -205,14 +233,25 @@ export default function App() {
       return;
     }
     const viewport = window.visualViewport;
-    const update = () => {
-      const height = viewport?.height || window.innerHeight;
-      document.documentElement.style.setProperty('--flow-viewport-height', Math.round(height) + 'px');
+    let frame: number | null = null;
+    let lastHeight = -1;
+    // iOS keyboard can emit dozens of visualViewport resizes. Batch writes
+    // to one frame and skip unchanged heights to avoid forced relayout.
+    const measure = () => {
+      frame = null;
+      const height = Math.round(viewport?.height || window.innerHeight);
+      if (height === lastHeight) return;
+      lastHeight = height;
+      document.documentElement.style.setProperty('--flow-viewport-height', height + 'px');
     };
-    update();
-    viewport?.addEventListener('resize', update);
-    window.addEventListener('resize', update);
+    const update = () => {
+      if (frame === null) frame = window.requestAnimationFrame(measure);
+    };
+    measure();
+    viewport?.addEventListener('resize', update, { passive: true });
+    window.addEventListener('resize', update, { passive: true });
     return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
       viewport?.removeEventListener('resize', update);
       window.removeEventListener('resize', update);
       document.documentElement.style.removeProperty('--flow-viewport-height');
@@ -237,12 +276,18 @@ export default function App() {
       if (saveQueue.current.get(id) === next) saveQueue.current.delete(id);
       const latest = live.current.get(id);
       if (latest && latest.updatedAt === doc.updatedAt) {
-        if (activeIdRef.current === id) setSaveState('saved');
+        if (activeIdRef.current === id) {
+          const started = saveStarted.current.get(id);
+          if (started !== undefined) setSaveDuration(Math.max(1, Math.round(performance.now() - started)));
+          setSaveState('saved');
+        }
+        saveStarted.current.delete(id);
         clearRecovery(id);
       }
     }).catch(() => {
       if (saveQueue.current.get(id) === next) saveQueue.current.delete(id);
       if (activeIdRef.current === id) setSaveState('error');
+      saveStarted.current.delete(id);
     });
   }, []);
 
@@ -260,6 +305,8 @@ export default function App() {
 
   const scheduleSave = useCallback((doc: FlowDocument) => {
     live.current.set(doc.id, doc);
+    saveStarted.current.set(doc.id, performance.now());
+    setSaveDuration(0);
     setSaveState('saving');
     const old = saveTimers.current.get(doc.id);
     if (old !== undefined) clearTimeout(old);
@@ -361,7 +408,7 @@ export default function App() {
     setPreviewText(doc.markdown);
     setWords(doc.markdown.length < 25000 ? wordCount(doc.markdown) : 0);
     if (doc.markdown.length >= 25000) workerRef.current?.postMessage({ type: 'metrics', document: { id: doc.id, markdown: doc.markdown, updatedAt: doc.updatedAt } });
-    setSaveState('saved');
+    setSaveState('idle');
     if (window.innerWidth < 800) setSidebarOpen(false);
   }, [flush]);
 
@@ -576,6 +623,7 @@ export default function App() {
   async function importFiles(incoming: File[]) {
     if (!incoming.length || importInFlight.current) return;
     importInFlight.current = true;
+    setSaveDuration(0);
     setSaveState('saving');
     const imported: FlowDocument[] = [];
     const errors: string[] = [];
@@ -772,7 +820,13 @@ export default function App() {
   const mobileGridRows = presentationMode === 'split' ? 'minmax(0, 1fr) minmax(0, 1fr)'
     : presentationMode === 'preview' ? 'minmax(0, 0fr) minmax(0, 1fr)'
       : 'minmax(0, 1fr) minmax(0, 0fr)';
-  const pressMotion = motionOff ? {} : { whileTap: { scale: 0.98 } };
+  // Compositor-friendly transforms only on true hover devices. The phone
+  // keeps the exact same controls and never gets sticky synthetic hover.
+  const pressMotion = motionOff ? {} : {
+    whileHover: compact ? undefined : { y: -1 },
+    whileTap: { scale: 0.985 },
+    transition: { duration: 0.17, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
+  };
   if (!loaded) return <main className="boot"><FlowMark size={30} /><span>Opening workspace…</span></main>;
   return <div className="flow-shell" onDragOver={event => event.preventDefault()} onDrop={onDrop}>
     <motion.aside className={'sidebar' + (sidebarOpen ? ' is-open' : '')}
@@ -782,7 +836,7 @@ export default function App() {
       aria-label="Workspaces and pages">
       <motion.div className="sidebar-inner" initial={false}
         animate={{ opacity: sidebarOpen ? 1 : 0, x: sidebarOpen ? 0 : -12,
-          filter: motionOff ? 'blur(0px)' : sidebarOpen ? 'blur(0px)' : 'blur(5px)' }}
+          filter: motionOff || compact ? 'blur(0px)' : sidebarOpen ? 'blur(0px)' : 'blur(5px)' }}
         transition={motionOff ? { duration: 0 } : { duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
         style={{ pointerEvents: sidebarOpen ? 'auto' : 'none' }}>
         <div className="sidebar-brand">
@@ -850,20 +904,38 @@ export default function App() {
             onClick={() => setSidebarOpen(current => !current)}><Icon name="sidebar" size={18} /></motion.button>
           <input ref={titleRef} className="document-title" aria-label="Page title" spellCheck={false}
             value={active?.title || ''} onChange={event => changeTitle(event.target.value)} placeholder="Untitled" />
-          <span className="save-indicator" data-save-state={saveState} aria-label={saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : 'Save failed'} role="status">
-            {saveState === 'saving' && <TerminalLoader loading />}
+          <motion.span className="save-indicator" data-save-state={saveState}
+            initial={false} aria-hidden={saveState === 'idle'}
+            animate={{ opacity: saveState === 'idle' ? 0 : 1, y: saveState === 'idle' ? -2 : 0 }}
+            transition={motionOff ? { duration: 0 } : { duration: 0.19, ease: [0.22, 1, 0.36, 1] }}
+            aria-label={saveState === 'saving' ? 'Saving page' : saveState === 'saved' ? 'Page saved in ' + saveDuration + ' milliseconds' : saveState === 'error' ? 'Save failed' : undefined}
+            role="status" aria-live="polite">
+            <span className="save-prefix" aria-hidden="true" />
             <span className="save-label">{saveState === 'error' ? 'Not saved' : saveState === 'saving' ? 'Saving' : 'Saved'}</span>
-          </span>
+            {saveState === 'saving' && <TerminalLoader loading />}
+            <span className={'save-duration' + (saveDuration <= 0 ? ' is-empty' : '')}>in <NumberFlow value={saveDuration}
+              animated={!motionOff}
+              spinTiming={{ duration: 260, easing: 'ease-out' }}
+              transformTiming={{ duration: 260, easing: 'ease-out' }}
+              opacityTiming={{ duration: 160, easing: 'ease-out' }} /> ms</span>
+          </motion.span>
         </div>
         <div className="header-actions">
           <div className="mode-switch" role="group" aria-label="Editor mode">
             {(['write', 'split', 'preview'] as const).map(item => <motion.button key={item} type="button" aria-pressed={mode === item}
-              className={mode === item ? 'selected' : ''} whileTap={motionOff ? undefined : { scale: 0.96 }} onClick={() => changeMode(item)}>
+              className={mode === item ? 'selected' : ''} whileTap={motionOff ? undefined : { scale: 0.985 }}
+              whileHover={motionOff || compact ? undefined : { y: -1 }}
+              transition={motionOff ? { duration: 0 } : { duration: 0.17, ease: [0.22, 1, 0.36, 1] }}
+              onClick={() => changeMode(item)}>
               {mode === item && <motion.span layoutId="mode-highlight" className="mode-highlight" transition={motionOff ? { duration: 0 } : { duration: 0.22, ease: [0.23, 1, 0.32, 1] }} />}
               <span className="mode-label">{item.charAt(0).toUpperCase() + item.slice(1)}</span>
             </motion.button>)}
           </div>
-          <a href="/draw" className="draw-entry" title="Open Draw screenshot annotator" aria-label="Open Draw screenshot annotator"><Icon name="edit" size={15}/><span>Draw</span></a>
+          <motion.a href="/draw" className="draw-entry" title="Open Draw screenshot annotator" aria-label="Open Draw screenshot annotator"
+            whileHover={motionOff || compact ? undefined : { y: -1 }}
+            whileTap={motionOff ? undefined : { scale: 0.985 }}
+            transition={motionOff ? { duration: 0 } : { duration: 0.17, ease: [0.22, 1, 0.36, 1] }}>
+            <Icon name="edit" size={15}/><span>Draw</span></motion.a>
           <motion.button {...pressMotion} type="button" className="export-button" onClick={() => { const doc = live.current.get(activeIdRef.current); if (doc) exportDocument(doc); }}><Icon name="download" size={15} /> <span>Export</span></motion.button>
           <motion.button {...pressMotion} type="button" className="square-button theme-toggle" title={theme === 'light' ? 'Dark mode' : 'Light mode'} aria-label={theme === 'light' ? 'Dark mode' : 'Light mode'} onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')}>
             <AnimatePresence initial={false} mode="wait"><motion.span key={theme} className="theme-icon" initial={motionOff ? false : { opacity: 0, rotate: -25 }} animate={{ opacity: 1, rotate: 0 }} exit={motionOff ? undefined : { opacity: 0, rotate: 25 }} transition={{ duration: motionOff ? 0 : 0.15 }}><Icon name={theme === 'light' ? 'moon' : 'sun'} size={17} /></motion.span></AnimatePresence>
@@ -873,7 +945,10 @@ export default function App() {
       </header>
       <div className="subbar">
         <div className="formatting-actions" role="toolbar" aria-label="Markdown formatting">
-          {FORMATS.map(format => <motion.button key={format.name} type="button" whileTap={motionOff ? undefined : { scale: 0.94 }} title={format.label + (format.shortcut ? ' · ' + format.shortcut : '')} aria-label={format.label}
+          {FORMATS.map(format => <motion.button key={format.name} type="button" whileTap={motionOff ? undefined : { scale: 0.985 }}
+            whileHover={motionOff || compact ? undefined : { y: -1 }}
+            transition={motionOff ? { duration: 0 } : { duration: 0.17, ease: [0.22, 1, 0.36, 1] }}
+            title={format.label + (format.shortcut ? ' · ' + format.shortcut : '')} aria-label={format.label}
             onClick={() => { if (mode === 'preview') changeMode('write'); window.requestAnimationFrame(() => formatEditor(editorRef.current, format.name)); }}>
             {format.icon ? <Icon name={format.icon} size={16} /> : format.name === 'heading' ? <span className="format-heading">H<span>1</span></span>
               : <span className={format.name === 'bold' ? 'format-bold' : 'format-italic'}>{format.name === 'bold' ? 'B' : 'I'}</span>}

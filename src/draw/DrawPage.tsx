@@ -872,7 +872,14 @@ export default function DrawPage() {
 
   const count = active ? (annotations[active.id] || []).length : 0;
   const reducedMotion = useReducedMotion();
-  const tap = reducedMotion ? undefined : { scale: 0.97 };
+  // Keep the iOS layout unchanged; hover transforms run only on real
+  // pointer-hover devices, while taps keep a small, quiet press response.
+  const hoverCapable = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  const hoverMotion = reducedMotion ? {} : {
+    whileHover: hoverCapable ? { y: -1 } : undefined,
+    whileTap: { scale: 0.985 },
+    transition: { duration: 0.17, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
+  };
   return <div className="draw-page">
     <header className="draw-header">
       <div className="draw-heading">
@@ -888,19 +895,19 @@ export default function DrawPage() {
       <div className="draw-header-actions">
         <input ref={input} className="draw-file-input" type="file"
           accept="image/*,.svg" multiple onChange={upload} aria-label="Upload images" />
-        <button className="draw-button" type="button" onClick={() => input.current?.click()}>
+        <motion.button {...hoverMotion} className="draw-button" type="button" onClick={() => input.current?.click()}>
           <Icon name="imageAdd" size={15} /> Add images
-        </button>
-        <button className="draw-button draw-button-primary" type="button"
+        </motion.button>
+        <motion.button {...hoverMotion} className="draw-button draw-button-primary" type="button"
           disabled={!active || busy || !!singleBusyId}
           onClick={() => { if (active) void downloadSingle(active); }}>
           <Icon name="download" size={15} /> {singleBusyId === active?.id ? 'Exporting…' : 'Export image'}
-        </button>
-        <button className="draw-button" type="button"
+        </motion.button>
+        <motion.button {...hoverMotion} className="draw-button" type="button"
           disabled={!images.length || busy || !!singleBusyId}
           onClick={() => { void download(); }}>
           <Icon name="download" size={15} /> {busy ? progress || 'Exporting…' : 'Export all'}
-        </button>
+        </motion.button>
       </div>
     </header>
 
@@ -936,17 +943,17 @@ export default function DrawPage() {
               </span>
             </button>
             <div className="draw-image-item-actions">
-              <button type="button" className="draw-image-item-action"
+              <motion.button {...hoverMotion} type="button" className="draw-image-item-action"
                 disabled={busy || !!singleBusyId}
                 aria-label={'Download ' + filename(projectName, item, i, format)}
                 title={'Download ' + filename(projectName, item, i, format)}
                 onClick={() => { void downloadSingle(item); }}>
                 {singleBusyId === item.id ? '…' : <Icon name="download" size={14} />}
-              </button>
-              <button type="button" className="draw-image-item-action draw-image-remove"
+              </motion.button>
+              <motion.button {...hoverMotion} type="button" className="draw-image-item-action draw-image-remove"
                 disabled={busy || !!singleBusyId}
                 aria-label={'Remove ' + item.name} title={'Remove ' + item.name}
-                onClick={() => removeImage(item.id)}><Icon name="close" size={14} /></button>
+                onClick={() => removeImage(item.id)}><Icon name="close" size={14} /></motion.button>
             </div>
           </motion.div>)}
           {!images.length && <span className="draw-rail-empty">No screenshots yet.</span>}
@@ -956,15 +963,13 @@ export default function DrawPage() {
       <section className="draw-workspace" aria-label="Annotate screenshot">
         <div className="draw-toolbar">
           <div className="draw-tools" role="group" aria-label="Annotation tool">
-            <motion.button whileTap={tap} whileHover={reducedMotion ? undefined : { y: -1 }} 
-              transition={{ duration: reducedMotion ? 0 : 0.18, ease: [0.22, 1, 0.36, 1] }}
-              type="button" className={'draw-tool' + (tool === 'select' ? ' is-active' : '')}
+            <motion.button {...hoverMotion} type="button" className={'draw-tool' + (tool === 'select' ? ' is-active' : '')}
               aria-pressed={tool === 'select'}
               onClick={() => { commitText(); setTool('select'); }}><Icon name="cursor" size={15} /> <span>Select</span></motion.button>
-            <motion.button whileTap={tap} type="button" className={'draw-tool' + (tool === 'arrow' ? ' is-active' : '')}
+            <motion.button {...hoverMotion} type="button" className={'draw-tool' + (tool === 'arrow' ? ' is-active' : '')}
               aria-pressed={tool === 'arrow'}
               onClick={() => { commitText(); setTool('arrow'); }}><Icon name="arrowUpRight" size={15} /> <span>Arrow</span></motion.button>
-            <motion.button whileTap={tap} type="button" className={'draw-tool' + (tool === 'text' ? ' is-active' : '')}
+            <motion.button {...hoverMotion} type="button" className={'draw-tool' + (tool === 'text' ? ' is-active' : '')}
               aria-pressed={tool === 'text'} onClick={() => setTool('text')}>
               <Icon name="text" size={15} /> <span>Text</span></motion.button>
           </div>
@@ -997,7 +1002,7 @@ export default function DrawPage() {
             </AnimatePresence>
           </div>
           <div className="draw-swatches" role="group" aria-label="Annotation color">
-            {COLORS.map(c => <button key={c} type="button"
+            {COLORS.map(c => <motion.button {...hoverMotion} key={c} type="button"
               className={'draw-swatch' + (color === c ? ' is-active' : '')}
               style={{ background: c }} aria-label={'Use ' + c} aria-pressed={color === c}
               onClick={() => setColor(c)} />)}
@@ -1007,35 +1012,35 @@ export default function DrawPage() {
             </label>
           </div>
           <div className="draw-format" role="group" aria-label="Export format">
-            <button type="button" aria-pressed={format === 'webp'}
+            <motion.button {...hoverMotion} type="button" aria-pressed={format === 'webp'}
               className={format === 'webp' ? 'is-active' : ''}
-              onClick={() => setFormat('webp')}>WebP</button>
-            <button type="button" aria-pressed={format === 'jpeg'}
+              onClick={() => setFormat('webp')}>WebP</motion.button>
+            <motion.button {...hoverMotion} type="button" aria-pressed={format === 'jpeg'}
               className={format === 'jpeg' ? 'is-active' : ''}
-              onClick={() => setFormat('jpeg')}>JPEG</button>
+              onClick={() => setFormat('jpeg')}>JPEG</motion.button>
           </div>
         </div>
         <div className="draw-subbar">
           <div className="draw-navigation">
-            <button type="button" className="draw-button" disabled={index === 0 || !images.length}
-              onClick={() => select(index - 1)}><Icon name="back" size={15} /><span>Previous</span></button>
+            <motion.button {...hoverMotion} type="button" className="draw-button" disabled={index === 0 || !images.length}
+              onClick={() => select(index - 1)}><Icon name="back" size={15} /><span>Previous</span></motion.button>
             <span className="draw-pagination">{images.length ? index + 1 : 0} / {images.length}</span>
-            <button type="button" className="draw-button"
+            <motion.button {...hoverMotion} type="button" className="draw-button"
               disabled={!images.length || index === images.length - 1}
-              onClick={() => select(index + 1)}><span>Next</span><Icon name="forward" size={15} /></button>
+              onClick={() => select(index + 1)}><span>Next</span><Icon name="forward" size={15} /></motion.button>
           </div>
           <div className="draw-edit-actions">
             <span className="draw-arrow-count">{count} note{count === 1 ? '' : 's'}</span>
             {active && selected && selected.imageId === active.id && (annotations[active.id]?.[selected.index]?.kind === 'text') &&
-              <button type="button" className="draw-text-button" onClick={editSelectedText}>Edit text</button>}
+              <motion.button {...hoverMotion} type="button" className="draw-text-button" onClick={editSelectedText}>Edit text</motion.button>}
             {active && selected && selected.imageId === active.id &&
-              <button type="button" className="draw-text-button draw-remove-annotation"
-                onClick={deleteSelected}><Icon name="trash" size={14} /> Delete selected</button>}
-            <button type="button" className="draw-text-button"
+              <motion.button {...hoverMotion} type="button" className="draw-text-button draw-remove-annotation"
+                onClick={deleteSelected}><Icon name="trash" size={14} /> Delete selected</motion.button>}
+            <motion.button {...hoverMotion} type="button" className="draw-text-button"
               disabled={!historyRef.current[active?.id || '']?.length && !textDraft}
-              onClick={undo}><Icon name="undo" size={14} /> Undo</button>
-            <button type="button" className="draw-text-button"
-              disabled={!count && !textDraft} onClick={clear}><Icon name="close" size={14} /> Clear</button>
+              onClick={undo}><Icon name="undo" size={14} /> Undo</motion.button>
+            <motion.button {...hoverMotion} type="button" className="draw-text-button"
+              disabled={!count && !textDraft} onClick={clear}><Icon name="close" size={14} /> Clear</motion.button>
           </div>
         </div>
 
