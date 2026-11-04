@@ -10,6 +10,7 @@ import { detectRawCode, isMarkdownFile, languageForFile } from './lib/code';
 import { svgPreviewDocument } from './lib/svgPreview';
 import { readTextImport } from './lib/textImport';
 import { formatPlainTextAsMarkdown } from './lib/autoMarkdown';
+import { inferTitle, isUntitledTitle } from './lib/title';
 import {
   clearRecovery, loadWorkspace, readPrefs, removeDoc, removeFolder, removeWorkspace,
   saveDoc, saveFolder, savePrefs, saveRecovery, saveWorkspace, uid, wordCount,
@@ -161,13 +162,24 @@ export default function App() {
     } catch { /* Title-only fallback is available without workers. */ }
     void loadWorkspace().then(data => {
       if (!alive) return;
-      live.current = new Map(data.documents.map(doc => [doc.id, doc]));
+      // Upgrade older default "Untitled" pages once. Named pages and
+      // imported filenames are never silently renamed.
+      const restored = data.documents.map(doc => {
+        if (doc.asset || doc.fileName || !doc.markdown.trim() ||
+            (!doc.titleAuto && !isUntitledTitle(doc.title))) return doc;
+        const title = inferTitle(doc.markdown, doc.language);
+        if (title === doc.title && doc.titleAuto) return doc;
+        const updated = { ...doc, title, titleAuto: true };
+        void saveDoc(updated).catch(() => setNotice('Could not save an automatic page title.'));
+        return updated;
+      });
+      live.current = new Map(restored.map(doc => [doc.id, doc]));
       const prefs = readPrefs();
-      const first = data.documents.find(doc => doc.id === prefs.activeDocumentId) || data.documents[0];
+      const first = restored.find(doc => doc.id === prefs.activeDocumentId) || restored[0];
       const chosenWorkspace = data.workspaces.find(ws => ws.id === prefs.activeWorkspaceId) ||
         data.workspaces.find(ws => ws.id === first.workspaceId) || data.workspaces[0];
       const restoredMode = prefs.mode === 'preview' || prefs.mode === 'split' ? prefs.mode : 'write';
-      setDocs(data.documents);
+      setDocs(restored);
       setWorkspaces(data.workspaces);
       setFolders(data.folders);
       const width = typeof prefs.splitPercent === 'number' && Number.isFinite(prefs.splitPercent)
@@ -190,7 +202,7 @@ export default function App() {
       setMode(restoredMode);
       setPreviewText(first.markdown);
       setWords(first.markdown.length < 25000 ? wordCount(first.markdown) : 0);
-      worker?.postMessage({ type: 'index', documents: data.documents.map(({ id, workspaceId, title, markdown, updatedAt }) => ({ id, workspaceId, title, markdown, updatedAt })) });
+      worker?.postMessage({ type: 'index', documents: restored.map(({ id, workspaceId, title, markdown, updatedAt }) => ({ id, workspaceId, title, markdown, updatedAt })) });
       if (first.markdown.length >= 25000) worker?.postMessage({ type: 'metrics', document: { id: first.id, markdown: first.markdown, updatedAt: first.updatedAt } });
       setLoaded(true);
     }).catch(() => { if (alive) { setSaveState('error'); setNotice('Local storage could not be opened.'); } });
@@ -360,10 +372,14 @@ export default function App() {
   const onEditorChange = useCallback((value: string, id: string) => {
     const current = live.current.get(id);
     if (!current || current.markdown === value) return;
+    const autoTitle = current.titleAuto || (!current.fileName && isUntitledTitle(current.title));
+    // Only re-evaluate the first 12KB when it changes. Large plans stay fast
+    // even when editing deep in the document.
+    const title = autoTitle && (current.markdown.slice(0, 12000) !== value.slice(0, 12000) ||
+      isUntitledTitle(current.title))
+      ? inferTitle(value, current.language) : current.title;
     const next: FlowDocument = {
-      ...current, markdown: value, updatedAt: Date.now(),
-      // Titles are user-controlled. Editing content never renames a document.
-      titleAuto: false,
+      ...current, markdown: value, title, titleAuto: autoTitle, updatedAt: Date.now(),
     };
     scheduleSave(next);
     // Coalesce edits to one preview update per animation frame, never after an idle delay.
@@ -417,7 +433,7 @@ export default function App() {
     const target = targetWorkspace || workspaceId || workspaces[0].id;
     const stamp = Date.now();
     const doc: FlowDocument = {
-      id: uid(), workspaceId: target, folderId: targetFolder, title: 'Untitled', titleAuto: false,
+      id: uid(), workspaceId: target, folderId: targetFolder, title: 'Untitled', titleAuto: true,
       markdown: '', createdAt: stamp, updatedAt: stamp,
     };
     live.current.set(doc.id, doc);
@@ -598,6 +614,28 @@ export default function App() {
     }
     setNotice('Exported');
   }
+  async function copyAll() {
+    const current = live.current.get(activeIdRef.current);
+    if (!current || current.asset) {
+      setNotice('Open a text page to copy.');
+      return;
+    }
+    // CodeMirror owns the latest edits even when a huge document's
+    // persistence snapshot is intentionally delayed.
+    const text = editorRef.current?.state.doc.toString() ?? current.markdown;
+    if (!text) {
+      setNotice('This page is empty.');
+      return;
+    }
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+      await navigator.clipboard.writeText(text);
+      setNotice('Entire page copied');
+    } catch {
+      setNotice('Could not copy. Check browser clipboard access.');
+    }
+  }
+
   function autoFormatDocument() {
     const view = editorRef.current;
     const current = live.current.get(activeIdRef.current);
@@ -959,6 +997,11 @@ export default function App() {
             aria-label="Auto Markdown" disabled={Boolean(active?.asset)}
             onClick={autoFormatDocument}>
             <Icon name="format" size={16} /> <span>Auto Markdown</span>
+          </motion.button>
+          <motion.button type="button" {...pressMotion} className="copy-all-button"
+            title="Copy the entire page" aria-label="Copy all" disabled={!active || Boolean(active.asset)}
+            onClick={() => { void copyAll(); }}>
+            <Icon name="copy" size={16} /> <span>Copy all</span>
           </motion.button>
           <motion.button {...pressMotion} title="Import files" aria-label="Import files" onClick={() => fileRef.current?.click()}><Icon name="upload" size={16} /></motion.button>
         </div>
