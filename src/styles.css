@@ -660,3 +660,68 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
     transition:none;
   }
 }
+
+
+/* Local-first formatting action: compact, flat, no new toolbar chip group. */
+.formatting-actions .auto-markdown-button {
+  display:inline-flex; align-items:center; gap:7px;
+  height:29px; min-width:0; padding:0 10px;
+  border:0; border-radius:8px; color:var(--muted);
+  background:transparent; font-size:11px; white-space:nowrap;
+  transition:background-color .19s cubic-bezier(.22,1,.36,1),
+             color .19s cubic-bezier(.22,1,.36,1);
+}
+.formatting-actions .auto-markdown-button:hover:not(:disabled),
+.formatting-actions .auto-markdown-button:focus-visible {
+  color:var(--strong); background:var(--neutral-100);
+}
+.formatting-actions .auto-markdown-button:disabled { opacity:.34; }
+.formatting-actions .auto-markdown-button svg { flex:0 0 16px; }
+.save-indicator { gap:8px; }
+.save-indicator[data-save-state='saving']::before { display:none; }
+/* Seven fixed-size cells. The loader never alters layout width. */
+.pixel-save-loader {
+  display:inline-flex; align-items:center; gap:2px;
+  width:62px; min-width:62px; height:14px;
+}
+.pixel-save-loader i {
+  flex:0 0 6px; width:6px; height:5px;
+  background:var(--muted); opacity:.18; border-radius:0;
+  animation:pixel-save-flow 1.12s linear infinite;
+}
+.pixel-save-loader i:nth-child(2) { animation-delay:-.96s; }
+.pixel-save-loader i:nth-child(3) { animation-delay:-.80s; }
+.pixel-save-loader i:nth-child(4) { animation-delay:-.64s; }
+.pixel-save-loader i:nth-child(5) { animation-delay:-.48s; }
+.pixel-save-loader i:nth-child(6) { animation-delay:-.32s; }
+.pixel-save-loader i:nth-child(7) { animation-delay:-.16s; }
+.save-indicator[data-save-state='saving'] .save-label {
+  background:linear-gradient(95deg, var(--muted) 20%,var(--text) 48%,var(--muted) 78%);
+  background-size:220% 100%;
+  -webkit-background-clip:text; background-clip:text;
+  -webkit-text-fill-color:transparent;
+  animation:pixel-save-shimmer 1.45s ease-in-out infinite;
+}
+@keyframes pixel-save-flow {
+  0%,100% { opacity:.18; transform:translateY(0); }
+  35% { opacity:1; transform:translateY(-1px); }
+  65% { opacity:.38; transform:translateY(0); }
+}
+@keyframes pixel-save-shimmer {
+  0% { background-position:160% 0; }
+  100% { background-position:-160% 0; }
+}
+.sidebar-inner { will-change:opacity,transform,filter; }
+@media(max-width:1100px) {
+  .formatting-actions .auto-markdown-button span { display:none; }
+  .formatting-actions .auto-markdown-button { padding:0 8px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .pixel-save-loader i, .save-indicator[data-save-state='saving'] .save-label {
+    animation:none!important;
+  }
+  .pixel-save-loader i { opacity:.8; transform:none; }
+  .save-indicator[data-save-state='saving'] .save-label {
+    background:none; -webkit-text-fill-color:currentColor;
+  }
+}
