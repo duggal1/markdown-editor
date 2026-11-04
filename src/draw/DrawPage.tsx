@@ -858,7 +858,7 @@ export default function DrawPage() {
           const i = nextIndex++;
           const image = images[i];
           const blob = await getEncoded(image, format);
-          entries[i] = { name: filename(projectName, item, i, format), file: blob };
+          entries[i] = { name: filename(projectName, image, i, format), file: blob };
           completed++;
           setProgress('Exporting ' + completed + ' / ' + images.length);
         }
