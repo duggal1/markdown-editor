@@ -16,7 +16,8 @@ async function pdfEngine() {
   ]);
   const pdfMake = module.default;
   if (!rendererReady) {
-    pdfMake.addVirtualFileSystem(vfsModule.default);
+    (pdfMake as typeof pdfMake & { addVirtualFileSystem: (files: unknown) => void })
+      .addVirtualFileSystem(vfsModule.default);
     rendererReady = true;
   }
   return pdfMake;
