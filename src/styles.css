@@ -731,8 +731,10 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .save-indicator[data-save-state='saving']::before { display:none; }
 .sidebar-inner { will-change:opacity,transform,filter; }
 @media(max-width:1100px) {
-  .formatting-actions .auto-markdown-button span,
-  .formatting-actions .copy-all-button span { display:none; }
+  /* Hide only the text labels. Hugeicons are wrapped in spans and must
+     stay visible on phones and narrow toolbars. */
+  .formatting-actions .auto-markdown-button > span:not(.pixel-huge-icon),
+  .formatting-actions .copy-all-button > span:not(.pixel-huge-icon) { display:none; }
   .formatting-actions .auto-markdown-button,
   .formatting-actions .copy-all-button { padding:0 8px; }
 }
