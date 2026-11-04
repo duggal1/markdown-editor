@@ -1,6 +1,8 @@
 export type Point = { x: number; y: number };
+export type ArrowStyle = 'pixel' | 'solid' | 'line' | 'fine';
 export type ArrowAnnotation = {
   kind: 'arrow'; color: string; x1: number; y1: number; x2: number; y2: number;
+  style?: ArrowStyle;
 };
 export type TextAnnotation = {
   kind: 'text'; color: string; x: number; y: number; text: string;
@@ -23,28 +25,69 @@ export function drawAnnotation(
     const angle = Math.atan2(y2 - y1, x2 - x1);
     const widthPx = Math.max(2.6, Math.min(15, scale * 0.0045));
     const head = Math.min(length * 0.44, Math.max(13, Math.min(65, scale * 0.024)));
-    // One opaque color. No white halo, no start dot, no white arrow-tip artifact.
-    ctx.strokeStyle = annotation.color;
-    ctx.fillStyle = annotation.color;
-    ctx.lineWidth = widthPx;
-    // End the shaft INSIDE the solid head. The old round cap protruded beyond
-    // its point and could look like a white/bright nose pixel on screenshots.
-    // No halo, tip circle, outline, or stroke around the arrowhead.
-    ctx.lineCap = 'butt';
-    ctx.lineJoin = 'miter';
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2 - Math.cos(angle) * head * 0.70,
-      y2 - Math.sin(angle) * head * 0.70);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(x2, y2);
-    ctx.lineTo(x2 - head * Math.cos(angle - Math.PI / 7),
-      y2 - head * Math.sin(angle - Math.PI / 7));
-    ctx.lineTo(x2 - head * Math.cos(angle + Math.PI / 7),
-      y2 - head * Math.sin(angle + Math.PI / 7));
-    ctx.closePath();
-    ctx.fill();
+    // Export and preview call this same renderer at native image coordinates.
+    // Existing arrows without a style retain the previous solid appearance.
+    const style = annotation.style || 'solid';
+    if (style === 'pixel') {
+      // A real integer cell lattice, not a pixel filter over a smooth arrow.
+      // Quantizing to full source pixels keeps the export crisp on any display.
+      const cell = Math.max(3, Math.min(8, Math.round(scale / 175)));
+      const ux = (x2 - x1) / length, uy = (y2 - y1) / length;
+      const nx = -uy, ny = ux;
+      const headLength = Math.min(length * 0.42, Math.max(18, Math.min(54, scale * 0.032)));
+      const snap = (value: number) => Math.round(value / cell) * cell;
+      ctx.fillStyle = annotation.color;
+      const pixel = (x: number, y: number) =>
+        ctx.fillRect(snap(x - cell / 2), snap(y - cell / 2), cell, cell);
+      for (let t = 0; t <= length - headLength; t += cell * 0.62) {
+        pixel(x1 + ux * t, y1 + uy * t);
+      }
+      // Stepped triangular head: one tip cell, expanding in discrete columns.
+      const steps = Math.max(2, Math.ceil(headLength / cell));
+      for (let i = 0; i <= steps; i++) {
+        const back = Math.min(headLength, i * cell);
+        const spread = Math.floor((back / headLength) * 3) * cell;
+        for (let offset = -spread; offset <= spread; offset += cell) {
+          pixel(x2 - ux * back + nx * offset, y2 - uy * back + ny * offset);
+        }
+      }
+    } else {
+      const fine = style === 'fine';
+      ctx.strokeStyle = annotation.color;
+      ctx.fillStyle = annotation.color;
+      ctx.lineWidth = fine ? Math.max(1.5, widthPx * 0.45) :
+        style === 'line' ? Math.max(1.9, widthPx * 0.72) : widthPx;
+      ctx.lineCap = 'butt';
+      ctx.lineJoin = 'miter';
+      if (style === 'line') {
+        // Open arrow: no filled wedge, dot, double stroke or halo.
+        const wing = Math.min(length * 0.3, head * 0.75);
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.moveTo(x2 - wing * Math.cos(angle - Math.PI / 6),
+          y2 - wing * Math.sin(angle - Math.PI / 6));
+        ctx.lineTo(x2, y2);
+        ctx.lineTo(x2 - wing * Math.cos(angle + Math.PI / 6),
+          y2 - wing * Math.sin(angle + Math.PI / 6));
+        ctx.stroke();
+      } else {
+        const tip = fine ? head * 0.62 : head;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2 - Math.cos(angle) * tip * 0.70,
+          y2 - Math.sin(angle) * tip * 0.70);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x2, y2);
+        ctx.lineTo(x2 - tip * Math.cos(angle - Math.PI / 7),
+          y2 - tip * Math.sin(angle - Math.PI / 7));
+        ctx.lineTo(x2 - tip * Math.cos(angle + Math.PI / 7),
+          y2 - tip * Math.sin(angle + Math.PI / 7));
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
     ctx.restore();
     return;
   }
