@@ -20,7 +20,11 @@ for (const [, key, iconName] of names) {
   assert.match(html, /<svg\b/, `SVG skeleton missing for ${key}`);
   assert.match(html, /<(?:path|circle|rect|line|polyline|polygon)\b/, `No visible shapes for ${key}`);
 }
-// A cosmetic pixel overlay must NEVER hide the real SVG in fallback scenarios.
-assert.ok(!/visibility:\s*ready\s*\?/.test(source), 'Never hide the original SVG for masking');
+// No client-side icon masking, canvas thresholding, or hidden vector sources.
+assert.doesNotMatch(source, /rasterCache|createElement\(['"]canvas|\.toDataURL\(|PixelatedIcon|maskStyle|imageRendering/);
 assert.match(source, /<HugeiconsIcon icon=\{glyphs\[name\]\}/);
-console.log(`Validated ${names.length} Hugeicons SVG glyphs and persistent vector fallbacks.`);
+const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+assert.doesNotMatch(css, /\.pixel-huge-icon-paint|\.pixel-huge-icon-source/);
+assert.match(css, /\.save-indicator\[data-save-state='saved'\]::before/);
+assert.match(css, /background:\s*#ea580c;\s*opacity:/);
+console.log(`Validated ${names.length} unmodified Hugeicons SVG glyphs and sharp saving indicator.`);
