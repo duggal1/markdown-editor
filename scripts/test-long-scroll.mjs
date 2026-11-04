@@ -37,7 +37,7 @@ const nestedParts = previewParts(nested);
 assert.equal(nestedParts.map(x => x.markdown).join(''), nested);
 assert.ok(nestedParts.every(x => !/^  - Child/.test(x.markdown)), 'Never split at nested list items');
 
-const nestedParagraphs = ('- A parent item with a moderately long description.\\n\\n  - Its child must stay attached.\\n  - Another child.\\n').repeat(500);
+const nestedParagraphs = ('- A parent item with a moderately long description.\n\n  - Its child must stay attached.\n  - Another child.\n').repeat(500);
 const nestedParagraphParts = previewParts(nestedParagraphs);
 assert.equal(nestedParagraphParts.map(x => x.markdown).join(''), nestedParagraphs);
 assert.ok(nestedParagraphParts.every(x => !/^  - Its child/.test(x.markdown)),
