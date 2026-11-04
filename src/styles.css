@@ -783,7 +783,8 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 }
 .save-duration { display:inline-flex; align-items:baseline; gap:3px; color:var(--quiet); }
 .save-duration number-flow { font-variant-numeric:tabular-nums; line-height:1; --number-flow-mask-height:.14em; }
-.save-indicator:not([data-save-state='saved']) .save-duration {
+.save-indicator:not([data-save-state='saved']) .save-duration,
+.save-duration.is-empty {
   position:absolute; pointer-events:none; visibility:hidden;
 }
 .pixel-save-loader { display:inline-flex; flex:0 0 38px; gap:2px; align-items:center; height:12px; }
