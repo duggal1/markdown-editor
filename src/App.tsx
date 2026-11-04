@@ -11,6 +11,7 @@ import { svgPreviewDocument } from './lib/svgPreview';
 import { readTextImport } from './lib/textImport';
 import { formatPlainTextAsMarkdown } from './lib/autoMarkdown';
 import { inferTitle, isUntitledTitle } from './lib/title';
+import type { SearchHit } from './lib/searchIndex';
 import {
   clearRecovery, loadWorkspace, readPrefs, removeDoc, removeFolder, removeWorkspace,
   saveDoc, saveFolder, savePrefs, saveRecovery, saveWorkspace, uid, wordCount,
@@ -28,7 +29,7 @@ const FORMATS: { name: Format; icon?: IconName; label: string; shortcut?: string
   { name: 'heading', label: 'Heading', shortcut: '#' },
   { name: 'bold', icon: 'bold', label: 'Bold' },
   { name: 'italic', icon: 'italic', label: 'Italic', shortcut: '⌘I' },
-  { name: 'link', icon: 'link', label: 'Link', shortcut: '⌘K' },
+  { name: 'link', icon: 'link', label: 'Link', shortcut: '⌘⇧K' },
   { name: 'bullet', icon: 'list', label: 'List', shortcut: '-' },
   { name: 'todo', icon: 'todo', label: 'Task', shortcut: '[ ]' },
   { name: 'quote', icon: 'quote', label: 'Quote' },
@@ -89,7 +90,8 @@ export default function App() {
   const [compact, setCompact] = useState(() => window.matchMedia('(max-width: 800px)').matches);
   const [recentIds, setRecentIds] = useState<string[]>([]);
   const [query, setQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<string[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchHit[]>([]);
+  const [searchPending, setSearchPending] = useState(false);
   const [previewText, setPreviewText] = useState('');
   const [words, setWords] = useState(0);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -147,11 +149,12 @@ export default function App() {
     try {
       worker = new Worker(new URL('./workers/search.ts', import.meta.url), { type: 'module' });
       worker.onmessage = (event: MessageEvent<
-        | { type: 'result'; requestId: number; ids: string[] }
+        | { type: 'result'; requestId: number; hits: SearchHit[] }
         | { type: 'metrics'; id: string; updatedAt: number; words: number }
       >) => {
         if (event.data.type === 'result' && event.data.requestId === searchRequest.current) {
-          setSearchResults(event.data.ids);
+          setSearchResults(event.data.hits);
+          setSearchPending(false);
         } else if (event.data.type === 'metrics') {
           const current = live.current.get(event.data.id);
           if (current && activeIdRef.current === event.data.id &&
@@ -751,21 +754,41 @@ export default function App() {
   }
   const active = live.current.get(activeId) || docs.find(doc => doc.id === activeId);
   const matching = useMemo(() => {
-    const text = query.trim().toLowerCase();
-    const matchingWorkspaceIds = new Set(workspaces.filter(ws => ws.name.toLowerCase().includes(text)).map(ws => ws.id));
-    const matchingFolderIds = new Set(folders.filter(folder => folder.name.toLowerCase().includes(text)).map(folder => folder.id));
-    const ids = new Set(searchResults);
-    return docs.filter(doc => !text || ids.has(doc.id) || matchingWorkspaceIds.has(doc.workspaceId) ||
-      (doc.folderId && matchingFolderIds.has(doc.folderId)))
-      .sort((a, b) => b.updatedAt - a.updatedAt);
-  }, [docs, query, searchResults, workspaces, folders]);
+    if (!query.trim()) return [...docs].sort((a, b) => b.updatedAt - a.updatedAt);
+    const byId = new Map(docs.map(doc => [doc.id, doc]));
+    // The worker returns relevance ranking. Do not sort by modification time.
+    return searchResults.flatMap(hit => {
+      const doc = byId.get(hit.id);
+      return doc ? [doc] : [];
+    });
+  }, [docs, query, searchResults]);
   useEffect(() => {
     const requestId = ++searchRequest.current;
-    if (!query.trim()) { setSearchResults([]); return; }
+    const text = query.trim();
+    setSearchResults([]);
+    if (!text) { setSearchPending(false); return; }
+    setSearchPending(true);
     const timer = window.setTimeout(() => {
-      if (workerRef.current) workerRef.current.postMessage({ type: 'query', query, requestId });
-      else setSearchResults(docs.filter(doc => doc.title.toLowerCase().includes(query.toLowerCase())).map(doc => doc.id));
-    }, 160);
+      if (workerRef.current) {
+        workerRef.current.postMessage({ type: 'query', query: text, requestId });
+      } else {
+        // No Worker? Still search content, not just page names.
+        const needle = text.toLowerCase();
+        const hits: SearchHit[] = docs.flatMap(doc => {
+          const titleMatch = doc.title.toLowerCase().includes(needle);
+          const position = doc.markdown.toLowerCase().indexOf(needle);
+          if (!titleMatch && position < 0) return [];
+          return [{ id: doc.id, score: titleMatch ? 20 : 5,
+            source: position >= 0 ? 'content' as const : 'title' as const,
+            snippet: position >= 0 ? doc.markdown.slice(Math.max(0, position - 42), position + needle.length + 95)
+              .replace(/\s+/g, ' ').trim() : '' }];
+        }).sort((a, b) => b.score - a.score).slice(0, 80);
+        if (requestId === searchRequest.current) {
+          setSearchResults(hits);
+          setSearchPending(false);
+        }
+      }
+    }, 85);
     return () => clearTimeout(timer);
   }, [query, docs]);
 
@@ -781,7 +804,8 @@ export default function App() {
         const doc = live.current.get(activeIdRef.current);
         if (doc) exportDocument(doc);
       } else if (key === 'k' && !event.shiftKey) {
-        event.preventDefault(); setSidebarOpen(true); window.requestAnimationFrame(() => searchRef.current?.focus());
+        event.preventDefault(); setSidebarOpen(true);
+        window.requestAnimationFrame(() => { searchRef.current?.focus(); searchRef.current?.select(); });
       } else if (key === 'p' && event.shiftKey) {
         event.preventDefault();
         setMode(current => {
@@ -798,6 +822,20 @@ export default function App() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [flush]);
+
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape' || document.activeElement !== searchRef.current) return;
+      event.preventDefault();
+      if (query) setQuery('');
+      else {
+        searchRef.current?.blur();
+        if (compact) setSidebarOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [query, compact]);
 
   const dispatchPreviewPosition = useCallback(() => {
     syncFrame.current = null;
@@ -899,12 +937,21 @@ export default function App() {
           <motion.div className="brand-lockup" initial={false} animate={{ opacity: sidebarOpen ? 1 : 0, x: sidebarOpen ? 0 : -8 }} transition={motionOff ? { duration: 0 } : { duration: 0.18 }}><span className="brand-mark"><FlowMark size={18} /></span><span>Flow<span className="brand-period">.</span></span></motion.div>
         </div>
         <label className="search-field"><Icon name="search" size={16} />
-          <input ref={searchRef} value={query} onChange={event => setQuery(event.target.value)} placeholder="Search pages" aria-label="Search pages" />
+          <input ref={searchRef} value={query}
+            onChange={event => setQuery(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === 'Enter' && matching.length) {
+                event.preventDefault(); selectDocument(matching[0].id); setQuery('');
+              }
+            }}
+            placeholder="Search all pages" aria-label="Search page names and content"
+            aria-keyshortcuts="Meta+K Control+K" />
+          <kbd aria-hidden="true">{/Mac|iPhone|iPad/i.test(navigator.platform) ? '⌘K' : 'Ctrl K'}</kbd>
         </label>
         <WorkspaceTree
           workspaces={workspaces} documents={matching} folders={folders} newFolderId={newFolderId}
           activeId={activeId} activeWorkspaceId={workspaceId}
-          search={query} expandedIds={expandedIds}
+          search={query} searchHits={searchResults} searchPending={searchPending} expandedIds={expandedIds}
           newWorkspaceId={newWorkspaceId} reducedMotion={!!motionOff}
           onToggle={toggleWorkspace}
           onSelectWorkspace={setWorkspaceId}

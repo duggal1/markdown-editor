@@ -921,3 +921,28 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 @media (max-width:360px) {
   .topbar { column-gap:3px; padding-inline:8px; }
 }
+
+
+/* Search is a compact content query, not a form-field card. Preserve sidebar
+   geometry while darkening hover and reducing horizontal padding. */
+.search-field {
+  padding-inline:9px; gap:8px;
+  background:#1c1c1c;
+  transition:background-color .19s cubic-bezier(.22,1,.36,1);
+}
+.search-field:hover, .search-field:focus-within { background:#151515; }
+.search-field kbd {
+  display:inline-flex; flex:0 0 auto;
+  align-items:center; justify-content:center;
+  padding:0 4px; height:21px;
+  border:0; border-radius:4px;
+  background:transparent; color:var(--quiet);
+  font:500 10px/1 var(--mono); white-space:nowrap;
+}
+:root[data-theme='light'] .search-field { background:#f0f0f0; }
+:root[data-theme='light'] .search-field:hover,
+:root[data-theme='light'] .search-field:focus-within { background:#e7e7e7; }
+@media(max-width:800px) {
+  .search-field { padding-inline:10px; }
+  .search-field kbd { display:none; }
+}
