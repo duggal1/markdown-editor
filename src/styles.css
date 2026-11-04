@@ -1,6 +1,9 @@
 @import '@fontsource-variable/geist/wght.css';
 
 :root {
+  font-family: 'Geist Variable', -apple-system, sans-serif;
+  font-synthesis: none; font-weight: 400; -webkit-font-smoothing: antialiased;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
   color-scheme: dark;
   --background: #0a0a0a; --sidebar-bg: #0f0f0f; --surface: #171717;
   --neutral-100: #1f1f1f; --neutral-200: #2e2e2e; --preview-bg: #171717;
