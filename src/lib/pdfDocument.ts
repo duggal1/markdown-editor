@@ -39,11 +39,6 @@ function safeUrl(url: string | undefined): string | undefined {
     return /^(https?:|mailto:)$/i.test(value.protocol) ? value.href : undefined;
   } catch { return undefined; }
 }
-function plain(node: MdNode): string {
-  if (node.value !== undefined) return node.value;
-  if (node.type === 'image') return node.alt || '';
-  return (node.children || []).map(plain).join('');
-}
 function inline(nodes: MdNode[] = [], attrs: Record<string, unknown> = {}): PdfPart[] {
   const out: PdfPart[] = [];
   for (const node of nodes) {
