@@ -1,12 +1,14 @@
-type IndexedDoc = { id: string; workspaceId: string; title: string; markdown: string; updatedAt: number };
+import { PageSearchIndex, type SearchDocument } from '../lib/searchIndex';
+
 type Incoming =
-  | { type: 'index'; documents: IndexedDoc[] }
-  | { type: 'upsert'; document: IndexedDoc }
+  | { type: 'index'; documents: SearchDocument[] }
+  | { type: 'upsert'; document: SearchDocument }
   | { type: 'remove'; id: string }
   | { type: 'metrics'; document: { id: string; markdown: string; updatedAt: number } }
   | { type: 'query'; query: string; requestId: number };
-const docs = new Map<string, IndexedDoc>();
-const titleIndex = new Map<string, string>();
+
+const index = new PageSearchIndex();
+
 function countWords(value: string): number {
   let words = 0;
   let previousWhitespace = true;
@@ -26,28 +28,14 @@ function postMetrics(doc: { id: string; markdown: string; updatedAt: number }) {
 }
 self.onmessage = (event: MessageEvent<Incoming>) => {
   const message = event.data;
-  if (message.type === 'index') {
-    docs.clear();
-    titleIndex.clear();
-    for (const doc of message.documents) { docs.set(doc.id, doc); titleIndex.set(doc.id, doc.title.toLowerCase()); }
-  } else if (message.type === 'upsert') {
-    docs.set(message.document.id, message.document);
-    titleIndex.set(message.document.id, message.document.title.toLowerCase());
+  if (message.type === 'index') index.reset(message.documents);
+  else if (message.type === 'upsert') {
+    index.upsert(message.document);
     postMetrics(message.document);
-  } else if (message.type === 'metrics') {
-    postMetrics(message.document);
-  } else if (message.type === 'remove') {
-    docs.delete(message.id);
-    titleIndex.delete(message.id);
-  } else {
-    const query = message.query.trim().toLowerCase();
-    if (!query) {
-      self.postMessage({ type: 'result', requestId: message.requestId, ids: [] });
-      return;
-    }
-    const matches = [...docs.values()].filter(doc =>
-      titleIndex.get(doc.id)?.includes(query) || doc.markdown.toLowerCase().includes(query),
-    ).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 500).map(doc => doc.id);
-    self.postMessage({ type: 'result', requestId: message.requestId, ids: matches });
-  }
+  } else if (message.type === 'metrics') postMetrics(message.document);
+  else if (message.type === 'remove') index.remove(message.id);
+  else self.postMessage({
+    type: 'result', requestId: message.requestId,
+    hits: index.search(message.query),
+  });
 };
