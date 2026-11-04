@@ -9,7 +9,7 @@ const source = readFileSync(new URL('../src/components/Icons.tsx', import.meta.u
 const start = source.indexOf('const glyphs = {');
 const end = source.indexOf('} as const;', start);
 assert.ok(start >= 0 && end > start, 'Hugeicons map must exist');
-const names = [...source.slice(start, end).matchAll(/(?:^|[\n,])\s*(\w+):\s*(\w+Icon)\s*[,\n]/g)];
+const names = [...source.slice(start, end).matchAll(/(\w+):\s*(\w+Icon)\s*(?=,|\n)/g)];
 assert.ok(names.length >= 30, 'Expected all app and Draw controls to be mapped to Hugeicons');
 for (const [, key, iconName] of names) {
   const definition = icons[iconName];
