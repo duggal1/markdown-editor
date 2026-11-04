@@ -52,7 +52,7 @@ assert.ok(content.some(x => 'ul' in x));
 assert.ok(content.some(x => x.table && x.table.headerRows === 1));
 assert.ok(content.some(x => x.table && x.table.body?.[0]?.[0]?.stack?.some(y => y.style === 'code')));
 assert.ok(content.some(x => x.canvas), 'Horizontal rule must be a vector line.');
-assert.ok(content.some(x => x.table && x.table.layout && !x.table.headerRows),
+assert.ok(content.some(x => x.table && x.layout && !x.table.headerRows),
   'Blockquote should use an inset, unobtrusive column.');
 assert.ok(content.some(x => x.text && Array.isArray(x.text) &&
   x.text.some(y => y.link === 'https://images.example.org/reference.png')),
