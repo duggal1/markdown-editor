@@ -37,7 +37,7 @@ export function previewParts(markdown: string, target = 3600): PreviewPart[] {
     const match = /^( {0,3})(`{3,}|~{3,})/.exec(line);
     const listItem = /^(?:[-+*]\s+|\d+[.)]\s+)/.test(line);
     const heading = /^ {0,3}#{1,6}[ \t]+\S/.test(line);
-    const newFence = Boolean(match && !fence);
+    const newFence = Boolean(match && !fence && match[1].length === 0);
     const canBreakBefore = !fence && !inHtmlBlock &&
       position - start >= target && (heading || listItem || newFence);
 
@@ -55,14 +55,20 @@ export function previewParts(markdown: string, target = 3600): PreviewPart[] {
     if (inHtmlBlock && /^<\/(?:div|table|details|section|article|pre|script|style)>/i.test(trimmed)) inHtmlBlock = false;
 
     const nextStart = end < 0 ? markdown.length : end + 1;
-    if (!fence && !inHtmlBlock && !trimmed &&
+    // A blank line can belong to the same list item when followed by an
+    // indented paragraph/sublist. Keep that block intact.
+    const followingEnd = markdown.indexOf('\n', nextStart);
+    const followingLine = markdown.slice(nextStart, followingEnd < 0 ? markdown.length : followingEnd);
+    const continuesNestedList = !trimmed && lastListContext &&
+      /^(?: {2,}|\t)\S/.test(followingLine);
+    if (!fence && !inHtmlBlock && !trimmed && !continuesNestedList &&
       nextStart - start >= target && nextStart < markdown.length) {
       flush(nextStart, false);
     }
 
     // Keep indented continuation lines within their parent list. Blank lines
-    // intentionally terminate the continuation context.
-    if (!trimmed || heading || match) lastListContext = false;
+    // between separate list blocks terminate the continuation context.
+    if ((!trimmed && !continuesNestedList) || heading || match) lastListContext = false;
     else if (listItem) lastListContext = true;
     else if (!/^(?: {2,}|\t)/.test(line)) lastListContext = false;
 
