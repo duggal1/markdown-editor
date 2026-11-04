@@ -290,7 +290,7 @@
   position: absolute; z-index: 2;
   width: clamp(145px, 23vw, 290px); max-width: 96%; min-height: 55px;
   padding: 9px 11px;
-  color: #fafaf9; background: #141313f5;
+  color: #fafafa; background: #141414f5;
   border: 1px solid; border-radius: 4px;
   box-shadow: 0 6px 24px #00000029;
   outline: none; font: 400 13px/1.45 'Geist Variable', sans-serif;
