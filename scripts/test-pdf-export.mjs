@@ -100,6 +100,10 @@ const lib = (await import('pdfmake/build/pdfmake.js')).default;
 const fonts = (await import('pdfmake/build/vfs_fonts.js')).default;
 lib.addVirtualFileSystem(fonts);
 lib.addFonts({
+  Roboto: {
+    normal: 'Roboto-Regular.ttf', bold: 'Roboto-Medium.ttf',
+    italics: 'Roboto-Italic.ttf', bolditalics: 'Roboto-MediumItalic.ttf',
+  },
   Courier: {
     normal: 'Courier', bold: 'Courier-Bold',
     italics: 'Courier-Oblique', bolditalics: 'Courier-BoldOblique',
