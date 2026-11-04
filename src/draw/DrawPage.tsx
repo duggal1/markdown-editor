@@ -925,8 +925,13 @@ export default function DrawPage() {
       <aside className="draw-rail" aria-label="Uploaded screenshots">
         <div className="draw-rail-heading"><span>Files</span> <span>{images.length}</span></div>
         <div className="draw-image-list">
-          {images.map((item, i) => <div key={item.id}
-            className={'draw-image-item' + (index === i ? ' is-selected' : '')}>
+          {images.map((item, i) => <motion.div key={item.id}
+            className={'draw-image-item' + (index === i ? ' is-selected' : '')}
+            whileHover={reducedMotion ? undefined : { x: 1 }}
+            transition={{ duration: reducedMotion ? 0 : 0.21, ease: [0.22, 1, 0.36, 1] }}>
+            {index === i && <motion.span className="draw-row-selection"
+              layoutId="draw-active-screenshot" initial={false}
+              transition={{ duration: reducedMotion ? 0 : 0.24, ease: [0.22, 1, 0.36, 1] }} />}
             <button type="button" className="draw-image-item-select"
               onClick={() => select(i)} aria-current={index === i ? 'true' : undefined}
               title={item.name} aria-label={'Open ' + filename(projectName, item, i, format)}>
@@ -949,7 +954,7 @@ export default function DrawPage() {
                 aria-label={'Remove ' + item.name} title={'Remove ' + item.name}
                 onClick={() => removeImage(item.id)}><HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.6} /></button>
             </div>
-          </div>)}
+          </motion.div>)}
           {!images.length && <span className="draw-rail-empty">No screenshots yet.</span>}
         </div>
       </aside>
@@ -957,7 +962,9 @@ export default function DrawPage() {
       <section className="draw-workspace" aria-label="Annotate screenshot">
         <div className="draw-toolbar">
           <div className="draw-tools" role="group" aria-label="Annotation tool">
-            <motion.button whileTap={tap} type="button" className={'draw-tool' + (tool === 'select' ? ' is-active' : '')}
+            <motion.button whileTap={tap} whileHover={reducedMotion ? undefined : { y: -1 }} 
+              transition={{ duration: reducedMotion ? 0 : 0.18, ease: [0.22, 1, 0.36, 1] }}
+              type="button" className={'draw-tool' + (tool === 'select' ? ' is-active' : '')}
               aria-pressed={tool === 'select'}
               onClick={() => { commitText(); setTool('select'); }}><HugeiconsIcon icon={Cursor01Icon} size={15} strokeWidth={1.8} /> <span>Select</span></motion.button>
             <motion.button whileTap={tap} type="button" className={'draw-tool' + (tool === 'arrow' ? ' is-active' : '')}
@@ -968,19 +975,22 @@ export default function DrawPage() {
               <HugeiconsIcon icon={TextIcon} size={15} strokeWidth={1.8} /> <span>Text</span></motion.button>
           </div>
           <div className="draw-style-picker">
-            <button type="button" className="draw-style-trigger"
+            <motion.button type="button" className="draw-style-trigger"
+              whileHover={reducedMotion ? undefined : { y: -1 }}
+              whileTap={reducedMotion ? undefined : { scale: 0.985 }}
+              transition={{ duration: reducedMotion ? 0 : 0.19, ease: [0.22, 1, 0.36, 1] }}
               aria-haspopup="menu" aria-expanded={styleOpen}
               aria-label={'Arrow style: ' + arrowStyle}
               onClick={() => { commitText(); setTool('arrow'); setStyleOpen(open => !open); }}>
               <ArrowStylePreview style={arrowStyle} />
               <span>{({ pixel: 'Pixel', solid: 'Solid', line: 'Open', fine: 'Fine' } as const)[arrowStyle]}</span>
               <span className="draw-style-chevron" aria-hidden="true">⌄</span>
-            </button>
+            </motion.button>
             <AnimatePresence>
               {styleOpen && <motion.div className="draw-style-menu" role="menu"
                 initial={reducedMotion ? false : { opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -3 }}
-                transition={{ duration: reducedMotion ? 0 : 0.13, ease: [0.22, 1, 0.36, 1] }}>
+                transition={{ duration: reducedMotion ? 0 : 0.2, ease: [0.22, 1, 0.36, 1] }}>
                 {(['pixel', 'solid', 'line', 'fine'] as ArrowStyle[]).map(style =>
                   <button key={style} type="button" role="menuitemradio"
                     aria-checked={arrowStyle === style}
