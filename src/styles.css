@@ -679,38 +679,6 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .formatting-actions .auto-markdown-button svg { flex:0 0 16px; }
 .save-indicator { gap:8px; }
 .save-indicator[data-save-state='saving']::before { display:none; }
-/* Seven fixed-size cells. The loader never alters layout width. */
-.pixel-save-loader {
-  display:inline-flex; align-items:center; gap:2px;
-  width:62px; min-width:62px; height:14px;
-}
-.pixel-save-loader i {
-  flex:0 0 6px; width:6px; height:5px;
-  background:var(--muted); opacity:.18; border-radius:0;
-  animation:pixel-save-flow 1.12s linear infinite;
-}
-.pixel-save-loader i:nth-child(2) { animation-delay:-.96s; }
-.pixel-save-loader i:nth-child(3) { animation-delay:-.80s; }
-.pixel-save-loader i:nth-child(4) { animation-delay:-.64s; }
-.pixel-save-loader i:nth-child(5) { animation-delay:-.48s; }
-.pixel-save-loader i:nth-child(6) { animation-delay:-.32s; }
-.pixel-save-loader i:nth-child(7) { animation-delay:-.16s; }
-.save-indicator[data-save-state='saving'] .save-label {
-  background:linear-gradient(95deg, var(--muted) 20%,var(--text) 48%,var(--muted) 78%);
-  background-size:220% 100%;
-  -webkit-background-clip:text; background-clip:text;
-  -webkit-text-fill-color:transparent;
-  animation:pixel-save-shimmer 1.45s ease-in-out infinite;
-}
-@keyframes pixel-save-flow {
-  0%,100% { opacity:.18; transform:translateY(0); }
-  35% { opacity:1; transform:translateY(-1px); }
-  65% { opacity:.38; transform:translateY(0); }
-}
-@keyframes pixel-save-shimmer {
-  0% { background-position:160% 0; }
-  100% { background-position:-160% 0; }
-}
 .sidebar-inner { will-change:opacity,transform,filter; }
 @media(max-width:1100px) {
   .formatting-actions .auto-markdown-button span { display:none; }
@@ -748,57 +716,74 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   image-rendering:pixelated;
 }
 
-/* Compact, fixed-width save state. Orange-600 is reserved for "Saved";
-   saving uses a composited pixel pulse instead of a timer-driven spinner. */
+/* Saving and Saved share an orange-600 surface and reserved width.
+   Seven stationary square cells scan through opacity only. No bouncing,
+   translating, width changes or timer-driven React renders. */
 .save-indicator {
   display:inline-flex; align-items:center; justify-content:center;
-  width:128px; min-width:128px; height:26px;
-  padding:0 9px; margin-left:4px; gap:7px;
-  border-radius:8px; background:transparent;
-  color:var(--muted); font:500 11px var(--mono);
+  flex:0 0 132px; width:132px; min-width:132px; height:28px;
+  padding:0 9px; margin-left:4px; gap:8px;
+  border-radius:8px; background:#ea580c;
+  color:#111; font:500 11px var(--mono);
   font-variant-numeric:tabular-nums;
-  transition:background-color .19s cubic-bezier(.22,1,.36,1),
-             color .19s cubic-bezier(.22,1,.36,1);
+  white-space:nowrap;
 }
-.save-indicator[data-save-state='saved'] {
-  background:#ea580c; color:#111111;
+.save-indicator[data-save-state='saved'],
+.save-indicator[data-save-state='saving'] {
+  background:#ea580c; color:#111;
 }
 .save-indicator[data-save-state='saved']::before {
-  content:''; display:block; flex:0 0 5px; width:5px; height:5px;
-  margin:0; background:currentColor; opacity:.68; border-radius:0;
-}
-.save-indicator[data-save-state='saving'] {
-  background:#191919; color:#ff964d;
+  content:''; display:block; flex:0 0 5px;
+  width:5px; height:5px; margin:0;
+  background:currentColor; opacity:.72; border-radius:0;
 }
 .save-indicator[data-save-state='saving']::before { display:none; }
-.save-indicator[data-save-state='error'] { background:#211617; color:#fca5a5; }
-.pixel-save-loader { width:62px; min-width:62px; gap:2px; height:14px; }
-.pixel-save-loader i {
-  opacity:.18; background:#ff8a3d;
-  will-change:transform,opacity;
-  animation:pixel-save-flow 1.15s linear infinite;
+.save-indicator[data-save-state='error'] {
+  background:#231718; color:#fca5a5;
 }
-@keyframes pixel-save-flow {
-  0%,100% { opacity:.18; transform:translate3d(0,0,0); }
-  28% { opacity:1; transform:translate3d(0,-1px,0); }
-  58% { opacity:.34; transform:translate3d(0,0,0); }
+.pixel-save-loader {
+  display:inline-flex; align-items:center; flex:0 0 54px;
+  width:54px; min-width:54px; height:14px; gap:2px;
+}
+.pixel-save-loader i {
+  display:block; flex:0 0 6px;
+  width:6px; height:6px; border-radius:0;
+  background:#141414; opacity:.22;
+  transform:none !important;
+  will-change:opacity;
+  animation:pixel-save-scan 1.12s ease-in-out infinite;
+}
+.pixel-save-loader i:nth-child(2) { animation-delay:-.96s; }
+.pixel-save-loader i:nth-child(3) { animation-delay:-.80s; }
+.pixel-save-loader i:nth-child(4) { animation-delay:-.64s; }
+.pixel-save-loader i:nth-child(5) { animation-delay:-.48s; }
+.pixel-save-loader i:nth-child(6) { animation-delay:-.32s; }
+.pixel-save-loader i:nth-child(7) { animation-delay:-.16s; }
+@keyframes pixel-save-scan {
+  0%,100% { opacity:.18; }
+  45% { opacity:1; }
+  75% { opacity:.36; }
 }
 .save-indicator[data-save-state='saving'] .save-label {
-  background:linear-gradient(100deg, #ff8835 19%,#fff0e4 50%,#ff8835 81%);
-  background-size:220% 100%;
-  background-clip:text; -webkit-background-clip:text;
+  background:linear-gradient(105deg,#141414 24%,#fff3e7 49%,#141414 75%);
+  background-size:225% 100%;
+  -webkit-background-clip:text; background-clip:text;
   -webkit-text-fill-color:transparent;
-  animation:pixel-save-shimmer 1.7s linear infinite;
+  animation:pixel-save-shimmer 1.9s linear infinite;
 }
-@media(max-width:800px) {
-  .save-indicator { width:110px; min-width:110px; padding:0 6px; }
-  .pixel-save-loader { transform:scale(.83); transform-origin:right center; width:50px; min-width:50px; }
+@keyframes pixel-save-shimmer {
+  0% { background-position:150% 0; }
+  100% { background-position:-150% 0; }
+}
+@media (max-width:800px) {
+  .save-indicator { flex-basis:110px; width:110px; min-width:110px; padding:0 5px; gap:4px; }
+  .pixel-save-loader { flex-basis:54px; width:54px; min-width:54px; }
   .save-indicator[data-save-state='saved'] { display:none; }
 }
-@media(prefers-reduced-motion:reduce) {
+@media (prefers-reduced-motion:reduce) {
   .pixel-save-loader i,
-  .save-indicator[data-save-state='saving'] .save-label { animation:none!important; }
-  .pixel-save-loader i { opacity:.8; transform:none!important; }
+  .save-indicator[data-save-state='saving'] .save-label { animation:none !important; }
+  .pixel-save-loader i { opacity:.76; }
   .save-indicator[data-save-state='saving'] .save-label {
     background:none; -webkit-text-fill-color:currentColor;
   }
