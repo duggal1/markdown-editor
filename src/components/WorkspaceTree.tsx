@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from './Icons';
 import type { FlowDocument, Folder, Workspace } from '../lib/store';
+import type { SearchHit } from '../lib/searchIndex';
 import './workspace-tree.css';
 
 type Kind = 'workspace' | 'folder' | 'document';
@@ -11,7 +12,8 @@ type Menu = { kind: Kind; id: string; top: number; left: number };
 type Props = {
   workspaces: Workspace[]; folders: Folder[]; documents: FlowDocument[];
   newFolderId: string | null; activeId: string; activeWorkspaceId: string;
-  search: string; expandedIds: string[]; newWorkspaceId: string | null; reducedMotion: boolean;
+  search: string; searchHits: SearchHit[]; searchPending: boolean;
+  expandedIds: string[]; newWorkspaceId: string | null; reducedMotion: boolean;
   onToggle: (id: string) => void; onSelectWorkspace: (id: string) => void;
   onOpen: (id: string) => void; onNewWorkspace: () => void;
   onNewFolder: (workspaceId: string) => void; onNewDocument: (workspaceId: string, folderId?: string) => void;
@@ -48,7 +50,7 @@ function Rename({ value: original, commit, cancel }: {
 
 export default function WorkspaceTree(props: Props) {
   const {
-    workspaces, folders, documents, activeId, activeWorkspaceId, search,
+    workspaces, folders, documents, activeId, activeWorkspaceId, search, searchHits, searchPending,
     expandedIds, newWorkspaceId, newFolderId, reducedMotion, onToggle,
     onSelectWorkspace, onOpen, onNewWorkspace, onNewFolder, onNewDocument,
     onRenameFolder, onMoveToFolder, onDeleteFolder, onRenameWorkspace,
@@ -176,12 +178,32 @@ export default function WorkspaceTree(props: Props) {
   const ease = { duration: reducedMotion || searching ? 0 : 0.2, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] };
   return <>
     <div className="filetree-heading">
-      <span>Workspaces</span>
-      <motion.button {...interaction} type="button" onClick={onNewWorkspace} aria-label="New workspace" title="New workspace">
+      <span>{searching ? 'Results' : 'Workspaces'}</span>
+      {!searching && <motion.button {...interaction} type="button" onClick={onNewWorkspace}
+        aria-label="New workspace" title="New workspace">
         <Icon name="plus" size={16} />
-      </motion.button>
+      </motion.button>}
     </div>
-    <div className="filetree-scroll" role="tree" aria-label="Workspace files">
+    {searching ? <div className="filetree-scroll filetree-results" role="tree" aria-label="Search results"
+      aria-busy={searchPending}>
+      {documents.map(doc => {
+        const hit = searchHits.find(item => item.id === doc.id);
+        return <div className={'filetree-result' + (activeId === doc.id ? ' is-active' : '')}
+          key={doc.id} role="treeitem" aria-selected={activeId === doc.id}>
+          <button type="button" className="filetree-result-open"
+            onClick={() => onOpen(doc.id)}
+            title={'Open ' + doc.title}>
+            <Icon name={doc.fileType === 'image' ? 'svg' : 'file'} size={14} />
+            <span className="filetree-result-copy">
+              <span className="filetree-result-title">{doc.title || 'Untitled'}</span>
+              {hit?.snippet && <span className="filetree-result-snippet">{hit.snippet}</span>}
+            </span>
+          </button>
+        </div>;
+      })}
+      {searchPending && <div className="filetree-empty" role="status">Searching pages…</div>}
+      {!searchPending && !documents.length && <div className="filetree-empty">No matching pages</div>}
+    </div> : <div className="filetree-scroll" role="tree" aria-label="Workspace files">
       {visible.map(ws => {
         const wsFolders = folders.filter(folder => folder.workspaceId === ws.id);
         const wsDocs = documents.filter(doc => doc.workspaceId === ws.id);
@@ -252,8 +274,7 @@ export default function WorkspaceTree(props: Props) {
           </AnimatePresence>
         </div>;
       })}
-      {searching && !visible.length && <div className="filetree-empty">No matches</div>}
-    </div>
+    </div>}
     {menu && createPortal(<motion.div role="menu" className="filetree-menu"
       style={{ top: menu.top, left: menu.left }} aria-label="File actions"
       initial={reducedMotion ? false : { opacity: 0, y: -5 }}
