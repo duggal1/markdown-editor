@@ -731,3 +731,37 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .tree-folder .tree-folder-name { font-weight: 500; }
 .markdown-preview strong { font-weight: 500; }
 .export-button, .mode-switch button.selected { font-weight: 500; }
+
+
+/* Flow chrome refinement. Preview typography and document layout are retained. */
+:root:not([data-theme='light']) { --surface:#111111; --preview-bg:#171717; --code-bg:#1c1c1c; --syntax-keyword:#ff6a00; --syntax-function:#ff8533; --syntax-number:#ffa14d; --syntax-literal:#ff8a3d; }
+.sidebar { background:var(--sidebar-bg); }
+.sidebar-inner { padding:18px 11px 14px; }
+.sidebar-brand { margin-bottom:17px; }
+.search-field { min-height:36px; height:36px; margin-bottom:6px; padding:0 11px; border-radius:5px; background:var(--neutral-100); }
+.sidebar-bottom { gap:2px; padding-top:10px; }
+.main-shell, .topbar, .subbar, .editor-pane, .cm-editor, .cm-scroller { background:var(--surface) !important; }
+.topbar { min-height:56px; padding:0 24px; }
+.subbar { min-height:42px; padding:0 24px; }
+.mode-switch { display:flex; align-items:center; padding:0; gap:1px; background:transparent; border-radius:0; }
+.mode-switch button { min-width:54px; height:29px; padding:0 11px; border-radius:5px; }
+.mode-highlight { border-radius:5px; background:var(--neutral-100); }
+.export-button { border-radius:5px; }
+.draw-entry { border-radius:5px; }
+.cm-scroller { padding-top:32px; }
+.cm-content { padding-bottom:80px !important; }
+.cm-line { line-height:1.82; }
+.preview-scroll { background:var(--preview-bg); padding-top:32px; }
+.editor-area.mode-split:not(.compact) .preview-pane { box-shadow:inset 7px 0 var(--background); }
+.code-block { border-radius:5px; }
+.code-language { color:var(--blue); }
+.code-header { min-height:36px; padding-left:13px; }
+.markdown-preview .hljs-keyword, .markdown-preview .hljs-built_in, .markdown-preview .hljs-meta { color:var(--syntax-keyword); }
+.markdown-preview .hljs-title, .markdown-preview .hljs-title.function_, .markdown-preview .hljs-function { color:var(--syntax-function); }
+.markdown-preview :not(pre) > code { color:var(--blue); }
+@media (max-width:800px) {
+  .topbar { padding:0 12px; }
+  .subbar { padding:0 8px; }
+  .cm-scroller { padding-top:20px; }
+  .preview-scroll { padding-top:22px; }
+}
