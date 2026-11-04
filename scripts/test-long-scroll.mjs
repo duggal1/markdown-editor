@@ -37,6 +37,12 @@ const nestedParts = previewParts(nested);
 assert.equal(nestedParts.map(x => x.markdown).join(''), nested);
 assert.ok(nestedParts.every(x => !/^  - Child/.test(x.markdown)), 'Never split at nested list items');
 
+const nestedParagraphs = ('- A parent item with a moderately long description.\\n\\n  - Its child must stay attached.\\n  - Another child.\\n').repeat(500);
+const nestedParagraphParts = previewParts(nestedParagraphs);
+assert.equal(nestedParagraphParts.map(x => x.markdown).join(''), nestedParagraphs);
+assert.ok(nestedParagraphParts.every(x => !/^  - Its child/.test(x.markdown)),
+  'Blank paragraphs inside list items must not become orphaned windows');
+
 const code = '```swift\n' + 'func example() { print("hello") }\n'.repeat(4000) + '```\n';
 const mixed = '# Plan\n\n' + ('Intro paragraph.\n\n').repeat(300) + code +
   ('\n## Next section\nDetails that should stay readable.').repeat(250);
