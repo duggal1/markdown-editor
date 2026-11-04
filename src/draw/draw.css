@@ -1,31 +1,15 @@
 .draw-page {
-  --draw-bg: #ffffff;
-  --draw-panel: #fafaf9;
-  --draw-line: #ebe8e4;
-  --draw-text: #292524;
-  --draw-strong: #1c1917;
-  --draw-muted: #847d76;
-  --draw-hover: #f4f2f0;
-  --draw-active: #ebe8e4;
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  height: 100dvh;
-  min-height: 0;
-  overflow: hidden;
-  background: var(--draw-bg);
-  color: var(--draw-text);
-  font: 400 13px/1.5 'Geist Variable', -apple-system, sans-serif;
+  --draw-bg: #f4f4f4; --draw-panel: #ffffff; --draw-line: #e3e3e3;
+  --draw-text: #0a0a0a; --draw-strong: #0a0a0a; --draw-muted: #666666;
+  --draw-hover: #ebebeb; --draw-active: #ededed; --draw-accent: #f05a00;
+  --draw-ink-on-accent: #0a0a0a;
+  font-family: 'Geist Variable', -apple-system, sans-serif;
 }
 :root[data-theme='dark'] .draw-page {
-  --draw-bg: #191817;
-  --draw-panel: #211f1d;
-  --draw-line: #393532;
-  --draw-text: #e7e5e4;
-  --draw-strong: #fafaf9;
-  --draw-muted: #a8a19a;
-  --draw-hover: #292625;
-  --draw-active: #302c29;
+  --draw-bg: #0a0a0a; --draw-panel: #171717; --draw-line: #262626;
+  --draw-text: #fafafa; --draw-strong: #fafafa; --draw-muted: #a3a3a3;
+  --draw-hover: #262626; --draw-active: #1f1f1f; --draw-accent: #ff6a00;
+  --draw-ink-on-accent: #0a0a0a;
 }
 .draw-page button { font: inherit; color: inherit; }
 .draw-header {
@@ -431,4 +415,84 @@
   .draw-image-item-action { flex-basis: 26px; width: 26px; opacity: 1; }
   .draw-subbar { overflow-x: auto; gap: 8px; }
   .draw-edit-actions { flex: 0 0 auto; }
+}
+
+/* Draw, rebuilt around the same pixel and surface system as the editor. */
+.draw-page { background: var(--draw-bg); color: var(--draw-text); }
+.draw-header { min-height: 72px; padding: 0 28px; gap: 14px; background: var(--draw-panel); border: 0; }
+.draw-heading { gap: 14px; }
+.draw-back { width: 30px; height: 30px; display: inline-grid; place-items: center; color: var(--draw-muted); border: 0; border-radius: 8px; }
+.draw-back:hover { background: var(--draw-hover); }
+.draw-wordmark { display: inline-flex; align-items: center; gap: 9px; font-size: 18px; font-weight: 500 !important; letter-spacing: -.055em; }
+.draw-logo { display: inline-grid; place-items: center; width: 31px; height: 31px; color: var(--draw-ink-on-accent); background: var(--draw-accent); border-radius: 0; clip-path: polygon(0 4px,4px 4px,4px 0,calc(100% - 4px) 0,calc(100% - 4px) 4px,100% 4px,100% calc(100% - 4px),calc(100% - 4px) calc(100% - 4px),calc(100% - 4px) 100%,4px 100%,4px calc(100% - 4px),0 calc(100% - 4px)); }
+.draw-wordmark-stop { margin-left: -8px; color: var(--draw-accent); }
+.draw-heading-separator { height: 18px; width: 1px; background: var(--draw-line); }
+.draw-project-label { color: var(--draw-muted); }
+.draw-project-input { min-height: 34px; padding: 0 11px; border: 0; border-radius: 7px; background: var(--draw-hover); color: var(--draw-strong); font-size: 12px; }
+.draw-project-input:focus { background: var(--draw-active); outline: none; }
+.draw-header-actions { gap: 7px; }
+.draw-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; border: 0; border-radius: 999px; padding: 0 14px; background: var(--draw-hover); color: var(--draw-strong); font-size: 12px; transition: background .13s ease-out, transform .14s cubic-bezier(.23,1,.32,1); }
+.draw-button:hover:not(:disabled) { background: var(--draw-active); }
+.draw-button:active:not(:disabled) { transform: scale(.975); }
+.draw-button-primary { background: var(--draw-accent); color: var(--draw-ink-on-accent) !important; }
+.draw-button-primary:hover:not(:disabled) { background: var(--draw-accent); filter: brightness(.96); }
+.draw-layout { gap: 8px; padding: 8px; background: var(--draw-bg); }
+.draw-rail { background: var(--draw-panel); border: 0; border-radius: 12px; }
+.draw-rail-heading { min-height: 56px; padding: 0 19px; color: var(--draw-strong); font-size: 12px; letter-spacing: -.01em; }
+.draw-rail-heading span:last-child { font: 400 11px var(--mono); color: var(--draw-muted); }
+.draw-image-list { padding: 0 10px 12px; }
+.draw-image-item { margin: 3px 0; min-height: 61px; border-radius: 9px; border: 0; transition: background .14s ease-out; }
+.draw-image-item:hover { background: var(--draw-hover); }
+.draw-image-item.is-selected { background: var(--draw-active); position: relative; }
+.draw-image-item.is-selected::before { content: ''; position: absolute; width: 3px; height: 15px; top: 50%; left: 0; transform: translateY(-50%); background: var(--draw-accent); }
+.draw-image-item img, .draw-image-item-select img { border-radius: 5px; }
+.draw-image-item-name { color: var(--draw-strong); font-size: 12px; }
+.draw-image-item-count { color: var(--draw-muted); font-size: 11px; }
+.draw-image-item-action { display: inline-grid; place-items: center; border-radius: 6px; }
+.draw-image-item-action:hover:not(:disabled) { background: var(--draw-hover); }
+.draw-image-remove:hover:not(:disabled) { color: #e11d48; }
+.draw-workspace { background: var(--draw-panel); border: 0; border-radius: 12px; overflow: hidden; }
+.draw-toolbar { min-height: 56px; padding: 0 24px; border: 0; background: var(--draw-panel); gap: 12px; }
+.draw-tools, .draw-format { gap: 3px; padding: 3px; background: var(--draw-hover); border-radius: 999px; }
+.draw-tools button, .draw-format button { min-height: 30px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-radius: 999px; color: var(--draw-muted); transition: color .12s ease-out, background .16s cubic-bezier(.23,1,.32,1); }
+.draw-tools button.is-active, .draw-format button.is-active { background: var(--draw-panel); color: var(--draw-strong); }
+.draw-tools button:hover:not(.is-active), .draw-format button:hover:not(.is-active) { background: var(--draw-active); }
+.draw-swatches { gap: 7px; }
+.draw-swatch { width: 17px; height: 17px; border-radius: 50%; border: 0; }
+.draw-swatch.is-active { outline: 2px solid var(--draw-accent); outline-offset: 3px; }
+.draw-custom-color { border-radius: 50%; }
+.draw-subbar { min-height: 52px; padding: 0 24px; background: var(--draw-panel); border: 0; gap: 12px; }
+.draw-navigation { gap: 9px; }
+.draw-navigation .draw-button { background: transparent; color: var(--draw-muted); height: 30px; padding: 0 9px; }
+.draw-navigation .draw-button:hover { background: var(--draw-hover); color: var(--draw-strong); }
+.draw-pagination { font: 400 12px var(--mono); color: var(--draw-strong); }
+.draw-text-button { display: inline-flex; align-items: center; gap: 6px; padding: 0 9px; min-height: 29px; border-radius: 6px; color: var(--draw-muted); font-size: 12px; }
+.draw-text-button:hover:not(:disabled) { background: var(--draw-hover); color: var(--draw-strong); }
+.draw-stage { background: var(--draw-bg); border: 0; min-height: 0; }
+.draw-stage.is-drop-target { outline: 2px solid var(--draw-accent); outline-offset: -8px; }
+.draw-image-frame { box-shadow: none !important; outline: 0 !important; border-radius: 3px; overflow: hidden; }
+.draw-image-frame > img { image-rendering: auto; }
+.draw-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 13px; width: min(440px,90%); min-height: 260px; padding: 36px; margin: auto; border: 0; border-radius: 12px; background: var(--draw-panel); text-align: center; color: var(--draw-strong); }
+.draw-empty-mark { display: grid; place-items: center; width: 50px; height: 50px; color: var(--draw-accent); font-size: 0; }
+.draw-empty-title { font-size: 19px; letter-spacing: -.055em; color: var(--draw-strong); }
+.draw-empty-action { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 15px; height: 33px; border-radius: 999px; background: var(--draw-accent); color: var(--draw-ink-on-accent); font-size: 12px; }
+.draw-empty-hint { max-width: 285px; line-height: 1.6; color: var(--draw-muted); font-size: 12px; }
+.draw-footer { min-height: 40px; padding: 0 24px; border: 0; background: var(--draw-panel); color: var(--draw-muted); font-size: 11px; }
+.draw-error { border: 0; background: var(--draw-panel); color: #e11d48; }
+.draw-error button { display: inline-grid; place-items: center; }
+@media (max-width: 800px) {
+  .draw-header { min-height: 62px; padding: 10px 12px; }
+  .draw-logo { width: 26px; height: 26px; }
+  .draw-layout { gap: 5px; padding: 5px; }
+  .draw-rail, .draw-workspace { border-radius: 8px; }
+  .draw-rail-heading { min-height: 29px; padding: 0 10px; }
+  .draw-toolbar { padding: 6px 10px; min-height: 49px; gap: 7px; }
+  .draw-tools button, .draw-format button { padding: 0 9px; }
+  .draw-subbar { padding: 5px 9px; min-height: 43px; }
+  .draw-stage { padding: 12px; }
+  .draw-empty { padding: 25px 14px; min-height: 220px; }
+  .draw-footer { padding: 5px 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .draw-page * { transition: none !important; animation: none !important; }
 }
