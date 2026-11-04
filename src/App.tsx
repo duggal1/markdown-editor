@@ -8,13 +8,13 @@ import { downloadMarkdown } from './lib/document';
 import { detectRawCode, isMarkdownFile, languageForFile } from './lib/code';
 import { svgPreviewDocument } from './lib/svgPreview';
 import {
-  clearRecovery, inferTitle, loadWorkspace, readPrefs, removeDoc, removeWorkspace,
-  saveDoc, savePrefs, saveRecovery, saveWorkspace, uid, wordCount,
-  type FlowDocument, type Mode, type Theme, type Workspace,
+  clearRecovery, inferTitle, loadWorkspace, readPrefs, removeDoc, removeFolder, removeWorkspace,
+  saveDoc, saveFolder, savePrefs, saveRecovery, saveWorkspace, uid, wordCount,
+  type FlowDocument, type Folder, type Mode, type Theme, type Workspace,
 } from './lib/store';
 
 const MarkdownPreview = lazy(() => import('./components/MarkdownPreview'));
-const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+const SPINNER = ['▣', '▪', '▫'];
 const FORMATS: { name: Format; icon?: IconName; label: string; shortcut?: string }[] = [
   { name: 'heading', label: 'Heading', shortcut: '#' },
   { name: 'bold', label: 'Bold' },
@@ -67,6 +67,8 @@ function AssetPreview({ document: doc, src, onExport, theme }: {
 export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [newFolderId, setNewFolderId] = useState<string | null>(null);
   const [docs, setDocs] = useState<FlowDocument[]>([]);
   const live = useRef(new Map<string, FlowDocument>());
   const [activeId, setActiveId] = useState('');
@@ -111,6 +113,7 @@ export default function App() {
   const saveQueue = useRef(new Map<string, Promise<void>>());
   const visualTimers = useRef(new Map<string, number>());
   const previewFrame = useRef<number | null>(null);
+  const previewTimer = useRef<number | null>(null);
   const pendingPreview = useRef<{ id: string; markdown: string } | null>(null);
   const motionOff = useReducedMotion();
 
@@ -143,6 +146,7 @@ export default function App() {
       const restoredMode = prefs.mode === 'preview' || prefs.mode === 'split' ? prefs.mode : 'write';
       setDocs(data.documents);
       setWorkspaces(data.workspaces);
+      setFolders(data.folders);
       const width = typeof prefs.splitPercent === 'number' && Number.isFinite(prefs.splitPercent)
         ? Math.min(78, Math.max(22, prefs.splitPercent)) : 50;
       setSplitPercent(width);
@@ -174,6 +178,7 @@ export default function App() {
       for (const timer of saveTimers.current.values()) clearTimeout(timer);
       for (const timer of visualTimers.current.values()) clearTimeout(timer);
       if (previewFrame.current !== null) cancelAnimationFrame(previewFrame.current);
+      if (previewTimer.current !== null) clearTimeout(previewTimer.current);
       if (syncFrame.current !== null) cancelAnimationFrame(syncFrame.current);
       if (splitFrame.current !== null) cancelAnimationFrame(splitFrame.current);
     };
@@ -181,7 +186,7 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     const color = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-    if (color) color.content = theme === 'dark' ? '#191817' : '#ffffff';
+    if (color) color.content = theme === 'dark' ? '#0A0A0A' : '#F4F4F4';
   }, [theme]);
   useEffect(() => {
     const doc = live.current.get(activeId);
@@ -250,7 +255,7 @@ export default function App() {
     const finish = () => {
       const doc = live.current.get(activeIdRef.current);
       if (doc) saveRecovery(doc);
-      for (const id of saveTimers.current.keys()) flush(id);
+      for (const id of [...saveTimers.current.keys()]) flush(id);
     };
     window.addEventListener('pagehide', finish);
     const onVisibility = () => { if (document.visibilityState === 'hidden') finish(); };
@@ -291,13 +296,18 @@ export default function App() {
     // Coalesce edits to one preview update per animation frame, never after an idle delay.
     if (id === activeIdRef.current && modeRef.current !== 'write') {
       pendingPreview.current = { id, markdown: value };
-      if (previewFrame.current === null) {
+      if (value.length > 220_000) {
+        if (previewTimer.current !== null) clearTimeout(previewTimer.current);
+        previewTimer.current = window.setTimeout(() => {
+          previewTimer.current = null;
+          const snapshot = pendingPreview.current;
+          if (snapshot && snapshot.id === activeIdRef.current && modeRef.current !== 'write') setPreviewText(snapshot.markdown);
+        }, value.length > 1_000_000 ? 500 : 220);
+      } else if (previewFrame.current === null) {
         previewFrame.current = requestAnimationFrame(() => {
           previewFrame.current = null;
           const snapshot = pendingPreview.current;
-          if (snapshot && snapshot.id === activeIdRef.current && modeRef.current !== 'write') {
-            setPreviewText(snapshot.markdown);
-          }
+          if (snapshot && snapshot.id === activeIdRef.current && modeRef.current !== 'write') setPreviewText(snapshot.markdown);
         });
       }
     }
@@ -313,6 +323,7 @@ export default function App() {
     if (previous && previous !== id) flush(previous);
     activeIdRef.current = id;
     pendingPreview.current = null;
+    if (previewTimer.current !== null) { clearTimeout(previewTimer.current); previewTimer.current = null; }
     if (previewFrame.current !== null) { cancelAnimationFrame(previewFrame.current); previewFrame.current = null; }
     setActiveId(id);
     targetLine.current = null;
@@ -328,12 +339,12 @@ export default function App() {
     if (window.innerWidth < 800) setSidebarOpen(false);
   }, [flush]);
 
-  const makeDocument = useCallback((targetWorkspace?: string) => {
+  const makeDocument = useCallback((targetWorkspace?: string, targetFolder?: string) => {
     if (!workspaces.length) return;
     const target = targetWorkspace || workspaceId || workspaces[0].id;
     const stamp = Date.now();
     const doc: FlowDocument = {
-      id: uid(), workspaceId: target, title: 'Untitled', titleAuto: true,
+      id: uid(), workspaceId: target, folderId: targetFolder, title: 'Untitled', titleAuto: true,
       markdown: '', createdAt: stamp, updatedAt: stamp,
     };
     live.current.set(doc.id, doc);
@@ -388,6 +399,44 @@ export default function App() {
     setNewWorkspaceId(ws.id);
     void saveWorkspace(ws).catch(() => setNotice('Workspace could not be saved.'));
   }
+  function createFolder(targetWorkspace: string) {
+    if (!workspaces.some(ws => ws.id === targetWorkspace)) return;
+    const folder: Folder = { id: uid(), workspaceId: targetWorkspace, name: 'New folder', createdAt: Date.now() };
+    setFolders(items => [...items, folder]);
+    setExpandedIds(ids => ids.includes(targetWorkspace) ? ids : [...ids, targetWorkspace]);
+    setNewFolderId(folder.id);
+    void saveFolder(folder).catch(() => setNotice('Folder could not be saved.'));
+  }
+  function renameFolder(id: string, name: string) {
+    const old = folders.find(item => item.id === id);
+    if (!old || !name.trim()) { setNewFolderId(null); return; }
+    const next = { ...old, name: name.trim() };
+    setFolders(items => items.map(item => item.id === id ? next : item));
+    setNewFolderId(null);
+    void saveFolder(next).catch(() => setNotice('Folder rename could not be saved.'));
+  }
+  async function eraseFolder(id: string) {
+    const folder = folders.find(item => item.id === id);
+    if (!folder) return;
+    // Removing a folder puts its documents at workspace root. Never erase file bodies.
+    const affected = [...live.current.values()].filter(doc => doc.folderId === id);
+    try {
+      for (const doc of affected) {
+        const timer = saveTimers.current.get(doc.id);
+        if (timer !== undefined) clearTimeout(timer);
+        saveTimers.current.delete(doc.id);
+        await saveQueue.current.get(doc.id)?.catch(() => {});
+        const current = live.current.get(doc.id);
+        if (!current) continue;
+        const updated = { ...current, folderId: undefined, updatedAt: Date.now() };
+        await saveDoc(updated);
+        live.current.set(doc.id, updated);
+      }
+      await removeFolder(id);
+      setFolders(items => items.filter(item => item.id !== id));
+      setDocs(items => items.map(doc => live.current.get(doc.id) || doc));
+    } catch { setNotice('Folder could not be removed. Your documents were kept.'); }
+  }
   function renameWorkspace(id: string, name: string) {
     const old = workspaces.find(item => item.id === id);
     if (!old || name === old.name) { setNewWorkspaceId(null); return; }
@@ -418,6 +467,7 @@ export default function App() {
     // Preserve document data if a storage deletion fails; do not silently drop files.
     try {
       for (const doc of deletedDocs) await removeDoc(doc.id);
+      for (const folder of folders.filter(item => item.workspaceId === id)) await removeFolder(folder.id);
       await removeWorkspace(id);
     } catch {
       setNotice('Could not delete the workspace completely. Refresh to reconcile your files.');
@@ -428,6 +478,7 @@ export default function App() {
       workerRef.current?.postMessage({ type: 'remove', id: doc.id });
     }
     setWorkspaces(remainingWorkspaces);
+    setFolders(items => items.filter(folder => folder.workspaceId !== id));
     setExpandedIds(ids => ids.filter(item => item !== id));
     setDocs(otherDocs);
     setRecentIds(ids => ids.filter(docId => live.current.has(docId)));
@@ -538,17 +589,20 @@ export default function App() {
     void importFiles(files);
   }
   function onDrop(event: DragEvent<HTMLElement>) {
+    if (event.defaultPrevented) return;
     event.preventDefault();
     void importFiles(Array.from(event.dataTransfer.files));
   }
   const active = live.current.get(activeId) || docs.find(doc => doc.id === activeId);
   const matching = useMemo(() => {
     const text = query.trim().toLowerCase();
-    const matchingWorkspaceIds = workspaces.filter(ws => ws.name.toLowerCase().includes(text)).map(ws => ws.id);
+    const matchingWorkspaceIds = new Set(workspaces.filter(ws => ws.name.toLowerCase().includes(text)).map(ws => ws.id));
+    const matchingFolderIds = new Set(folders.filter(folder => folder.name.toLowerCase().includes(text)).map(folder => folder.id));
     const ids = new Set(searchResults);
-    return docs.filter(doc => !text || ids.has(doc.id) || matchingWorkspaceIds.includes(doc.workspaceId))
+    return docs.filter(doc => !text || ids.has(doc.id) || matchingWorkspaceIds.has(doc.workspaceId) ||
+      (doc.folderId && matchingFolderIds.has(doc.folderId)))
       .sort((a, b) => b.updatedAt - a.updatedAt);
-  }, [docs, query, searchResults, workspaces]);
+  }, [docs, query, searchResults, workspaces, folders]);
   useEffect(() => {
     const requestId = ++searchRequest.current;
     if (!query.trim()) { setSearchResults([]); return; }
@@ -666,7 +720,7 @@ export default function App() {
   const mobileGridRows = presentationMode === 'split' ? 'minmax(0, 1fr) minmax(0, 1fr)'
     : presentationMode === 'preview' ? 'minmax(0, 0fr) minmax(0, 1fr)'
       : 'minmax(0, 1fr) minmax(0, 0fr)';
-  const pressMotion = motionOff ? {} : { whileHover: { scale: 1.035 }, whileTap: { scale: 0.965 } };
+  const pressMotion = motionOff ? {} : { whileTap: { scale: 0.98 } };
   if (!loaded) return <main className="boot"><FlowMark size={30} /><span>Opening workspace…</span></main>;
   return <div className="flow-shell" onDragOver={event => event.preventDefault()} onDrop={onDrop}>
     <motion.aside className={'sidebar' + (sidebarOpen ? ' is-open' : '')}
@@ -675,13 +729,13 @@ export default function App() {
       aria-label="Workspaces and documents">
       <div className="sidebar-inner">
         <div className="sidebar-brand">
-          <motion.div className="brand-lockup" initial={false} animate={{ opacity: sidebarOpen ? 1 : 0, x: sidebarOpen ? 0 : -8 }} transition={motionOff ? { duration: 0 } : { duration: 0.18 }}><span className="brand-mark"><FlowMark size={18} /></span><span>Flow</span></motion.div>
+          <motion.div className="brand-lockup" initial={false} animate={{ opacity: sidebarOpen ? 1 : 0, x: sidebarOpen ? 0 : -8 }} transition={motionOff ? { duration: 0 } : { duration: 0.18 }}><span className="brand-mark"><FlowMark size={18} /></span><span>Flow<span className="brand-period">.</span></span></motion.div>
         </div>
         <label className="search-field"><Icon name="search" size={16} />
           <input ref={searchRef} value={query} onChange={event => setQuery(event.target.value)} placeholder="Search documents" aria-label="Search documents" />
         </label>
         <WorkspaceTree
-          workspaces={workspaces} documents={matching}
+          workspaces={workspaces} documents={matching} folders={folders} newFolderId={newFolderId}
           activeId={activeId} activeWorkspaceId={workspaceId}
           search={query} expandedIds={expandedIds}
           newWorkspaceId={newWorkspaceId} reducedMotion={!!motionOff}
@@ -689,18 +743,31 @@ export default function App() {
           onSelectWorkspace={setWorkspaceId}
           onOpen={selectDocument}
           onNewWorkspace={createWorkspace}
+          onNewFolder={createFolder}
           onNewDocument={makeDocument}
+          onRenameFolder={renameFolder}
           onRenameWorkspace={renameWorkspace}
           onRenameDocument={renameDocument}
           onMoveDocument={(id, targetWorkspace) => {
             const original = live.current.get(id);
             if (!original || original.workspaceId === targetWorkspace) return;
-            const moved = { ...original, workspaceId: targetWorkspace, updatedAt: Date.now() };
+            const moved = { ...original, workspaceId: targetWorkspace, folderId: undefined, updatedAt: Date.now() };
             scheduleSave(moved);
             setDocs(items => items.map(doc => doc.id === id ? moved : doc));
             setExpandedIds(ids => ids.includes(targetWorkspace) ? ids : [...ids, targetWorkspace]);
             if (activeIdRef.current === id) setWorkspaceId(targetWorkspace);
           }}
+          onMoveToFolder={(id, folderId) => {
+            const folder = folders.find(item => item.id === folderId);
+            const original = live.current.get(id);
+            if (!folder || !original) return;
+            if (original.workspaceId === folder.workspaceId && original.folderId === folder.id) return;
+            const moved = { ...original, workspaceId: folder.workspaceId, folderId: folder.id, updatedAt: Date.now() };
+            scheduleSave(moved);
+            setDocs(items => items.map(doc => doc.id === id ? moved : doc));
+            if (activeIdRef.current === id) setWorkspaceId(folder.workspaceId);
+          }}
+          onDeleteFolder={id => { void eraseFolder(id); }}
           onDeleteWorkspace={id => {
             const ws = workspaces.find(item => item.id === id);
             if (ws) setPendingDelete({ kind: 'workspace', id, title: ws.name,
@@ -733,7 +800,7 @@ export default function App() {
           <div className="mode-switch" role="group" aria-label="Editor mode">
             {(['write', 'split', 'preview'] as const).map(item => <motion.button key={item} type="button" aria-pressed={mode === item}
               className={mode === item ? 'selected' : ''} whileTap={motionOff ? undefined : { scale: 0.96 }} onClick={() => changeMode(item)}>
-              {mode === item && <motion.span layoutId="mode-highlight" className="mode-highlight" transition={motionOff ? { duration: 0 } : { type: 'spring', stiffness: 550, damping: 42 }} />}
+              {mode === item && <motion.span layoutId="mode-highlight" className="mode-highlight" transition={motionOff ? { duration: 0 } : { duration: 0.22, ease: [0.23, 1, 0.32, 1] }} />}
               <span className="mode-label">{item.charAt(0).toUpperCase() + item.slice(1)}</span>
             </motion.button>)}
           </div>
