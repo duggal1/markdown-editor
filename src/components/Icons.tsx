@@ -1,6 +1,17 @@
-import type { CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import {
+  SidebarLeft01Icon, Search01Icon, Add01Icon, File01Icon, Folder01Icon,
+  ArrowLeft01Icon, ArrowRight01Icon, ChevronRightIcon, Download01Icon,
+  Upload01Icon, Moon01Icon, Sun01Icon, ViewIcon, SidebarRight01Icon,
+  Edit02Icon, Link01Icon, CodeIcon, QuoteUpIcon, ListViewIcon,
+  CheckListIcon, Cancel01Icon, Delete02Icon, MoreHorizontalIcon,
+  Clock01Icon, Copy01Icon, Tick01Icon, Bookmark01Icon, Image01Icon,
+  TerminalIcon, Cursor01Icon, TextIcon, ArrowUpRight01Icon, ImageAdd01Icon,
+  Undo02Icon, MagicWand01Icon, TextBoldIcon, TextItalicIcon,
+} from '@hugeicons/core-free-icons';
 
-// Pixel-locked aperture: every edge uses exact SVG integer coordinates.
+// The product mark remains original branding, not an invented icon set.
 export function FlowMark({ size = 22, style }: { size?: number; style?: CSSProperties }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
     shapeRendering="crispEdges" aria-hidden="true" style={style}>
@@ -9,53 +20,103 @@ export function FlowMark({ size = 22, style }: { size?: number; style?: CSSPrope
   </svg>;
 }
 
+// Every UI glyph has a real Hugeicons skeleton. Pixelation is a rendering
+// treatment; no one-off hand-drawn path data is used for UI icons.
 const glyphs = {
-  sidebar: 'M3 4H21V20H3ZM9 4V20',
-  search: 'M6 4H14V6H17V9H19V14H17V17H14V19H6V17H3V14H2V9H3V6H6ZM17 17H19V19H21V21H23',
-  plus: 'M11 3V11H3V13H11V21H13V13H21V11H13V3Z',
-  file: 'M6 3H14L19 8V21H6ZM14 3V8H19M9 12H16M9 16H16',
-  folder: 'M3 6H10V8H21V19H3Z',
-  back: 'M12 4H10V6H8V8H6V10H4V14H6V16H8V18H10V20H12M4 12H21',
-  forward: 'M12 4H14V6H16V8H18V10H20V14H18V16H16V18H14V20H12M3 12H20',
-  chevron: 'M9 5H11V7H13V9H15V11H17V13H15V15H13V17H11V19H9',
-  download: 'M11 3V14H8V12H6V14H8V16H10V18H14V16H16V14H18V12H16V14H13V3ZM4 19V21H20V19',
-  upload: 'M11 21V10H8V12H6V10H8V8H10V6H14V8H16V10H18V12H16V10H13V21ZM4 3V5H20V3',
-  moon: 'M17 3V6H13V9H11V14H13V17H17V19H11V17H7V15H5V11H3V9H5V6H8V4H11V3',
-  sun: 'M10 8H14V10H16V14H14V16H10V14H8V10H10ZM11 2V5M11 19V22M2 11H5M19 11H22M4 4H6V6M17 17H19V19M4 18H6V16M17 6H19V4',
-  eye: 'M2 11H4V9H6V7H9V6H15V7H18V9H20V11H22V13H20V15H18V17H15V18H9V17H6V15H4V13H2ZM10 10H14V14H10Z',
-  split: 'M3 4H21V20H3ZM12 4V20',
-  edit: 'M3 18H5V16H7V14H9V12H11V10H13V8H15V6H17V4H20V7H18V9H16V11H14V13H12V15H10V17H8V19H3Z',
-  link: 'M9 7H6V9H4V15H6V17H10V15H12M15 7H18V9H20V15H18V17H14V15H12M8 12H16',
-  code: 'M9 6H7V8H5V10H3V14H5V16H7V18H9M15 6H17V8H19V10H21V14H19V16H17V18H15M14 4L10 20',
-  quote: 'M4 5H10V11H8V15H5V18M13 5H19V11H17V15H14V18',
-  list: 'M4 6H6V8H4ZM10 7H21M4 11H6V13H4ZM10 12H21M4 16H6V18H4ZM10 17H21',
-  todo: 'M3 4H21V20H3ZM7 12H9V14H11V12H13V10H16',
-  close: 'M4 4H6V6H8V8H10V10H14V8H16V6H18V4H20M10 14H14M4 20H6V18H8V16H10V14M14 14H16V16H18V18H20V20',
-  trash: 'M4 6H20M9 4H15M6 7V20H18V7M10 10V17M14 10V17',
-  more: 'M4 11H6V13H4ZM11 11H13V13H11ZM18 11H20V13H18Z',
-  menu: 'M4 6H20M4 12H20M4 18H20',
-  history: 'M7 5H17V7H20V10H22V16H20V19H17V21H8V19H5V16H3V9H5V6H7M3 3V9H9M12 8V13H16',
-  copy: 'M8 7H20V21H8ZM4 17V3H16',
-  check: 'M4 12H6V14H8V16H10V14H12V12H14V10H16V8H18V6H20',
-  bookmark: 'M6 3H18V21H16V19H14V17H10V19H8V21H6Z',
-  svg: 'M3 4H21V20H3ZM7 16L10 12L13 15L16 10L19 16',
-  terminal: 'M3 4H21V20H3ZM7 9H9V11H11V13H9V15H7M13 15H18',
-  cursor: 'M5 3V19H8V15H11V17H13V15H11V13H14V11H12V9H10V7H8V5H6',
-  text: 'M3 4H21V8H19V6H13V20H16V22H8V20H11V6H5V8H3Z',
-  arrowUpRight: 'M6 18L18 6M10 6H18V14',
-  imageAdd: 'M3 5H15V8M15 15V20H3V5M6 16L9 12L12 15M19 3V11M15 7H23',
-  undo: 'M10 4H7V6H5V8H3V12H5V14H7V11H17V13H19V17H17V19H11M3 10H10',
-  format: 'M4 4H20M4 9H15M4 14H20M4 19H13M17 17H19V19H21V21H19V23H17V21H15V19H17Z',
+  sidebar: SidebarLeft01Icon, search: Search01Icon, plus: Add01Icon,
+  file: File01Icon, folder: Folder01Icon,
+  back: ArrowLeft01Icon, forward: ArrowRight01Icon, chevron: ChevronRightIcon,
+  download: Download01Icon, upload: Upload01Icon,
+  moon: Moon01Icon, sun: Sun01Icon, eye: ViewIcon, split: SidebarRight01Icon,
+  edit: Edit02Icon, link: Link01Icon, code: CodeIcon, quote: QuoteUpIcon,
+  list: ListViewIcon, todo: CheckListIcon, close: Cancel01Icon, trash: Delete02Icon,
+  more: MoreHorizontalIcon, menu: ListViewIcon, history: Clock01Icon,
+  copy: Copy01Icon, check: Tick01Icon, bookmark: Bookmark01Icon,
+  svg: Image01Icon, terminal: TerminalIcon, cursor: Cursor01Icon,
+  text: TextIcon, arrowUpRight: ArrowUpRight01Icon,
+  imageAdd: ImageAdd01Icon, undo: Undo02Icon, format: MagicWand01Icon,
+  bold: TextBoldIcon, italic: TextItalicIcon,
 } as const;
+
 export type IconName = keyof typeof glyphs;
-export function Icon({ name, size = 17, className = '' }: {
-  name: IconName; size?: number; className?: string;
+const rasterCache = new Map<string, string>();
+
+/**
+ * Render Hugeicons first, rasterize at 88% of the display resolution, and
+ * threshold alpha to a crisp pixel skeleton. The raster becomes a CSS mask,
+ * not a painted bitmap: currentColor still updates instantly on hover,
+ * selection, theme changes, and reduced-motion mode.
+ *
+ * All icons preserve a visible vector fallback until rasterization completes.
+ * The cache makes repeated tree items inexpensive to mount.
+ */
+export function PixelatedIcon({ name, size = 17, className = '', active = false }: {
+  name: IconName; size?: number; className?: string; active?: boolean;
 }) {
-  return <svg className={className} aria-hidden="true" width={size} height={size}
-    viewBox="0 0 24 24" shapeRendering="crispEdges" fill="none"
-    stroke="currentColor" strokeWidth={1.7}
-    strokeLinecap="square" strokeLinejoin="miter"><path d={glyphs[name]} /></svg>;
+  const source = useRef<HTMLSpanElement>(null);
+  const resolution = Math.max(13, Math.round(size * 0.88));
+  const cacheKey = name + ':' + resolution + ':' + (active ? '1' : '0');
+  const [raster, setRaster] = useState<{ key: string; data: string } | null>(null);
+  const matched = raster?.key === cacheKey ? raster.data : rasterCache.get(cacheKey);
+
+  useEffect(() => {
+    const cached = rasterCache.get(cacheKey);
+    if (cached) { setRaster({ key: cacheKey, data: cached }); return; }
+    const svg = source.current?.querySelector('svg');
+    if (!svg || typeof Image === 'undefined') return;
+
+    const copy = svg.cloneNode(true);
+    if (!(copy instanceof SVGElement)) return;
+    copy.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    copy.setAttribute('color', '#000000');
+    copy.setAttribute('width', String(resolution));
+    copy.setAttribute('height', String(resolution));
+    const image = new Image();
+    let disposed = false;
+    image.onload = () => {
+      if (disposed) return;
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = resolution; canvas.height = resolution;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) return;
+        ctx.clearRect(0, 0, resolution, resolution);
+        ctx.drawImage(image, 0, 0, resolution, resolution);
+        const pixels = ctx.getImageData(0, 0, resolution, resolution);
+        for (let i = 0; i < pixels.data.length; i += 4) {
+          pixels.data[i] = 0;
+          pixels.data[i + 1] = 0;
+          pixels.data[i + 2] = 0;
+          pixels.data[i + 3] = pixels.data[i + 3] >= 84 ? 255 : 0;
+        }
+        ctx.putImageData(pixels, 0, 0);
+        const data = canvas.toDataURL('image/png');
+        rasterCache.set(cacheKey, data);
+        setRaster({ key: cacheKey, data });
+      } catch { /* Keep the genuine Hugeicons SVG when canvas is unavailable. */ }
+    };
+    image.src = 'data:image/svg+xml;charset=utf-8,' +
+      encodeURIComponent(new XMLSerializer().serializeToString(copy));
+    return () => { disposed = true; image.onload = null; };
+  }, [cacheKey, resolution]);
+
+  const ready = Boolean(matched);
+  const maskStyle: CSSProperties | undefined = matched ? {
+    WebkitMaskImage: 'url("' + matched + '")',
+    maskImage: 'url("' + matched + '")',
+  } : undefined;
+
+  return <span className={'pixel-huge-icon ' + className} aria-hidden="true"
+    style={{ width: size, height: size }}>
+    <span ref={source} className="pixel-huge-icon-source"
+      style={{ visibility: ready ? 'hidden' : 'visible' }}>
+      <HugeiconsIcon icon={glyphs[name]} size={size} strokeWidth={active ? 2 : 1.8} />
+    </span>
+    {ready && <span className="pixel-huge-icon-paint" style={maskStyle} />}
+  </span>;
 }
+
+export const Icon = PixelatedIcon;
 
 /**
  * User-provided exact SVGs. Their paint inherits currentColor, which means
