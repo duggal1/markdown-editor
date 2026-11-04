@@ -218,7 +218,7 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .code-block { width: 100%; max-width: 100%; min-width: 0; overflow: hidden; margin: 17px auto 22px; background: var(--code-bg); border: 0; border-radius: 4px; }
 .code-header { display: flex; align-items: center; justify-content: space-between; height: 31px; padding: 0 8px 0 12px; border: 0; background: transparent; }
 .code-language { display: inline-flex; align-items: center; gap: 8px; color: var(--code-ink); font: 400 11px var(--mono); }
-.language-dot { display: inline-block; width: 4px; height: 4px; flex: 0 0 4px; border-radius: 1px; background: #d6d3d1; }
+.language-dot { display: inline-block; width: 4px; height: 4px; flex: 0 0 4px; border-radius: 1px; background: var(--muted); }
 .code-copy { display: inline-flex; align-items: center; gap: 6px; padding: 5px 6px; background: transparent; border: 0; border-radius: 4px; color: var(--muted); font-size: 11px; }
 .code-copy:hover { background: transparent; color: var(--code-ink); }
 .code-content { display: flex; align-items: flex-start; width: 100%; min-width: 0; max-width: 100%; margin: 0; padding: 5px 0 9px; color: var(--code-ink); font: 400 12px/1.8 var(--mono); overflow-x: auto; overflow-y: hidden; tab-size: 2; }
