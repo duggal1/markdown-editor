@@ -725,3 +725,81 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
     background:none; -webkit-text-fill-color:currentColor;
   }
 }
+
+
+/* Hugeicons remain the source geometry; a low-resolution CSS mask gives a
+   restrained 1-device-pixel skeleton without changing hover/currentColor. */
+.pixel-huge-icon {
+  position:relative; display:inline-flex; flex:none;
+  align-items:center; justify-content:center; vertical-align:middle;
+  color:inherit; pointer-events:none; overflow:visible;
+}
+.pixel-huge-icon-source,
+.pixel-huge-icon-paint {
+  position:absolute; inset:0; display:block; width:100%; height:100%;
+}
+.pixel-huge-icon-source { display:grid; place-items:center; }
+.pixel-huge-icon-source svg { display:block; width:100%; height:100%; }
+.pixel-huge-icon-paint {
+  background:currentColor;
+  -webkit-mask-size:100% 100%; mask-size:100% 100%;
+  -webkit-mask-position:center; mask-position:center;
+  -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+  image-rendering:pixelated;
+}
+
+/* Compact, fixed-width save state. Orange-600 is reserved for "Saved";
+   saving uses a composited pixel pulse instead of a timer-driven spinner. */
+.save-indicator {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:128px; min-width:128px; height:26px;
+  padding:0 9px; margin-left:4px; gap:7px;
+  border-radius:8px; background:transparent;
+  color:var(--muted); font:500 11px var(--mono);
+  font-variant-numeric:tabular-nums;
+  transition:background-color .19s cubic-bezier(.22,1,.36,1),
+             color .19s cubic-bezier(.22,1,.36,1);
+}
+.save-indicator[data-save-state='saved'] {
+  background:#ea580c; color:#111111;
+}
+.save-indicator[data-save-state='saved']::before {
+  content:''; display:block; flex:0 0 5px; width:5px; height:5px;
+  margin:0; background:currentColor; opacity:.68; border-radius:0;
+}
+.save-indicator[data-save-state='saving'] {
+  background:#191919; color:#ff964d;
+}
+.save-indicator[data-save-state='saving']::before { display:none; }
+.save-indicator[data-save-state='error'] { background:#211617; color:#fca5a5; }
+.pixel-save-loader { width:62px; min-width:62px; gap:2px; height:14px; }
+.pixel-save-loader i {
+  opacity:.18; background:#ff8a3d;
+  will-change:transform,opacity;
+  animation:pixel-save-flow 1.15s linear infinite;
+}
+@keyframes pixel-save-flow {
+  0%,100% { opacity:.18; transform:translate3d(0,0,0); }
+  28% { opacity:1; transform:translate3d(0,-1px,0); }
+  58% { opacity:.34; transform:translate3d(0,0,0); }
+}
+.save-indicator[data-save-state='saving'] .save-label {
+  background:linear-gradient(100deg, #ff8835 19%,#fff0e4 50%,#ff8835 81%);
+  background-size:220% 100%;
+  background-clip:text; -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+  animation:pixel-save-shimmer 1.7s linear infinite;
+}
+@media(max-width:800px) {
+  .save-indicator { width:110px; min-width:110px; padding:0 6px; }
+  .pixel-save-loader { transform:scale(.83); transform-origin:right center; width:50px; min-width:50px; }
+  .save-indicator[data-save-state='saved'] { display:none; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .pixel-save-loader i,
+  .save-indicator[data-save-state='saving'] .save-label { animation:none!important; }
+  .pixel-save-loader i { opacity:.8; transform:none!important; }
+  .save-indicator[data-save-state='saving'] .save-label {
+    background:none; -webkit-text-fill-color:currentColor;
+  }
+}
