@@ -1,6 +1,7 @@
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
+import { detectRawCode } from './code';
 import type { TDocumentDefinitions } from 'pdfmake/interfaces';
 
 /**
@@ -215,7 +216,14 @@ export function parsePdfMarkdown(markdown: string): MdNode {
   const withoutFrontmatter = markdown.replace(
     /^\uFEFF?---\r?\n[\s\S]{0,12000}?\r?\n---\r?\n/, '',
   );
-  return unified().use(remarkParse).use(remarkGfm).parse(withoutFrontmatter) as unknown as MdNode;
+  // Code-only pages are first-class documents: preserve syntax and line
+  // breaks as a single code block instead of treating code as loose prose.
+  const language = detectRawCode(withoutFrontmatter);
+  const source = language && withoutFrontmatter.length < 2_000_000
+    ? '\x60\x60\x60' + language + '\n' + withoutFrontmatter.replace(/\n$/, '') +
+      '\n\x60\x60\x60'
+    : withoutFrontmatter;
+  return unified().use(remarkParse).use(remarkGfm).parse(source) as unknown as MdNode;
 }
 
 export function pdfImageUrls(markdown: string): string[] {
@@ -264,7 +272,7 @@ export function buildPdfDefinition(
       h6: { fontSize: 10.3, bold: true, color: MUTED, lineHeight: 1.36 },
       body: { fontSize: 10.4, color: BODY, lineHeight: 1.48 },
       list: { fontSize: 10.4, color: BODY, lineHeight: 1.45 },
-      code: { fontSize: 8.8, color: BLACK, lineHeight: 1.35 },
+      code: { font: 'Courier', fontSize: 8.7, color: BLACK, lineHeight: 1.34 },
       codeLabel: { fontSize: 8.1, bold: true, color: MUTED, characterSpacing: 0.5 },
       tableHead: { fontSize: 9.1, bold: true, color: BLACK, lineHeight: 1.3 },
       tableCell: { fontSize: 9.1, color: BODY, lineHeight: 1.32 },
