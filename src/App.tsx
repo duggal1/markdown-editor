@@ -18,8 +18,8 @@ import {
 const MarkdownPreview = lazy(() => import('./components/MarkdownPreview'));
 const FORMATS: { name: Format; icon?: IconName; label: string; shortcut?: string }[] = [
   { name: 'heading', label: 'Heading', shortcut: '#' },
-  { name: 'bold', label: 'Bold' },
-  { name: 'italic', label: 'Italic', shortcut: '⌘I' },
+  { name: 'bold', icon: 'bold', label: 'Bold' },
+  { name: 'italic', icon: 'italic', label: 'Italic', shortcut: '⌘I' },
   { name: 'link', icon: 'link', label: 'Link', shortcut: '⌘K' },
   { name: 'bullet', icon: 'list', label: 'List', shortcut: '-' },
   { name: 'todo', icon: 'todo', label: 'Task', shortcut: '[ ]' },
