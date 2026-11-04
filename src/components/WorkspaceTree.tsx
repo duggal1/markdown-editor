@@ -194,6 +194,12 @@ export default function WorkspaceTree(props: Props) {
                 title={ws.name} onClick={() => { onSelectWorkspace(ws.id); if (!expanded) onToggle(ws.id); }}>
                 {ws.name}
               </button>}
+            <button type="button" className="filetree-add-page"
+              aria-label={'Add page to ' + ws.name}
+              title="Add page"
+              onClick={event => { event.stopPropagation(); onNewDocument(ws.id); }}>
+              <Icon name="plus" size={15} />
+            </button>
             {more('workspace', ws.id, ws.name)}
           </div>
           <AnimatePresence initial={false}>
@@ -244,7 +250,7 @@ export default function WorkspaceTree(props: Props) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: reducedMotion ? 0 : 0.19, ease: [0.22, 1, 0.36, 1] }}>
       {menu.kind === 'workspace' && <>
-        <button role="menuitem" type="button" onClick={() => { onNewDocument(menu.id); setMenu(null); }}><Icon name="file" size={15} /> New document</button>
+        <button role="menuitem" type="button" onClick={() => { onNewDocument(menu.id); setMenu(null); }}><Icon name="file" size={15} /> Add page</button>
         <button role="menuitem" type="button" onClick={() => { onNewFolder(menu.id); setMenu(null); }}><Icon name="folder" size={15} /> New folder</button>
       </>}
       {menu.kind === 'folder' && <button role="menuitem" type="button"
@@ -252,7 +258,7 @@ export default function WorkspaceTree(props: Props) {
           const folder = folders.find(item => item.id === menu.id);
           if (folder) onNewDocument(folder.workspaceId, folder.id);
           setMenu(null);
-        }}><Icon name="file" size={15} /> New document</button>}
+        }}><Icon name="file" size={15} /> Add page</button>}
       {menu.kind === 'document' && (() => {
         const doc = documents.find(item => item.id === menu.id);
         return doc?.folderId ? <button role="menuitem" type="button" onClick={() => {
