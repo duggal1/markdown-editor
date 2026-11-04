@@ -97,8 +97,10 @@ function MarkdownEditor({
     let languageTimer: number | undefined;
     let pendingText: Text | null = null;
     let frame: number | null = null;
+    let idleTimer: number | null = null;
     const drain = () => {
       if (frame !== null) { cancelAnimationFrame(frame); frame = null; }
+      if (idleTimer !== null) { clearTimeout(idleTimer); idleTimer = null; }
       if (pendingText) {
         const doc = pendingText;
         pendingText = null;
@@ -174,13 +176,15 @@ function MarkdownEditor({
               change.current(update.state.doc.toString(), documentId);
             } else {
               pendingText = update.state.doc;
-              if (frame === null) frame = requestAnimationFrame(() => {
-                frame = null;
-                if (!pendingText) return;
-                const doc = pendingText;
-                pendingText = null;
-                change.current(doc.toString(), documentId);
-              });
+              // CodeMirror owns edits synchronously. Serialize large source text
+              // after the edit burst rather than blocking every animation frame.
+              if (update.state.doc.length > 220_000) {
+                if (frame !== null) { cancelAnimationFrame(frame); frame = null; }
+                if (idleTimer !== null) clearTimeout(idleTimer);
+                idleTimer = window.setTimeout(() => { idleTimer = null; drain(); }, 180);
+              } else if (frame === null) {
+                frame = requestAnimationFrame(() => { frame = null; drain(); });
+              }
             }
             // Language switching is infrequent and never runs in a typing transaction.
             if (languageTimer !== undefined) clearTimeout(languageTimer);

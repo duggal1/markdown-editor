@@ -4,8 +4,9 @@ import { detectRawCode } from './code';
 export type Theme = 'light' | 'dark';
 export type Mode = 'write' | 'split' | 'preview';
 export type Workspace = { id: string; name: string; createdAt: number };
+export type Folder = { id: string; workspaceId: string; name: string; createdAt: number };
 export type FlowDocument = {
-  id: string; workspaceId: string; title: string; titleAuto: boolean;
+  id: string; workspaceId: string; folderId?: string; title: string; titleAuto: boolean;
   markdown: string; createdAt: number; updatedAt: number;
   fileName?: string; fileType?: 'text' | 'image' | 'binary'; language?: string; asset?: Blob;
 };
@@ -29,11 +30,12 @@ export function uid(): string {
 }
 function database(): Promise<IDBDatabase> {
   if (!dbPromise) dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open(DATABASE, 1);
+    const request = indexedDB.open(DATABASE, 2);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains('documents')) db.createObjectStore('documents', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('workspaces')) db.createObjectStore('workspaces', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('folders')) db.createObjectStore('folders', { keyPath: 'id' });
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error || Error('IndexedDB unavailable'));
@@ -41,7 +43,7 @@ function database(): Promise<IDBDatabase> {
   }).catch(error => { dbPromise = undefined; throw error; });
   return dbPromise!;
 }
-async function getAll<T>(store: 'documents' | 'workspaces'): Promise<T[]> {
+async function getAll<T>(store: 'documents' | 'workspaces' | 'folders'): Promise<T[]> {
   const db = await database();
   return new Promise((resolve, reject) => {
     const request = db.transaction(store, 'readonly').objectStore(store).getAll();
@@ -49,7 +51,7 @@ async function getAll<T>(store: 'documents' | 'workspaces'): Promise<T[]> {
     request.onerror = () => reject(request.error);
   });
 }
-async function put(store: 'documents' | 'workspaces', value: FlowDocument | Workspace): Promise<void> {
+async function put(store: 'documents' | 'workspaces' | 'folders', value: FlowDocument | Workspace | Folder): Promise<void> {
   const db = await database();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(store, 'readwrite');
@@ -59,7 +61,7 @@ async function put(store: 'documents' | 'workspaces', value: FlowDocument | Work
     tx.onabort = () => reject(tx.error);
   });
 }
-async function remove(store: 'documents' | 'workspaces', id: string): Promise<void> {
+async function remove(store: 'documents' | 'workspaces' | 'folders', id: string): Promise<void> {
   const db = await database();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(store, 'readwrite');
@@ -82,6 +84,12 @@ export function savePrefs(prefs: Preferences): void {
   try { localStorage.setItem(PREFS, JSON.stringify(prefs)); } catch { /* Storage blocked. */ }
 }
 export function saveRecovery(doc: FlowDocument): void {
+  // localStorage is synchronous; huge recovery snapshots can freeze the page.
+  // IndexedDB remains primary for large documents and binary assets.
+  if (doc.markdown.length > 240_000 || doc.asset) {
+    clearRecovery(doc.id);
+    return;
+  }
   try {
     localStorage.setItem(RECOVERY, JSON.stringify(doc));
     localStorage.setItem(RECOVERY_ID, doc.id);
@@ -107,6 +115,12 @@ export async function saveDoc(doc: FlowDocument): Promise<void> {
 export async function saveWorkspace(ws: Workspace): Promise<void> {
   await put('workspaces', ws);
 }
+export async function saveFolder(folder: Folder): Promise<void> {
+  await put('folders', folder);
+}
+export async function removeFolder(id: string): Promise<void> {
+  await remove('folders', id);
+}
 export async function removeDoc(id: string): Promise<void> {
   await remove('documents', id);
   try { localStorage.removeItem(FALLBACK + id); } catch { /* no-op */ }
@@ -115,12 +129,13 @@ export async function removeDoc(id: string): Promise<void> {
 export async function removeWorkspace(id: string): Promise<void> {
   await remove('workspaces', id);
 }
-export async function loadWorkspace(): Promise<{ workspaces: Workspace[]; documents: FlowDocument[] }> {
+export async function loadWorkspace(): Promise<{ workspaces: Workspace[]; folders: Folder[]; documents: FlowDocument[] }> {
   let workspaces: Workspace[] = [];
+  let folders: Folder[] = [];
   let documents: FlowDocument[] = [];
   try {
-    [workspaces, documents] = await Promise.all([
-      getAll<Workspace>('workspaces'), getAll<FlowDocument>('documents'),
+    [workspaces, folders, documents] = await Promise.all([
+      getAll<Workspace>('workspaces'), getAll<Folder>('folders'), getAll<FlowDocument>('documents'),
     ]);
   } catch { /* Continue with emergency local fallback. */ }
 
@@ -159,7 +174,7 @@ export async function loadWorkspace(): Promise<{ workspaces: Workspace[]; docume
     documents = [doc];
     await saveDoc(doc);
   }
-  return { workspaces, documents };
+  return { workspaces, folders, documents };
 }
 export function inferTitle(markdown: string): string {
   const head = markdown.slice(0, 8000);
