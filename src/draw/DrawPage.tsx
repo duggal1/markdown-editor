@@ -21,7 +21,7 @@ type Fit = { width: number; height: number };
 type Pan = { pointerId: number; x: number; y: number; left: number; top: number };
 type Pinch = { distance: number; x: number; y: number };
 
-const COLORS = ['#ff0000', '#fbbf24', '#60a5fa', '#a3e635', '#c4b5fd', '#fafaf9'];
+const COLORS = ['#ff0000', '#fbbf24', '#60a5fa', '#a3e635', '#c4b5fd', '#fafafa'];
 const clamp = (n: number) => Math.max(0, Math.min(1, n));
 
 function point(event: { clientX: number; clientY: number; currentTarget: HTMLCanvasElement }): Point {
