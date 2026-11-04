@@ -1,20 +1,50 @@
 /**
- * Split enormous Markdown at blank paragraph boundaries outside fenced code.
- * Source bytes are preserved; normal documents still render as one tree.
+ * Split large Markdown into manageable rendering windows.
+ *
+ * Preserve source bytes and never split fenced code, HTML blocks or nested
+ * list items. Prefer blank paragraphs; when a plan has thousands of adjacent
+ * list items or headings without blank lines, split at TOP-LEVEL block
+ * boundaries instead of rendering the entire document as one React tree.
+ *
+ * A continuation marker lets the preview eliminate artificial list margins
+ * where a single long list spans multiple virtual windows.
  */
-export function previewChunks(markdown: string, target = 7200): string[] {
-  if (markdown.length <= 18000) return [markdown];
-  const output: string[] = [];
+export type PreviewPart = { markdown: string; continuesList: boolean };
+
+export function previewParts(markdown: string, target = 3600): PreviewPart[] {
+  if (markdown.length <= 18000) return [{ markdown, continuesList: false }];
+  const output: PreviewPart[] = [];
   let start = 0;
   let position = 0;
+  let continuesList = false;
+  let lastListContext = false;
   let fence: { char: string; length: number } | null = null;
   let inHtmlBlock = false;
+
+  function flush(end: number, nextList: boolean) {
+    if (end > start) {
+      output.push({ markdown: markdown.slice(start, end), continuesList });
+      start = end;
+      continuesList = nextList;
+    }
+  }
+
   while (position < markdown.length) {
     const end = markdown.indexOf('\n', position);
     const lineEnd = end < 0 ? markdown.length : end;
     const line = markdown.slice(position, lineEnd);
     const trimmed = line.trim();
-    const match = /^( {0,3})(\x60{3,}|~{3,})/.exec(line);
+    const match = /^( {0,3})(`{3,}|~{3,})/.exec(line);
+    const listItem = /^(?:[-+*]\s+|\d+[.)]\s+)/.test(line);
+    const heading = /^ {0,3}#{1,6}[ \t]+\S/.test(line);
+    const newFence = Boolean(match && !fence);
+    const canBreakBefore = !fence && !inHtmlBlock &&
+      position - start >= target && (heading || listItem || newFence);
+
+    // ReactMarkdown handles each window as its own tree; these are complete
+    // block boundaries, not arbitrary N-character substring cuts.
+    if (canBreakBefore) flush(position, listItem && lastListContext);
+
     if (match) {
       const char = match[2][0];
       if (!fence) fence = { char, length: match[2].length };
@@ -23,15 +53,26 @@ export function previewChunks(markdown: string, target = 7200): string[] {
     }
     if (!fence && /^<(?:div|table|details|section|article|pre|script|style)(?:\s|>)/i.test(trimmed)) inHtmlBlock = true;
     if (inHtmlBlock && /^<\/(?:div|table|details|section|article|pre|script|style)>/i.test(trimmed)) inHtmlBlock = false;
-    const blank = !trimmed;
+
     const nextStart = end < 0 ? markdown.length : end + 1;
-    if (!fence && !inHtmlBlock && blank &&
+    if (!fence && !inHtmlBlock && !trimmed &&
       nextStart - start >= target && nextStart < markdown.length) {
-      output.push(markdown.slice(start, nextStart));
-      start = nextStart;
+      flush(nextStart, false);
     }
+
+    // Keep indented continuation lines within their parent list. Blank lines
+    // intentionally terminate the continuation context.
+    if (!trimmed || heading || match) lastListContext = false;
+    else if (listItem) lastListContext = true;
+    else if (!/^(?: {2,}|\t)/.test(line)) lastListContext = false;
+
     position = nextStart;
   }
-  if (start < markdown.length) output.push(markdown.slice(start));
-  return output.length ? output : [markdown];
+  flush(markdown.length, false);
+  return output.length ? output : [{ markdown, continuesList: false }];
+}
+
+/** Compatibility API used by callers that only need source slices. */
+export function previewChunks(markdown: string, target = 3600): string[] {
+  return previewParts(markdown, target).map(part => part.markdown);
 }
