@@ -1,16 +1,16 @@
 .draw-page {
-  --draw-bg: #f4f4f4; --draw-panel: #ffffff; --draw-line: #e3e3e3;
-  --draw-text: #0a0a0a; --draw-strong: #0a0a0a; --draw-muted: #666666;
-  --draw-hover: #ebebeb; --draw-active: #ededed; --draw-accent: #f05a00;
+  --draw-bg: #0a0a0a; --draw-panel: #171717; --draw-line: #262626;
+  --draw-text: #fafafa; --draw-strong: #fafafa; --draw-muted: #a3a3a3;
+  --draw-hover: #262626; --draw-active: #1f1f1f; --draw-accent: #ff6a00;
   --draw-ink-on-accent: #0a0a0a;
   display: flex; flex-direction: column; width: 100%; height: 100dvh;
   min-height: 0; overflow: hidden; background: var(--draw-bg); color: var(--draw-text);
   font: 400 13px/1.5 'Geist Variable', -apple-system, sans-serif;
 }
-:root[data-theme='dark'] .draw-page {
-  --draw-bg: #0a0a0a; --draw-panel: #171717; --draw-line: #262626;
-  --draw-text: #fafafa; --draw-strong: #fafafa; --draw-muted: #a3a3a3;
-  --draw-hover: #262626; --draw-active: #1f1f1f; --draw-accent: #ff6a00;
+:root[data-theme='light'] .draw-page {
+  --draw-bg: #f4f4f4; --draw-panel: #ffffff; --draw-line: #e3e3e3;
+  --draw-text: #0a0a0a; --draw-strong: #0a0a0a; --draw-muted: #666666;
+  --draw-hover: #ebebeb; --draw-active: #ededed; --draw-accent: #f05a00;
   --draw-ink-on-accent: #0a0a0a;
 }
 .draw-page button { font: inherit; color: inherit; }
