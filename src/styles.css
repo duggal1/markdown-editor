@@ -695,96 +695,78 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 }
 
 
-/* Hugeicons remain the source geometry; a low-resolution CSS mask gives a
-   restrained 1-device-pixel skeleton without changing hover/currentColor. */
+/* Standard Hugeicons vectors. No masks, canvas or pixel filtering.
+   Keep existing layout selectors stable for tree, toolbar and Draw. */
 .pixel-huge-icon {
-  position:relative; display:inline-flex; flex:none;
+  display:inline-flex; flex:0 0 auto;
   align-items:center; justify-content:center; vertical-align:middle;
-  color:inherit; pointer-events:none; overflow:visible;
+  color:inherit; pointer-events:none;
 }
-.pixel-huge-icon-source,
-.pixel-huge-icon-paint {
-  position:absolute; inset:0; display:block; width:100%; height:100%;
-}
-.pixel-huge-icon-source { display:grid; place-items:center; }
-.pixel-huge-icon-source svg { display:block; width:100%; height:100%; }
-.pixel-huge-icon-paint {
-  background:currentColor;
-  -webkit-mask-size:100% 100%; mask-size:100% 100%;
-  -webkit-mask-position:center; mask-position:center;
-  -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
-  image-rendering:pixelated;
-}
+.pixel-huge-icon svg { display:block; flex:none; }
 
-/* Saving and Saved share an orange-600 surface and reserved width.
-   Seven stationary square cells scan through opacity only. No bouncing,
-   translating, width changes or timer-driven React renders. */
+/* Saved stays typographic. A compact orange pixel grid carries the status,
+   not a colored badge. Saving uses a stationary horizontal scan. */
 .save-indicator {
-  display:inline-flex; align-items:center; justify-content:center;
-  flex:0 0 132px; width:132px; min-width:132px; height:28px;
-  padding:0 9px; margin-left:4px; gap:8px;
-  border-radius:8px; background:#ea580c;
-  color:#111; font:500 11px var(--mono);
-  font-variant-numeric:tabular-nums;
-  white-space:nowrap;
+  display:inline-flex; flex:0 0 130px; align-items:center; justify-content:center;
+  width:130px; min-width:130px; height:28px;
+  padding:0; margin-left:4px; gap:8px;
+  border:0; border-radius:0; background:transparent;
+  color:var(--muted); font:500 11px var(--mono);
+  white-space:nowrap; font-variant-numeric:tabular-nums;
 }
 .save-indicator[data-save-state='saved'],
 .save-indicator[data-save-state='saving'] {
-  background:#ea580c; color:#111;
+  color:var(--muted);
+  background:transparent;
 }
 .save-indicator[data-save-state='saved']::before {
-  content:''; display:block; flex:0 0 5px;
-  width:5px; height:5px; margin:0;
-  background:currentColor; opacity:.72; border-radius:0;
+  content:''; display:block; flex:0 0 11px;
+  width:11px; height:11px; margin:0; opacity:1;
+  border:0; border-radius:0;
+  background:
+    linear-gradient(#ea580c 0 0) 0 0/5px 5px no-repeat,
+    linear-gradient(#ea580c 0 0) 6px 0/5px 5px no-repeat,
+    linear-gradient(#ea580c 0 0) 0 6px/5px 5px no-repeat,
+    linear-gradient(#ea580c 0 0) 6px 6px/5px 5px no-repeat;
 }
 .save-indicator[data-save-state='saving']::before { display:none; }
-.save-indicator[data-save-state='error'] {
-  background:#231718; color:#fca5a5;
-}
+.save-indicator[data-save-state='error'] { color:#fca5a5; background:transparent; }
 .pixel-save-loader {
-  display:inline-flex; align-items:center; flex:0 0 54px;
+  display:inline-flex; flex:0 0 54px; align-items:center;
   width:54px; min-width:54px; height:14px; gap:2px;
 }
 .pixel-save-loader i {
   display:block; flex:0 0 6px;
   width:6px; height:6px; border-radius:0;
-  background:#141414; opacity:.22;
-  transform:none !important;
+  background:#ea580c; opacity:.16;
   will-change:opacity;
-  animation:pixel-save-scan 1.12s ease-in-out infinite;
+  animation:pixel-save-scan 1.06s linear infinite;
 }
-.pixel-save-loader i:nth-child(2) { animation-delay:-.96s; }
-.pixel-save-loader i:nth-child(3) { animation-delay:-.80s; }
-.pixel-save-loader i:nth-child(4) { animation-delay:-.64s; }
-.pixel-save-loader i:nth-child(5) { animation-delay:-.48s; }
-.pixel-save-loader i:nth-child(6) { animation-delay:-.32s; }
+.pixel-save-loader i:nth-child(2) { animation-delay:-.91s; }
+.pixel-save-loader i:nth-child(3) { animation-delay:-.76s; }
+.pixel-save-loader i:nth-child(4) { animation-delay:-.61s; }
+.pixel-save-loader i:nth-child(5) { animation-delay:-.46s; }
+.pixel-save-loader i:nth-child(6) { animation-delay:-.31s; }
 .pixel-save-loader i:nth-child(7) { animation-delay:-.16s; }
 @keyframes pixel-save-scan {
-  0%,100% { opacity:.18; }
-  45% { opacity:1; }
-  75% { opacity:.36; }
+  0%,100% { opacity:.16; }
+  38% { opacity:1; }
+  74% { opacity:.36; }
 }
 .save-indicator[data-save-state='saving'] .save-label {
-  background:linear-gradient(105deg,#141414 24%,#fff3e7 49%,#141414 75%);
-  background-size:225% 100%;
-  -webkit-background-clip:text; background-clip:text;
-  -webkit-text-fill-color:transparent;
-  animation:pixel-save-shimmer 1.9s linear infinite;
-}
-@keyframes pixel-save-shimmer {
-  0% { background-position:150% 0; }
-  100% { background-position:-150% 0; }
+  color:var(--muted);
+  background:none;
+  -webkit-text-fill-color:currentColor;
+  animation:none;
 }
 @media (max-width:800px) {
-  .save-indicator { flex-basis:110px; width:110px; min-width:110px; padding:0 5px; gap:4px; }
-  .pixel-save-loader { flex-basis:54px; width:54px; min-width:54px; }
-  .save-indicator[data-save-state='saved'] { display:none; }
+  .save-indicator {
+    display:inline-flex; flex-basis:110px;
+    width:110px; min-width:110px; gap:5px;
+  }
+  .pixel-save-loader { flex-basis:54px; }
 }
 @media (prefers-reduced-motion:reduce) {
-  .pixel-save-loader i,
-  .save-indicator[data-save-state='saving'] .save-label { animation:none !important; }
-  .pixel-save-loader i { opacity:.76; }
-  .save-indicator[data-save-state='saving'] .save-label {
-    background:none; -webkit-text-fill-color:currentColor;
-  }
+  .pixel-save-loader i { animation:none!important; opacity:.8; }
+  .save-indicator[data-save-state='saving'] .save-label { animation:none!important; }
 }
