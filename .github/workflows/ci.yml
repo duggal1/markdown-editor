@@ -16,6 +16,7 @@ jobs:
       - run: npm run test:icons
       - run: npm run test:workspace-ui
       - run: npm run test:preview
+      - run: npm run test:long-scroll
       - run: npm run test:interactions
       - run: npm run test:titles
       - run: npm run build
