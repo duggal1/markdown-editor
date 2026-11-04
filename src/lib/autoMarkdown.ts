@@ -12,7 +12,7 @@ function featureParts(line: string): { label: string; description: string } | nu
   const label = match[1].trim();
   const description = match[2].trim();
   if (!label || /[.!?;:,]$/.test(label) || /[<>={}]/.test(label)
-    || /^[-*+>\d]/.test(label) || label.split(/\s+/).length > 10
+    || /^(?:[-*+>]\s|\d+[.)]\s)/.test(label) || label.split(/\s+/).length > 10
     || /^https?:\/\//i.test(label) || !/[a-z]/i.test(description)) return null;
   return { label, description };
 }
