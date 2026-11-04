@@ -25,6 +25,14 @@ assert.doesNotMatch(source, /rasterCache|createElement\(['"]canvas|\.toDataURL\(
 assert.match(source, /<HugeiconsIcon icon=\{glyphs\[name\]\}/);
 const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 assert.doesNotMatch(css, /\.pixel-huge-icon-paint|\.pixel-huge-icon-source/);
+assert.match(css, /\.pixel-huge-icon-subtle svg\s*\{\s*shape-rendering:crispEdges;/);
+assert.match(css, /\.pixel-sidebar-toggle::after/);
+assert.match(source, /name === 'sidebar' \? ' pixel-sidebar-toggle'/);
+const drawSource = readFileSync(new URL('../src/draw/DrawPage.tsx', import.meta.url), 'utf8');
+const flowSource = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+assert.match(drawSource, /from '\.\.\/components\/Icons'/);
+assert.match(flowSource, /from '\.\/components\/Icons'/);
+assert.doesNotMatch(source, /rasterCache|canvas|toDataURL/);
 assert.match(css, /\.save-indicator\[data-save-state='saved'\]::before/);
 assert.match(css, /background:\s*#ea580c;\s*opacity:/);
 console.log(`Validated ${names.length} unmodified Hugeicons SVG glyphs and sharp saving indicator.`);
