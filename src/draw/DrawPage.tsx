@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent, type PointerEvent } from 'react';
 import { createImageZip, type ZipEntry } from './zip';
-import { drawAnnotation, hitTestAnnotation, renderExport, type Annotation, type AnnotationHit, type ArrowAnnotation, type OutputFormat, type Point, type TextAnnotation } from './annotations';
+import { drawAnnotation, hitTestAnnotation, renderExport, type Annotation, type AnnotationHit, type ArrowAnnotation, type ArrowStyle, type OutputFormat, type Point, type TextAnnotation } from './annotations';
 import { HugeiconsIcon } from '@hugeicons/react';
 import {
   ArrowLeft01Icon, ArrowRight01Icon, ArrowUpRight01Icon,
   Cursor01Icon, TextIcon, Download01Icon, Add01Icon,
   Delete02Icon, Undo02Icon, ImageAdd01Icon, Cancel01Icon,
 } from '@hugeicons/core-free-icons';
-import { motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { FlowMark } from '../components/Icons';
 import './draw.css';
 
@@ -32,9 +32,10 @@ function point(event: { clientX: number; clientY: number; currentTarget: HTMLCan
   };
 }
 
-function filename(project: string, index: number, format: OutputFormat) {
-  const safe = project.trim().replace(/[/\\:*?"<>|\u0000-\u001f]/g, '_').slice(0, 90) || 'Screenshots';
-  return safe + ' ' + (index + 1) + (format === 'webp' ? '.webp' : '.jpg');
+function filename(project: string, item: ImageItem, index: number, format: OutputFormat) {
+  const safe = (project.trim() ? project.trim() + ' ' + (index + 1) :
+    item.name.replace(/\.[^.]+$/, '')).replace(/[/\\:*?"<>|\u0000-\u001f]/g, '_').slice(0, 90) || 'Image';
+  return safe + (format === 'webp' ? '.webp' : '.jpg');
 }
 
 function moveAnnotation(
@@ -55,10 +56,7 @@ function moveAnnotation(
     x2: item.x2 + dx, y2: item.y2 + dy };
 }
 
-function initialName(): string {
-  try { return localStorage.getItem('flow.draw.project.v1') || 'Flow'; }
-  catch { return 'Flow'; }
-}
+function initialName(): string { return ''; }
 
 function packZip(entries: ZipEntry[]): Promise<Blob> {
   if (typeof Worker === 'undefined') return createImageZip(entries);
@@ -83,11 +81,30 @@ function packZip(entries: ZipEntry[]): Promise<Blob> {
   });
 }
 
+function ArrowStylePreview({ style }: { style: ArrowStyle }) {
+  if (style === 'pixel') return <svg aria-hidden="true" viewBox="0 0 52 24" width="39" height="19"
+    shapeRendering="crispEdges" fill="currentColor">
+    <path d="M3 18h8v-3h8v-3h8V9h8V6h5V3l10 9-10 9v-3h-5v-3h-8v-3h-8v-3h-8z" />
+  </svg>;
+  if (style === 'line') return <svg aria-hidden="true" viewBox="0 0 52 24" width="39" height="19"
+    fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="butt">
+    <path d="M4 20 47 4M32 3l15 1-5 14" />
+  </svg>;
+  if (style === 'fine') return <svg aria-hidden="true" viewBox="0 0 52 24" width="39" height="19"
+    fill="none" stroke="currentColor" strokeWidth="1.3">
+    <path d="M4 20 45 5M37 4l8 1-3 8" />
+  </svg>;
+  return <svg aria-hidden="true" viewBox="0 0 52 24" width="39" height="19"
+    fill="currentColor"><path d="M4 18 38 6l-3-5 14 2-9 12-1-6L5 21z" /></svg>;
+}
+
 export default function DrawPage() {
   const [images, setImages] = useState<ImageItem[]>([]);
   const [index, setIndex] = useState(0);
   const [annotations, setAnnotations] = useState<Record<string, Annotation[]>>({});
   const [tool, setTool] = useState<Tool>('arrow');
+  const [arrowStyle, setArrowStyle] = useState<ArrowStyle>('pixel');
+  const [styleOpen, setStyleOpen] = useState(false);
   const [color, setColor] = useState(COLORS[0]);
   const [format, setFormat] = useState<OutputFormat>('webp');
   const [projectName, setProjectName] = useState(initialName);
@@ -131,14 +148,20 @@ export default function DrawPage() {
   activeRef.current = active;
 
   useEffect(() => {
+    if (!styleOpen) return;
+    const dismiss = (event: globalThis.PointerEvent) => {
+      if (!(event.target instanceof Element) || !event.target.closest('.draw-style-picker')) setStyleOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setStyleOpen(false); };
+    document.addEventListener('pointerdown', dismiss);
+    document.addEventListener('keydown', escape);
+    return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape); };
+  }, [styleOpen]);
+  useEffect(() => {
     const old = document.title;
     document.title = 'Draw · Flow';
     return () => { document.title = old; };
   }, []);
-  useEffect(() => {
-    try { localStorage.setItem('flow.draw.project.v1', projectName); }
-    catch { /* storage is optional; naming still works within the session */ }
-  }, [projectName]);
   useEffect(() => () => {
     if (paintFrame.current !== null) cancelAnimationFrame(paintFrame.current);
     if (zoomAdjust.current !== null) cancelAnimationFrame(zoomAdjust.current);
@@ -434,6 +457,20 @@ export default function DrawPage() {
     requestPaint();
   }
 
+  function chooseArrowStyle(style: ArrowStyle) {
+    setArrowStyle(style);
+    setStyleOpen(false);
+    // The same control also edits a selected arrow, with undo history.
+    const selection = selectedRef.current;
+    if (!selection) return;
+    const notes = annotationsRef.current[selection.imageId] || [];
+    const current = notes[selection.index];
+    if (!current || current.kind !== 'arrow' || current.style === style) return;
+    const next = notes.slice();
+    next[selection.index] = { ...current, style };
+    updateAnnotations({ ...annotationsRef.current, [selection.imageId]: next });
+  }
+
   function openText(draft: TextDraft) {
     textDraftRef.current = draft;
     setTextDraft(draft);
@@ -590,7 +627,7 @@ export default function DrawPage() {
       const file = await getEncoded(item, format);
       const at = images.findIndex(image => image.id === item.id);
       if (at === -1) return;
-      saveBlob(file, filename(projectName, at, format));
+      saveBlob(file, filename(projectName, item, at, format));
       // A single download should not suppress the navigation warning for other
       // unsaved screenshots still in the batch.
     } catch (cause) {
@@ -660,7 +697,7 @@ export default function DrawPage() {
       return;
     }
     const arrow: ArrowAnnotation = {
-      kind: 'arrow', color, x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y,
+      kind: 'arrow', color, style: arrowStyle, x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y,
     };
     drawn.current = { pointerId: event.pointerId, imageId: item.id, arrow };
     draftArrow.current = arrow;
@@ -821,7 +858,7 @@ export default function DrawPage() {
           const i = nextIndex++;
           const image = images[i];
           const blob = await getEncoded(image, format);
-          entries[i] = { name: filename(projectName, i, format), file: blob };
+          entries[i] = { name: filename(projectName, item, i, format), file: blob };
           completed++;
           setProgress('Exporting ' + completed + ' / ' + images.length);
         }
@@ -852,7 +889,7 @@ export default function DrawPage() {
         <input id="draw-project" className="draw-project-input" value={projectName}
           maxLength={90} spellCheck={false} aria-label="Project name for screenshot export"
           onChange={event => { setProjectName(event.target.value); downloaded.current = false; }}
-          placeholder="Flow" />
+          placeholder="Project name" />
       </div>
       <div className="draw-header-actions">
         <input ref={input} className="draw-file-input" type="file"
@@ -892,18 +929,18 @@ export default function DrawPage() {
             className={'draw-image-item' + (index === i ? ' is-selected' : '')}>
             <button type="button" className="draw-image-item-select"
               onClick={() => select(i)} aria-current={index === i ? 'true' : undefined}
-              title={item.name} aria-label={'Open ' + filename(projectName, i, format)}>
+              title={item.name} aria-label={'Open ' + filename(projectName, item, i, format)}>
               <img src={item.url} alt="" loading="lazy" />
               <span className="draw-image-item-info">
-                <span className="draw-image-item-name">{projectName.trim() || 'Screenshots'} {i + 1}</span>
+                <span className="draw-image-item-name">{item.name}</span>
                 <span className="draw-image-item-count">{(annotations[item.id] || []).length} note{(annotations[item.id] || []).length === 1 ? '' : 's'}</span>
               </span>
             </button>
             <div className="draw-image-item-actions">
               <button type="button" className="draw-image-item-action"
                 disabled={busy || !!singleBusyId}
-                aria-label={'Download ' + filename(projectName, i, format)}
-                title={'Download ' + filename(projectName, i, format)}
+                aria-label={'Download ' + filename(projectName, item, i, format)}
+                title={'Download ' + filename(projectName, item, i, format)}
                 onClick={() => { void downloadSingle(item); }}>
                 {singleBusyId === item.id ? '…' : <HugeiconsIcon icon={Download01Icon} size={14} strokeWidth={1.6} />}
               </button>
@@ -929,6 +966,31 @@ export default function DrawPage() {
             <motion.button whileTap={tap} type="button" className={'draw-tool' + (tool === 'text' ? ' is-active' : '')}
               aria-pressed={tool === 'text'} onClick={() => setTool('text')}>
               <HugeiconsIcon icon={TextIcon} size={15} strokeWidth={1.8} /> <span>Text</span></motion.button>
+          </div>
+          <div className="draw-style-picker">
+            <button type="button" className="draw-style-trigger"
+              aria-haspopup="menu" aria-expanded={styleOpen}
+              aria-label={'Arrow style: ' + arrowStyle}
+              onClick={() => { commitText(); setTool('arrow'); setStyleOpen(open => !open); }}>
+              <ArrowStylePreview style={arrowStyle} />
+              <span>{({ pixel: 'Pixel', solid: 'Solid', line: 'Open', fine: 'Fine' } as const)[arrowStyle]}</span>
+              <span className="draw-style-chevron" aria-hidden="true">⌄</span>
+            </button>
+            <AnimatePresence>
+              {styleOpen && <motion.div className="draw-style-menu" role="menu"
+                initial={reducedMotion ? false : { opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -3 }}
+                transition={{ duration: reducedMotion ? 0 : 0.13, ease: [0.22, 1, 0.36, 1] }}>
+                {(['pixel', 'solid', 'line', 'fine'] as ArrowStyle[]).map(style =>
+                  <button key={style} type="button" role="menuitemradio"
+                    aria-checked={arrowStyle === style}
+                    className={arrowStyle === style ? 'is-selected' : ''}
+                    onClick={() => chooseArrowStyle(style)}>
+                    <ArrowStylePreview style={style} />
+                    <span>{({ pixel: 'Pixel arrow', solid: 'Solid arrow', line: 'Open arrow', fine: 'Fine arrow' } as const)[style]}</span>
+                  </button>)}
+              </motion.div>}
+            </AnimatePresence>
           </div>
           <div className="draw-swatches" role="group" aria-label="Annotation color">
             {COLORS.map(c => <button key={c} type="button"
@@ -1038,7 +1100,7 @@ export default function DrawPage() {
             tool === 'arrow' ? 'Drag to draw · Select any annotation to move · Pinch / wheel to zoom' :
             tool === 'text' ? 'Tap to add text · Drag existing text to move · Pinch / wheel to zoom' :
             'Click to select · Drag to move · Double-click text to edit'}</span>
-          <span>{format === 'webp' ? 'WebP' : 'JPEG'} · {projectName.trim() || 'Screenshots'} 1–{images.length}</span>
+          <span>{format === 'webp' ? 'WebP' : 'JPEG'} · {images.length} image{images.length === 1 ? '' : 's'}</span>
         </footer>
         {error && <div className="draw-error" role="alert">{error}
           <button type="button" onClick={() => setError('')} aria-label="Dismiss error"><HugeiconsIcon icon={Cancel01Icon} size={15} strokeWidth={1.7} /></button>
