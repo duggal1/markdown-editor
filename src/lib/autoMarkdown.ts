@@ -2,94 +2,123 @@ import { detectRawCode } from './code';
 
 export type MarkdownFormatOptions = { atDocumentStart?: boolean };
 
-/**
- * Small deterministic formatting pass for plain text. No network, inference or
- * destructive rewrite of existing Markdown, code, tables or indented blocks.
- * It is intentionally conservative: headings are inferred only from short
- * standalone label-like lines, not from normal sentences.
- */
+type Line = { value: string; type: 'blank' | 'feature' | 'heading' | 'text' | 'protected' };
+
+function featureParts(line: string): { label: string; description: string } | null {
+  // Short feature label + meaningful explanation. A dash in prose or a
+  // negative number is not a feature.
+  const match = /^(.{2,68}?)\s+(?:—|–|-{1,2})\s+(.{10,})$/.exec(line.trim());
+  if (!match) return null;
+  const label = match[1].trim();
+  const description = match[2].trim();
+  if (!label || /[.!?;:,]$/.test(label) || /[<>={}]/.test(label)
+    || /^(?:[-*+>]\s|\d+[.)]\s)/.test(label) || label.split(/\s+/).length > 10
+    || /^https?:\/\//i.test(label) || !/[a-z]/i.test(description)) return null;
+  return { label, description };
+}
+
+function alreadyStructured(line: string): boolean {
+  return /^(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+|>\s+|\|\s*|<|~~~|\x60{3,})/.test(line);
+}
+
+function plainSectionTitle(line: string): boolean {
+  if (!line || line.length > 66 || line.split(/\s+/).length > 9) return false;
+  if (/^(?:[-*+>\d]|https?:|www\.)/i.test(line) || /[.!?;,]$/.test(line)
+    || /[:=(){}<>]/.test(line) || alreadyStructured(line)) return false;
+  return /[a-z]/i.test(line);
+}
+
+/** Fast local, undoable formatting. Never send text to a service. */
 export function formatPlainTextAsMarkdown(
   source: string,
   options: MarkdownFormatOptions = {},
 ): string {
-  if (!source.trim() || source.length > 180_000) return source;
-  if (detectRawCode(source)) return source;
+  if (!source.trim() || source.length > 180_000 || detectRawCode(source)) return source;
+  const lines = source.replace(/\r\n?/g, '\n').replace(/\u00a0/g, ' ').split('\n');
+  const count = lines.reduce((n, line) => n + (featureParts(line) ? 1 : 0), 0);
+  const hasFeatureSeries = count >= 2;
+  const result: Line[] = [];
+  let fence: '`' | '~' | null = null;
+  const nextContent = (index: number) => {
+    for (let i = index + 1; i < lines.length; i++) {
+      const trimmed = lines[i].trim();
+      if (trimmed) return trimmed;
+    }
+    return '';
+  };
+  const isFence = (line: string) => /^\s*(`{3,}|~{3,})/.exec(line);
 
-  const normalized = source.replace(/\r\n?/g, '\n').replace(/\u00a0/g, ' ');
-  const lines = normalized.split('\n');
-  const output: string[] = [];
-  const meaningful = lines.map(value => value.trim()).filter(Boolean);
-  if (!meaningful.length) return source;
-
-  // Existing Markdown and fenced code are already structured. Only reduce
-  // redundant exterior blank lines; leave the content of fences unchanged.
-  const alreadyMarkdown = lines.some(line =>
-    /^\s*(?:#{1,6}\s+|[-*+]\s+|\d+\.\s+|>\s+|`{3,}|~{3,}|\|\s*:?[-]+)/.test(line),
-  );
-  let inFence = false;
-  const compact = (line: string) => line.replace(/[ \t]+$/g, '');
-  for (let index = 0; index < lines.length; index++) {
-    const raw = lines[index];
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
     const trimmed = raw.trim();
-    const fence = /^\s*(`{3,}|~{3,})/.exec(raw);
-    if (fence) {
-      inFence = !inFence;
-      output.push(raw);
+    const delimiter = isFence(raw);
+    if (delimiter) {
+      const token = delimiter[1].charAt(0) as '`' | '~';
+      if (!fence) fence = token;
+      else if (fence === token) fence = null;
+      result.push({ value: raw, type: 'protected' });
       continue;
     }
-    if (inFence) { output.push(raw); continue; }
+    if (fence || /^ {4}|^\t/.test(raw)) {
+      result.push({ value: raw, type: 'protected' });
+      continue;
+    }
     if (!trimmed) {
-      if (output.length && output[output.length - 1] !== '') output.push('');
+      result.push({ value: '', type: 'blank' });
       continue;
     }
-    if (alreadyMarkdown || /^ {4}|^\t/.test(raw)) {
-      output.push(compact(raw));
+    const next = nextContent(i);
+    const feature = hasFeatureSeries && !alreadyStructured(trimmed) ? featureParts(trimmed) : null;
+    if (feature) {
+      result.push({ value: '- **' + feature.label + '** — ' + feature.description, type: 'feature' });
       continue;
     }
-
-    let text = trimmed.replace(/[ \t]{2,}/g, ' ');
-    // Plain-text bullet marks and common numbered-list notation.
-    if (/^[•◦▪]\s*/.test(text)) {
-      output.push('- ' + text.replace(/^[•◦▪]\s*/, ''));
-      continue;
-    }
-    if (/^\d+[)]\s+/.test(text)) {
-      output.push(text.replace(/^(\d+)[)]\s+/, '$1. '));
-      continue;
-    }
-    if (/^(?:[-–—])\s+\S/.test(text)) {
-      output.push('- ' + text.replace(/^(?:[-–—])\s+/, ''));
+    if (alreadyStructured(trimmed)) {
+      result.push({ value: raw.replace(/[ \t]+$/g, ''), type: /^(?:#{1,6})\s/.test(trimmed) ? 'heading' : 'text' });
       continue;
     }
 
-    const next = lines.slice(index + 1).find(value => value.trim())?.trim() || '';
-    const previousWasBlank = index === 0 || !lines[index - 1].trim();
-    const short = text.length <= 66 && text.split(/\s+/).length <= 10;
-    const notSentence = !/[.!?;:,]$/.test(text);
-    const label = short && notSentence && !/^(?:https?:\/\/|\d+|\w+\s*=)/.test(text) &&
-      !/[{}<>]/.test(text) && Boolean(next);
-    const first = output.every(line => !line.trim());
-    const suitableFirst = first && label && text.split(/\s+/).length >= 2;
-    const section = !first && label && previousWasBlank &&
-      (index + 1 < lines.length && lines[index + 1].trim().length > 0);
-    if (suitableFirst || section) {
-      if (output.length && output[output.length - 1] !== '') output.push('');
-      text = (suitableFirst && options.atDocumentStart !== false ? '# ' : '## ') + text;
-      output.push(text);
-      output.push('');
+    const preceding = i === 0 || !lines.slice(0, i).some(line => line.trim());
+    const sectionBeforeFeatures = hasFeatureSeries && plainSectionTitle(trimmed)
+      && Boolean(featureParts(next));
+    const startTitle = options.atDocumentStart !== false && preceding
+      && plainSectionTitle(trimmed) && next.length > 0;
+    if (startTitle || sectionBeforeFeatures) {
+      result.push({ value: (startTitle ? '# ' : '### ') + trimmed, type: 'heading' });
       continue;
     }
-    output.push(text);
+    result.push({ value: trimmed.replace(/[ \t]{2,}/g, ' '), type: 'text' });
   }
 
-  // Keep one blank line between paragraphs, remove leading/trailing gaps.
-  while (output[0] === '') output.shift();
-  while (output[output.length - 1] === '') output.pop();
-  return output.join('\n');
+  // Remove blank lines between members of a feature list, but keep paragraph
+  // separation before and after lists and headings. Do not touch fenced code.
+  const output: Line[] = [];
+  for (let i = 0; i < result.length; i++) {
+    const item = result[i];
+    if (item.type === 'blank') {
+      if (!output.length || output[output.length - 1].type === 'blank') continue;
+      let next = i + 1;
+      while (next < result.length && result[next].type === 'blank') next++;
+      if (next >= result.length) continue;
+      if (output[output.length - 1].type === 'feature' && result[next].type === 'feature') continue;
+      output.push(item);
+      continue;
+    }
+    const last = output[output.length - 1];
+    if (last && last.type !== 'blank') {
+      if (item.type === 'heading' || (item.type === 'feature' && last.type !== 'feature')
+        || (last.type === 'feature' && item.type !== 'feature')) {
+        output.push({ value: '', type: 'blank' });
+      }
+    }
+    output.push(item);
+  }
+  while (output.length && output[output.length - 1].type === 'blank') output.pop();
+  return output.map(line => line.value).join('\n');
 }
 
-/** Used by paste handling to avoid reformatting a single ordinary line. */
+/** Single-line typing is never reinterpreted. */
 export function shouldAutoFormatPaste(value: string): boolean {
-  return value.length < 180_000 && value.includes('\n') &&
-    value.trim().length > 0 && !detectRawCode(value);
+  return value.length < 180_000 && value.includes('\n')
+    && value.trim().length > 0 && !detectRawCode(value);
 }
