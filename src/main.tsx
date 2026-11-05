@@ -1,6 +1,13 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
+import { readPrefs } from './lib/store';
+import { applyAccentTheme } from './lib/accentTheme';
+
+// Apply the saved appearance before either Flow or Draw mounts.
+const savedAppearance = readPrefs();
+applyAccentTheme(savedAppearance.accentTheme);
+document.documentElement.dataset.theme = savedAppearance.theme === 'light' ? 'light' : 'dark';
 
 const App = React.lazy(() => import('./App'));
 const DrawPage = React.lazy(() => import('./draw/DrawPage'));

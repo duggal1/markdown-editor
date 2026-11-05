@@ -1,7 +1,7 @@
 .draw-page {
   --draw-bg: #0a0a0a; --draw-panel: #111111; --draw-line: #242424;
   --draw-text: #fafafa; --draw-strong: #fafafa; --draw-muted: #a3a3a3;
-  --draw-hover: #1d1d1d; --draw-active: #232323; --draw-accent: #ff6a00;
+  --draw-hover: #1d1d1d; --draw-active: #232323; --draw-accent: var(--flow-accent);
   --draw-ink-on-accent: #0a0a0a;
   display: flex; flex-direction: column; width: 100%; height: 100dvh;
   min-height: 0; overflow: hidden; background: var(--draw-bg); color: var(--draw-text);
@@ -10,7 +10,7 @@
 :root[data-theme='light'] .draw-page {
   --draw-bg: #f4f4f4; --draw-panel: #ffffff; --draw-line: #e3e3e3;
   --draw-text: #0a0a0a; --draw-strong: #0a0a0a; --draw-muted: #666666;
-  --draw-hover: #ebebeb; --draw-active: #ededed; --draw-accent: #f05a00;
+  --draw-hover: #ebebeb; --draw-active: #ededed; --draw-accent: var(--flow-accent);
   --draw-ink-on-accent: #0a0a0a;
 }
 .draw-page button { font: inherit; color: inherit; }
