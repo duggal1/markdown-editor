@@ -992,7 +992,7 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 :root:not([data-theme='light']) .search-field:hover,
 :root:not([data-theme='light']) .search-field:focus-within { background:#111111; }
 .search-field kbd { padding:0 6px; height:21px; border:0; border-radius:5px; box-shadow:none;
-  background:#303030; color:#dedede; font:500 10px/1 var(--mono); }
+  background:#282828; color:#d0d0d0; font:500 10px/1 var(--mono); }
 :root[data-theme='light'] .search-field kbd { background:#e4e4e4; color:#606060; }
 /* Keep both panes scrolling independently but eliminate intrusive scrollbar tracks. */
 .editor-area .cm-scroller, .editor-area .preview-scroll { scrollbar-width:none; -ms-overflow-style:none; }
@@ -1002,3 +1002,11 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .export-button[aria-busy='true'] .pixel-save-loader { color:#ffffff; }
 .export-button[aria-busy='true'] .pixel-save-loader i { background:#ffffff; }
 .notice .pixel-save-loader { flex:0 0 auto; }
+
+
+/* A centered writing measure in desktop Write mode. CodeMirror's internal
+   sizer must fill its pane before the max-width content can center itself. */
+@media (min-width:801px) {
+  .editor-area:not(.compact) .cm-sizer { flex:1 1 0%; width:100%; min-width:0; }
+  .editor-area:not(.compact) .cm-content { width:100%; max-width:880px; margin-inline:auto; }
+}

@@ -319,19 +319,47 @@ function VirtualMarkdown({ markdown, scrollRef }: {
         locatePreview(scroll, line, kind, section);
         return;
       }
+      // Jump to the nearest virtual chunk immediately, then land on its
+      // exact source anchor after React mounts it. One frame was insufficient
+      // during heavy Markdown rendering, leaving the preview behind.
       virtualizer.scrollToIndex(index, { align: 'start' });
       if (settle !== null) cancelAnimationFrame(settle);
-      settle = requestAnimationFrame(() => {
+      let attempts = 0;
+      const settleWhenMounted = () => {
         settle = null;
-        const mounted = scroll?.querySelector<HTMLElement>(selector);
-        if (scroll && mounted) locatePreview(scroll, line, kind, mounted);
-      });
+        if (!scroll || !latest) return;
+        const currentLine = latest.line;
+        let low = 0, high = firstLines.length - 1;
+        while (low < high) {
+          const mid = Math.ceil((low + high) / 2);
+          if (firstLines[mid] <= currentLine) low = mid;
+          else high = mid - 1;
+        }
+        const mounted = scroll.querySelector<HTMLElement>(
+          `.virtual-markdown-section[data-index="${low}"]`,
+        );
+        if (mounted) {
+          locatePreview(scroll, currentLine, latest.kind, mounted);
+        } else if (++attempts < 4) {
+          settle = requestAnimationFrame(settleWhenMounted);
+        }
+      };
+      settle = requestAnimationFrame(settleWhenMounted);
     }
     function onPosition(event: Event) {
       latest = (event as PositionEvent).detail;
-      // Editor-to-preview sync is advisory. Coalesce incoming events instead
-      // of forcing layout/querySelector on every wheel event.
-      if (pending === null) pending = requestAnimationFrame(sync);
+      // Editor scroll events have already been coalesced into a frame.
+      // Handle them here without stacking another whole frame of latency.
+      // Cursor movement is not throttled at the source, so keep it batched.
+      if (latest.kind === 'scroll') {
+        if (pending !== null) {
+          cancelAnimationFrame(pending);
+          pending = null;
+        }
+        sync();
+      } else if (pending === null) {
+        pending = requestAnimationFrame(sync);
+      }
     }
     scroll.addEventListener('flow-preview-position', onPosition);
     return () => {

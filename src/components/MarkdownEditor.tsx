@@ -120,7 +120,16 @@ function MarkdownEditor({
         if (viewRef.current !== view) return;
         const scroller = view.scrollDOM;
         const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4;
-        const line = atBottom ? view.state.doc.lines : view.state.doc.lineAt(view.viewport.from).number;
+        // CodeMirror's viewport includes a large overscan region on long pages.
+        // Map the real viewport top through its measured document-height model
+        // instead. Fractional lines retain movement within wrapped source lines.
+        const viewportTop = (scroller.getBoundingClientRect().top - view.documentTop) /
+          (view.scaleY || 1);
+        const height = Math.max(0, viewportTop);
+        const block = view.lineBlockAtHeight(height);
+        const fraction = Math.max(0, Math.min(0.999, (height - block.top) / Math.max(1, block.height)));
+        const line = atBottom ? view.state.doc.lines :
+          view.state.doc.lineAt(block.from).number + fraction;
         position.current?.(line, 'scroll', view.state.doc.lines);
       });
     };
