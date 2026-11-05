@@ -1132,7 +1132,7 @@ export default function App() {
             <Icon name="edit" size={15}/><span>Draw</span></motion.a>
           <motion.button {...pressMotion} type="button" className="export-button"
             title="Export page" aria-label="Export page" aria-haspopup="menu"
-            aria-expanded={Boolean(exportMenu)} disabled={pdfExporting}
+            aria-expanded={Boolean(exportMenu)} aria-busy={pdfExporting} disabled={pdfExporting}
             onClick={toggleExport}>
             {pdfExporting ? <TerminalLoader loading /> : <Icon name="download" size={15} />} <span>{pdfExporting ? 'Exporting…' : 'Export'}</span>
           </motion.button>
