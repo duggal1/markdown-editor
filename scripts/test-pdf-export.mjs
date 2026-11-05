@@ -77,7 +77,7 @@ assert.ok(codeDoc.content.some(x => x.table && x.table.body?.[0]?.[0]?.stack?.so
 const rawSwift = buildPdfDefinition(
   'import SwiftUI\nstruct Sample: View { var body: some View { Text("Ready") } }', 'Swift code');
 assert.ok(rawSwift.content.some(x => x.table && x.table.body?.[0]?.[0]?.stack?.some(y =>
-  y.style === 'code' && y.text.includes('import SwiftUI'))),
+  y.style === 'code' && (typeof y.text === 'string' ? y.text : y.text.map(part => typeof part === 'string' ? part : part.text).join('')).includes('import SwiftUI'))),
   'Raw Swift input must be rendered as an intact code block.');
 assert.equal(definition.styles.code.fontSize, 8.8);
 const imageData = new Map([['https://example.com/test.png', 'data:image/png;base64,aGVsbG8=']]);
