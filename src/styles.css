@@ -7,15 +7,15 @@
   color-scheme: dark;
   --background: #0a0a0a; --sidebar-bg: #0e0e0e; --surface: #101010;
   --neutral-100: #1a1a1a; --neutral-200: #252525; --preview-bg: #0d0d0d;
-  --split-line: #252525; --export-bg: #ff6a00; --dialog-surface: #171717;
+  --split-line: #252525; --export-bg: var(--accent); --dialog-surface: #171717;
   --dialog-cancel: #262626; --text: #fafafa; --strong: #fafafa;
   --muted: #a3a3a3; --quiet: #999999; --line: #252525;
-  --hover: #1d1d1d; --active: #232323; --blue: #ff8a3d;
-  --orange: #ff6a00; --code-bg: #1a1a1a; --code-ink: #fafafa;
-  --syntax-keyword: #ff8a3d; --syntax-string: #d0d0d0;
-  --syntax-number: #ffa14d; --syntax-function: #ff8a3d;
-  --syntax-comment: #a3a3a3; --syntax-literal: #ffa14d;
-  --brand-head: #0a0a0a; --flow-accent: #ff6a00; --flow-accent-ink: #0a0a0a;
+  --hover: #1d1d1d; --active: #232323; --blue: var(--accent);
+  --orange: var(--accent); --code-bg: #1a1a1a; --code-ink: #fafafa;
+  --syntax-keyword: var(--accent); --syntax-string: #d0d0d0;
+  --syntax-number: var(--accent); --syntax-function: var(--accent);
+  --syntax-comment: #a3a3a3; --syntax-literal: var(--accent);
+  --brand-head: #0a0a0a; --flow-accent: var(--accent); --flow-accent-ink: #0a0a0a;
 }
 
 :root[data-theme='light'] {
@@ -24,15 +24,15 @@
   color-scheme: light; --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
   --background: #f4f4f4; --sidebar-bg: #f4f4f4; --surface: #ffffff;
   --neutral-100: #ebebeb; --neutral-200: #dadada; --preview-bg: #ffffff;
-  --split-line: #e3e3e3; --export-bg: #f05a00; --dialog-surface: #ffffff;
+  --split-line: #e3e3e3; --export-bg: var(--accent); --dialog-surface: #ffffff;
   --dialog-cancel: #ebebeb; --text: #0a0a0a; --strong: #0a0a0a;
   --muted: #666666; --quiet: #777777; --line: #e3e3e3;
-  --hover: #e3e3e3; --active: #ededed; --blue: #bf3f00;
-  --orange: #f05a00; --code-bg: #ededed; --code-ink: #0a0a0a;
-  --syntax-keyword: #a23d00; --syntax-string: #686868;
-  --syntax-number: #bf3f00; --syntax-function: #8a4000;
-  --syntax-comment: #777777; --syntax-literal: #a23d00;
-  --brand-head: #ffffff; --flow-accent: #f05a00; --flow-accent-ink: #0a0a0a;
+  --hover: #e3e3e3; --active: #ededed; --blue: var(--accent);
+  --orange: var(--accent); --code-bg: #ededed; --code-ink: #0a0a0a;
+  --syntax-keyword: var(--accent); --syntax-string: #686868;
+  --syntax-number: var(--accent); --syntax-function: var(--accent);
+  --syntax-comment: #777777; --syntax-literal: var(--accent);
+  --brand-head: #ffffff; --flow-accent: var(--accent); --flow-accent-ink: #0a0a0a;
   color: var(--text); background: var(--background);
 }
 *, *::before, *::after { box-sizing: border-box; }
@@ -204,7 +204,7 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .markdown-preview tbody tr:last-child td { border-bottom: 0; }
 .markdown-preview td code, .markdown-preview th code { white-space: nowrap; }
 .markdown-preview img { max-width: 100%; height: auto; border-radius: 4px; }
-.markdown-preview mark { background: #ffedd5; color: #262626; padding: 0 2px; border-radius: 1px; }
+.markdown-preview mark { background: color-mix(in srgb, var(--accent) 24%, transparent); color: var(--strong); padding: 0 2px; border-radius: 1px; }
 .markdown-preview u { text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .markdown-preview sup, .markdown-preview sub { font-size: .72em; }
 .markdown-preview del { color: var(--muted); }
@@ -636,8 +636,8 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   --surface:#101010; --preview-bg:#0d0d0d;
   --neutral-100:#1a1a1a; --neutral-200:#252525;
   --hover:#1d1d1d; --active:#232323; --line:#252525;
-  --code-bg:#1a1a1a; --syntax-keyword:#ff6a00;
-  --syntax-function:#ff8533; --syntax-number:#ffa14d; --syntax-literal:#ff8a3d;
+  --code-bg:#1a1a1a; --syntax-keyword:var(--accent);
+  --syntax-function:var(--accent); --syntax-number:var(--accent); --syntax-literal:var(--accent);
 }
 
 .sidebar { background:var(--sidebar-bg); }
@@ -796,7 +796,7 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .save-indicator[data-save-state='idle'] { pointer-events:none; }
 .save-prefix {
   display:block; width:5px; height:5px; flex:0 0 5px;
-  border-radius:1px; background:#ea580c;
+  border-radius:1px; background:var(--flow-accent);
 }
 .save-indicator[data-save-state='saving'] .save-prefix {
   animation:save-dot-pulse .88s ease-in-out infinite;
@@ -819,7 +819,7 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .pixel-save-loader { display:inline-flex; flex:0 0 38px; gap:2px; align-items:center; height:12px; }
 .pixel-save-loader i {
   flex:0 0 4px; width:4px; height:4px; border-radius:1px;
-  background:#ea580c; opacity:.18;
+  background:var(--flow-accent); opacity:.18;
   animation:save-pixel-scan .94s linear infinite;
 }
 .pixel-save-loader i:nth-child(2) { animation-delay:-.81s; }
@@ -1021,7 +1021,7 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 /* Tailwind v4 orange-600/700 values, scoped to Markdown preview accents.
    No Tailwind runtime required: this repo uses plain CSS. */
 .markdown-preview {
-  --preview-orange:oklch(64.6% 0.222 41.116); /* text-orange-600 */
+  --preview-orange:var(--accent-600); /* selected palette, 600 in dark mode */
   --preview-table-border:#303030;
   --preview-table-head:#171717;
   --preview-table-stripe:#131313;
@@ -1029,7 +1029,7 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   text-rendering:optimizeLegibility;
 }
 :root[data-theme='light'] .markdown-preview {
-  --preview-orange:oklch(55.3% 0.195 38.402); /* text-orange-700 */
+  --preview-orange:var(--accent-500); /* selected palette, 500 in light mode */
   --preview-table-border:#dedede;
   --preview-table-head:#f3f3f3;
   --preview-table-stripe:#fafafa;
@@ -1089,4 +1089,115 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .markdown-preview table > :last-child > tr:last-child > :is(th,td) { border-bottom:0; }
 @media(max-width:800px) {
   .markdown-preview th, .markdown-preview td { padding:9px 10px; }
+}
+
+/* One semantic palette drives Flow, the Markdown preview and Draw.
+   Shade 600 in dark mode; shade 500 in light mode (Tailwind v4 colors). */
+:root {
+  --palette-orange-600: oklch(64.6% 0.222 41.116);
+  --palette-orange-500: oklch(70.5% 0.213 47.604);
+  --palette-green-600: oklch(62.7% 0.194 149.214);
+  --palette-green-500: oklch(72.3% 0.219 149.579);
+  --palette-sky-600: oklch(58.8% 0.158 241.966);
+  --palette-sky-500: oklch(68.5% 0.169 237.323);
+  --palette-purple-600: oklch(55.8% 0.288 302.321);
+  --palette-purple-500: oklch(62.7% 0.265 303.9);
+  --palette-pink-600: oklch(59.2% 0.249 0.584);
+  --palette-pink-500: oklch(65.6% 0.241 354.308);
+  --palette-teal-600: oklch(60% 0.118 184.704);
+  --palette-teal-500: oklch(70.4% 0.14 182.503);
+  --palette-indigo-600: oklch(51.1% 0.262 276.966);
+  --palette-indigo-500: oklch(58.5% 0.233 277.117);
+  --palette-rose-600: oklch(58.6% 0.253 17.585);
+  --palette-rose-500: oklch(64.5% 0.246 16.439);
+  --accent-600:var(--palette-orange-600);
+  --accent-500:var(--palette-orange-500);
+  --accent:var(--accent-600);
+}
+:root[data-theme='light'] { --accent:var(--accent-500); }
+:root[data-accent='green'] {
+  --accent-600:var(--palette-green-600);
+  --accent-500:var(--palette-green-500);
+}
+:root[data-accent='sky'] {
+  --accent-600:var(--palette-sky-600);
+  --accent-500:var(--palette-sky-500);
+}
+:root[data-accent='purple'] {
+  --accent-600:var(--palette-purple-600);
+  --accent-500:var(--palette-purple-500);
+}
+:root[data-accent='pink'] {
+  --accent-600:var(--palette-pink-600);
+  --accent-500:var(--palette-pink-500);
+}
+:root[data-accent='teal'] {
+  --accent-600:var(--palette-teal-600);
+  --accent-500:var(--palette-teal-500);
+}
+:root[data-accent='indigo'] {
+  --accent-600:var(--palette-indigo-600);
+  --accent-500:var(--palette-indigo-500);
+}
+:root[data-accent='rose'] {
+  --accent-600:var(--palette-rose-600);
+  --accent-500:var(--palette-rose-500);
+}
+:root[data-accent='orange'] {
+  --accent-600:var(--palette-orange-600);
+  --accent-500:var(--palette-orange-500);
+}
+
+/* Compact flat accent selector, separate from the light/dark toggle. */
+.accent-theme-trigger {
+  display:inline-flex; align-items:center; justify-content:center;
+  gap:7px; height:32px; padding:0 10px; border:0; border-radius:8px;
+  background:var(--neutral-100); color:var(--strong);
+  font:500 11px/1 'Geist Variable', sans-serif; cursor:pointer;
+  transition:background-color .15s ease-out;
+}
+.accent-theme-trigger:hover,
+.accent-theme-trigger[aria-expanded='true'] { background:var(--neutral-200); }
+.accent-theme-trigger:focus-visible { outline:2px solid var(--flow-accent); outline-offset:2px; }
+.accent-theme-trigger .accent-theme-dot {
+  width:11px; height:11px; border-radius:3px;
+  flex:0 0 11px; background:var(--flow-accent);
+}
+.accent-theme-trigger .accent-theme-chevron { color:var(--muted); }
+.accent-theme-menu {
+  position:fixed; z-index:3100; width:198px;
+  max-height:calc(100dvh - 20px); overflow-y:auto;
+  padding:6px; border:1px solid var(--line); border-radius:12px;
+  box-shadow:none; background:var(--surface); color:var(--text);
+}
+.accent-theme-menu-title {
+  padding:8px 10px 7px; color:var(--muted);
+  font:500 10px/1.1 'Geist Variable', sans-serif;
+}
+.accent-theme-option {
+  width:100%; min-height:35px; padding:0 9px;
+  display:flex; align-items:center; gap:10px;
+  border:0; border-radius:7px; background:transparent;
+  color:var(--text); font:500 12px/1.2 'Geist Variable', sans-serif;
+  text-align:left; cursor:pointer;
+}
+.accent-theme-option:hover,
+.accent-theme-option:focus-visible { background:var(--neutral-100); outline:none; }
+.accent-theme-option[aria-checked='true'] { background:var(--neutral-200); }
+.accent-theme-option .accent-theme-swatch {
+  flex:0 0 13px; width:13px; height:13px;
+  background:var(--flow-accent); border-radius:4px;
+}
+.accent-theme-option .accent-theme-check { margin-left:auto; color:var(--muted); }
+@media(max-width:800px) {
+  .topbar { grid-template-columns:minmax(0,1fr) repeat(4,38px); column-gap:4px; }
+  .topbar .accent-theme-trigger {
+    grid-row:1; grid-column:5; justify-self:center; align-self:center;
+    width:38px; min-width:38px; height:38px; padding:0; border-radius:7px;
+  }
+  .topbar .accent-theme-trigger .accent-theme-label,
+  .topbar .accent-theme-trigger .accent-theme-chevron { display:none; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .accent-theme-trigger { transition:none; }
 }
