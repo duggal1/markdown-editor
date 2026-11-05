@@ -1017,3 +1017,65 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   .editor-area:not(.compact) .cm-sizer { flex:1 1 0%; width:100%; min-width:0; }
   .editor-area:not(.compact) .cm-content { width:100%; max-width:880px; margin-inline:auto; }
 }
+
+/* Markdown reading surface: brighter accessible orange, quiet fully ruled tables.
+   Local to previews; do not recolor the editor, branding or PDF exports. */
+.markdown-preview {
+  --preview-orange:#ffad66;
+  --preview-table-border:#303030;
+  --preview-table-head:#171717;
+  --preview-table-stripe:#131313;
+  --preview-table-hover:#1d1d1d;
+  text-rendering:optimizeLegibility;
+}
+:root[data-theme='light'] .markdown-preview {
+  --preview-orange:#b9480a;
+  --preview-table-border:#dedede;
+  --preview-table-head:#f3f3f3;
+  --preview-table-stripe:#fafafa;
+  --preview-table-hover:#f1f1f1;
+}
+.markdown-preview a,
+.markdown-preview .footnote-ref a,
+.markdown-preview .footnote-backref {
+  color:var(--preview-orange);
+  text-decoration-color:currentColor;
+  text-underline-offset:3px;
+}
+.markdown-preview :not(pre) > code,
+.markdown-preview .code-language,
+.markdown-preview .hljs-keyword,
+.markdown-preview .hljs-meta,
+.markdown-preview .hljs-title,
+.markdown-preview .hljs-title.function_,
+.markdown-preview .hljs-function {
+  color:var(--preview-orange);
+}
+.markdown-preview .table-scroll {
+  border:1px solid var(--preview-table-border);
+  border-radius:8px;
+  background:var(--preview-bg);
+  overflow-x:auto;
+}
+.markdown-preview table { border:0; border-collapse:separate; border-spacing:0; }
+.markdown-preview thead { background:var(--preview-table-head); }
+.markdown-preview th,
+.markdown-preview td {
+  padding:10px 12px;
+  border:0;
+  border-right:1px solid var(--preview-table-border);
+  border-bottom:1px solid var(--preview-table-border);
+  line-height:1.55;
+}
+.markdown-preview th {
+  font-weight:600;
+  letter-spacing:-.012em;
+  color:var(--strong);
+}
+.markdown-preview tbody tr:nth-child(even) { background:var(--preview-table-stripe); }
+.markdown-preview tbody tr:hover { background:var(--preview-table-hover); }
+.markdown-preview tr > :last-child { border-right:0; }
+.markdown-preview table > :last-child > tr:last-child > :is(th,td) { border-bottom:0; }
+@media(max-width:800px) {
+  .markdown-preview th, .markdown-preview td { padding:9px 10px; }
+}
