@@ -1018,10 +1018,10 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   .editor-area:not(.compact) .cm-content { width:100%; max-width:880px; margin-inline:auto; }
 }
 
-/* Markdown reading surface: brighter accessible orange, quiet fully ruled tables.
-   Local to previews; do not recolor the editor, branding or PDF exports. */
+/* Tailwind v4 orange-600/700 values, scoped to Markdown preview accents.
+   No Tailwind runtime required: this repo uses plain CSS. */
 .markdown-preview {
-  --preview-orange:#ffad66;
+  --preview-orange:oklch(64.6% 0.222 41.116); /* text-orange-600 */
   --preview-table-border:#303030;
   --preview-table-head:#171717;
   --preview-table-stripe:#131313;
@@ -1029,7 +1029,7 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   text-rendering:optimizeLegibility;
 }
 :root[data-theme='light'] .markdown-preview {
-  --preview-orange:#b9480a;
+  --preview-orange:oklch(55.3% 0.195 38.402); /* text-orange-700 */
   --preview-table-border:#dedede;
   --preview-table-head:#f3f3f3;
   --preview-table-stripe:#fafafa;
@@ -1045,10 +1045,21 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .markdown-preview :not(pre) > code,
 .markdown-preview .code-language,
 .markdown-preview .hljs-keyword,
+.markdown-preview .hljs-selector-tag,
+.markdown-preview .hljs-built_in,
 .markdown-preview .hljs-meta,
+.markdown-preview .hljs-number,
+.markdown-preview .hljs-symbol,
+.markdown-preview .hljs-attribute,
 .markdown-preview .hljs-title,
 .markdown-preview .hljs-title.function_,
-.markdown-preview .hljs-function {
+.markdown-preview .hljs-function,
+.markdown-preview .hljs-property,
+.markdown-preview .hljs-name,
+.markdown-preview .hljs-literal,
+.markdown-preview .hljs-type,
+.markdown-preview .hljs-variable.language_,
+.markdown-preview .hljs-regexp {
   color:var(--preview-orange);
 }
 .markdown-preview .table-scroll {
