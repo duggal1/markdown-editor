@@ -10,7 +10,8 @@ import { downloadMarkdown } from './lib/document';
 import { detectRawCode, isMarkdownFile, languageForFile } from './lib/code';
 import { svgPreviewDocument } from './lib/svgPreview';
 import { readTextImport } from './lib/textImport';
-import { formatPlainTextAsMarkdown } from './lib/autoMarkdown';
+import { formatPlainTextAsMarkdown, MAX_MANUAL_FORMAT_CHARS } from './lib/autoMarkdown';
+import { formatMarkdownAction } from './lib/autoMarkdownAction';
 import { inferTitle, isUntitledTitle } from './lib/title';
 import type { SearchHit } from './lib/searchIndex';
 import {
@@ -101,6 +102,8 @@ export default function App() {
   const [notice, setNotice] = useState('');
   const [exportMenu, setExportMenu] = useState<{ top: number; right: number } | null>(null);
   const [pdfExporting, setPdfExporting] = useState(false);
+  const [autoFormatting, setAutoFormatting] = useState(false);
+  const autoFormatInFlight = useRef(false);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ kind: 'document' | 'workspace'; id: string; title: string; count?: number } | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -721,27 +724,60 @@ export default function App() {
     }
   }
 
-  function autoFormatDocument() {
+  async function autoFormatDocument() {
+    if (autoFormatInFlight.current) return;
     const view = editorRef.current;
     const current = live.current.get(activeIdRef.current);
     if (!view || !current || current.asset) {
       setNotice('Open an editable page to format.');
       return;
     }
-    const source = view.state.doc.toString();
-    if (source.length > 180_000) {
-      setNotice('This page is too large to auto-format at once.');
+    // A selection formats only that region; without one, format the document.
+    const range = view.state.selection.main;
+    const from = range.empty ? 0 : range.from;
+    const to = range.empty ? view.state.doc.length : range.to;
+    const originalDocument = view.state.doc;
+    const source = originalDocument.sliceString(from, to);
+    if (!source.trim()) { setNotice('Select or write some text first.'); return; }
+    if (source.length > MAX_MANUAL_FORMAT_CHARS) {
+      setNotice('Select a smaller section to format (1 MB maximum).');
       return;
     }
-    const formatted = formatPlainTextAsMarkdown(source, { atDocumentStart: true });
-    if (formatted === source) {
-      setNotice('Already formatted, or this looks like code.');
-      return;
+
+    autoFormatInFlight.current = true;
+    setAutoFormatting(true);
+    setNotice('Formatting Markdown…');
+    try {
+      const formatted = await formatMarkdownAction(source, { atDocumentStart: from === 0 });
+      // The user can type or change pages while a large worker is running.
+      // Never overwrite a newer CodeMirror document with stale formatting.
+      if (editorRef.current !== view || activeIdRef.current !== current.id ||
+        view.state.doc !== originalDocument) {
+        setNotice('Page changed during formatting. No edits were overwritten.');
+        return;
+      }
+      if (formatted === source) {
+        setNotice('Already formatted. No changes needed.');
+        return;
+      }
+      // One replacement transaction ensures Cmd/Ctrl+Z reverts the entire action.
+      // Preserve the caret on full-page edits and select the changed region otherwise.
+      const position = Math.min(from + formatted.length, range.head);
+      view.dispatch({
+        changes: { from, to, insert: formatted },
+        selection: range.empty ? { anchor: position }
+          : { anchor: from, head: from + formatted.length },
+      });
+      if (modeRef.current !== 'preview') view.focus();
+      setNotice(range.empty ? 'Markdown formatted · Undo to revert' :
+        'Selection formatted · Undo to revert');
+    } catch (error) {
+      console.error('Auto Markdown failed', error);
+      setNotice('Could not format Markdown. Your text was not changed.');
+    } finally {
+      autoFormatInFlight.current = false;
+      setAutoFormatting(false);
     }
-    // A single CodeMirror transaction is undoable (Cmd/Ctrl+Z).
-    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: formatted } });
-    view.focus();
-    setNotice('Markdown formatted · Undo to revert');
   }
   async function importFiles(incoming: File[]) {
     if (!incoming.length || importInFlight.current) return;
@@ -1165,10 +1201,12 @@ export default function App() {
           </motion.button>)}
           <span className="format-divider" />
           <motion.button type="button" {...pressMotion} className="auto-markdown-button"
-            title="Auto Markdown · clean whitespace and format unstyled text"
-            aria-label="Auto Markdown" disabled={Boolean(active?.asset)}
-            onClick={autoFormatDocument}>
-            <Icon name="format" size={16} /> <span>Auto Markdown</span>
+            title="Auto Markdown · format selected text or this page"
+            aria-label="Auto Markdown" aria-busy={autoFormatting}
+            disabled={Boolean(active?.asset) || autoFormatting}
+            onClick={() => { void autoFormatDocument(); }}>
+            {autoFormatting ? <TerminalLoader loading /> : <Icon name="format" size={16} />}
+            <span>{autoFormatting ? 'Formatting…' : 'Auto Markdown'}</span>
           </motion.button>
           <motion.button type="button" {...pressMotion} className="copy-all-button"
             title="Copy the entire page" aria-label="Copy all" disabled={!active || Boolean(active.asset)}
