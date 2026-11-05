@@ -101,6 +101,7 @@ export default function App() {
   const [notice, setNotice] = useState('');
   const [exportMenu, setExportMenu] = useState<{ top: number; right: number } | null>(null);
   const [pdfExporting, setPdfExporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ kind: 'document' | 'workspace'; id: string; title: string; count?: number } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const deletionInFlight = useRef(false);
@@ -126,6 +127,13 @@ export default function App() {
   const previewTimer = useRef<number | null>(null);
   const pendingPreview = useRef<{ id: string; markdown: string } | null>(null);
   const motionOff = useReducedMotion();
+
+  // Normal messages dismiss after five seconds; progress notices remain until finished.
+  useEffect(() => {
+    if (!notice || pdfExporting || importProgress) return;
+    const timer = window.setTimeout(() => setNotice(current => current === notice ? '' : current), 5000);
+    return () => window.clearTimeout(timer);
+  }, [notice, pdfExporting, importProgress]);
 
   // No progress UI is permanently pinned in the toolbar. A real successful
   // IndexedDB write is shown for five seconds, then the reserved slot clears.
@@ -642,9 +650,11 @@ export default function App() {
       : doc.markdown;
     setPdfExporting(true);
     setNotice('Preparing PDF…');
+    // Paint the loading state before the costly dynamic import or PDF layout begins.
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
     try {
       const { downloadStyledPdf } = await import('./lib/pdfExport');
-      await downloadStyledPdf(source, doc.title);
+      await downloadStyledPdf(source, doc.title, progress => setNotice(progress));
       setNotice('PDF exported');
     } catch (error) {
       console.error('PDF export failed', error);
@@ -740,60 +750,87 @@ export default function App() {
     setSaveState('saving');
     const imported: FlowDocument[] = [];
     const errors: string[] = [];
+    const total = incoming.length;
+    let completed = 0;
+    setImportProgress({ done: 0, total });
+    setNotice('Importing 0 / ' + total + ' files…');
+    const targetWorkspace = workspaceId;
+
+    async function importOne(file: File) {
+      if (file.size > 50 * 1024 * 1024) throw new Error(file.name + ' exceeds the 50 MB limit');
+      const supportedImage = /^image\\/(png|jpeg|gif|webp|avif|bmp|x-icon|vnd\\.microsoft\\.icon|svg\\+xml)$/i.test(file.type);
+      const image = supportedImage || /\\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i.test(file.name);
+      const pdf = file.type === 'application/pdf' || /\\.pdf$/i.test(file.name);
+      const recognizedText = file.type.startsWith('text/') ||
+        /^(application\\/(?:json|javascript|xml|x-javascript|x-yaml|yaml|toml|graphql))$/i.test(file.type) ||
+        Boolean(languageForFile(file.name)) || isMarkdownFile(file.name) ||
+        /\\.(txt|csv|tsv|log|ini|cfg|env|gitignore|editorconfig)$/i.test(file.name);
+      let binary = !image && !pdf && Boolean(file.type && !recognizedText);
+      let markdown = '';
+      if (pdf) {
+        // Heavy extraction only enters the browser when the first PDF is imported.
+        const { readPdfAsMarkdown } = await import('./lib/pdfImport');
+        markdown = await readPdfAsMarkdown(file);
+      } else if (!image && !binary) {
+        const decoded = await readTextImport(file, file.name);
+        binary = decoded === null;
+        if (decoded !== null) {
+          const plainText = /\\.txt$/i.test(file.name) && !languageForFile(file.name);
+          markdown = plainText ? formatPlainTextAsMarkdown(decoded, { atDocumentStart: true }) : decoded;
+        }
+      }
+      const now = Date.now();
+      const fileType = image ? 'image' : binary ? 'binary' : 'text';
+      const doc: FlowDocument = {
+        id: uid(), workspaceId: targetWorkspace, markdown,
+        title: file.name.replace(/\\.[^.]+$/, '') || file.name,
+        // A successfully imported PDF becomes editable Markdown, not a binary attachment.
+        fileName: pdf ? file.name.replace(/\\.pdf$/i, '.md') : file.name, fileType,
+        language: fileType === 'text' && !isMarkdownFile(file.name) && !pdf
+          ? languageForFile(file.name) || detectRawCode(markdown) || undefined : undefined,
+        asset: image || binary ? file : undefined,
+        titleAuto: false, createdAt: now, updatedAt: now,
+      };
+      await saveDoc(doc);
+      live.current.set(doc.id, doc);
+      imported.push(doc);
+      workerRef.current?.postMessage({ type: 'upsert', document: {
+        id: doc.id, workspaceId: doc.workspaceId, title: doc.title,
+        markdown: doc.markdown, updatedAt: doc.updatedAt,
+      } });
+      // Progressive tree rendering lets users open completed PDFs immediately.
+      setDocs(current => [doc, ...current]);
+    }
+
     try {
-      for (const file of incoming) {
-        if (file.size > 50 * 1024 * 1024) {
-          errors.push(file.name + ' exceeds the 50 MB limit');
-          continue;
-        }
-        try {
-          const supportedImage = /^image\/(png|jpeg|gif|webp|avif|bmp|x-icon|vnd\.microsoft\.icon|svg\+xml)$/i.test(file.type);
-          const image = supportedImage || /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i.test(file.name);
-          const recognizedText = file.type.startsWith('text/') ||
-            /^(application\/(?:json|javascript|xml|x-javascript|x-yaml|yaml|toml|graphql))$/i.test(file.type) ||
-            Boolean(languageForFile(file.name)) || isMarkdownFile(file.name) ||
-            /\.(txt|csv|tsv|log|ini|cfg|env|gitignore|editorconfig)$/i.test(file.name);
-          let binary = !image && Boolean(file.type && !recognizedText);
-          let markdown = '';
-          if (!image && !binary) {
-            const decoded = await readTextImport(file, file.name);
-            binary = decoded === null;
-            if (decoded !== null) {
-              const plainText = /\.txt$/i.test(file.name) && !languageForFile(file.name);
-              markdown = plainText ? formatPlainTextAsMarkdown(decoded, { atDocumentStart: true }) : decoded;
-            }
+      let cursor = 0;
+      const parallelism = Math.min(3, Math.max(1, incoming.length));
+      await Promise.all(Array.from({ length: parallelism }, async () => {
+        while (cursor < incoming.length) {
+          const file = incoming[cursor++];
+          try { await importOne(file); }
+          catch (error) {
+            errors.push(file.name + ': ' + (error instanceof Error ? error.message : 'Could not import'));
+          } finally {
+            completed++;
+            setImportProgress({ done: completed, total });
+            setNotice('Importing ' + completed + ' / ' + total + ' files…');
           }
-          const now = Date.now();
-          const fileType = image ? 'image' : binary ? 'binary' : 'text';
-          const doc: FlowDocument = {
-            id: uid(), workspaceId, markdown,
-            title: file.name.replace(/\.[^.]+$/, '') || file.name,
-            fileName: file.name, fileType,
-            language: fileType === 'text' && !isMarkdownFile(file.name)
-              ? languageForFile(file.name) || detectRawCode(markdown) || undefined : undefined,
-            asset: image || binary ? file : undefined,
-            titleAuto: false, createdAt: now, updatedAt: now,
-          };
-          await saveDoc(doc);
-          live.current.set(doc.id, doc);
-          imported.push(doc);
-          workerRef.current?.postMessage({ type: 'upsert', document: {
-            id: doc.id, workspaceId: doc.workspaceId, title: doc.title,
-            markdown: doc.markdown, updatedAt: doc.updatedAt,
-          } });
-        } catch {
-          errors.push('Could not import ' + file.name);
         }
-      }
+      }));
       if (imported.length) {
-        setDocs(current => [...imported.slice().reverse(), ...current]);
+        setQuery('');
         selectDocument(imported[0].id);
-        setNotice(imported.length === 1 ? 'Imported ' + imported[0].fileName : 'Imported ' + imported.length + ' files');
+        setExpandedIds(ids => ids.includes(targetWorkspace) ? ids : [...ids, targetWorkspace]);
       }
-      if (errors.length) setNotice(errors.join(' · '));
       setSaveState(errors.length ? 'error' : 'saved');
     } finally {
       importInFlight.current = false;
+      setImportProgress(null);
+      setNotice(errors.length
+        ? imported.length + ' imported · ' + errors.slice(0, 3).join(' · ') +
+          (errors.length > 3 ? ' · +' + (errors.length - 3) + ' more failed' : '')
+        : 'Imported ' + imported.length + (imported.length === 1 ? ' file' : ' files'));
     }
   }
   function onFileSelected(event: ChangeEvent<HTMLInputElement>) {
@@ -1095,9 +1132,9 @@ export default function App() {
             <Icon name="edit" size={15}/><span>Draw</span></motion.a>
           <motion.button {...pressMotion} type="button" className="export-button"
             title="Export page" aria-label="Export page" aria-haspopup="menu"
-            aria-expanded={Boolean(exportMenu)} disabled={pdfExporting}
+            aria-expanded={Boolean(exportMenu)} aria-busy={pdfExporting} disabled={pdfExporting}
             onClick={toggleExport}>
-            <Icon name="download" size={15} /> <span>{pdfExporting ? 'Exporting' : 'Export'}</span>
+            {pdfExporting ? <TerminalLoader loading /> : <Icon name="download" size={15} />} <span>{pdfExporting ? 'Exporting…' : 'Export'}</span>
           </motion.button>
           <motion.button {...pressMotion} type="button" className="square-button theme-toggle" title={theme === 'light' ? 'Dark mode' : 'Light mode'} aria-label={theme === 'light' ? 'Dark mode' : 'Light mode'} onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')}>
             <AnimatePresence initial={false} mode="wait"><motion.span key={theme} className="theme-icon" initial={motionOff ? false : { opacity: 0, rotate: -25 }} animate={{ opacity: 1, rotate: 0 }} exit={motionOff ? undefined : { opacity: 0, rotate: 25 }} transition={{ duration: motionOff ? 0 : 0.15 }}><Icon name={theme === 'light' ? 'moon' : 'sun'} size={17} /></motion.span></AnimatePresence>
@@ -1213,7 +1250,7 @@ export default function App() {
           animate={{ opacity: 1, y: 0 }}
           exit={motionOff ? undefined : { opacity: 0, y: 4 }}
           transition={motionOff ? { duration: 0 } : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }}>
-          <span className="notice-mark" aria-hidden="true" />
+          {pdfExporting || importProgress ? <TerminalLoader loading /> : <span className="notice-mark" aria-hidden="true" />}
           <span className="notice-text">{notice}</span>
           <button type="button" title="Dismiss" aria-label="Dismiss message"
             onClick={() => setNotice('')}><Icon name="close" size={14} /></button>

@@ -1,15 +1,16 @@
 import type { TDocumentDefinitions } from 'pdfmake/interfaces';
-import { buildPdfDefinition, pdfImageUrls, type PdfImageAssets } from './pdfDocument';
+import { buildPdfDefinitionFromTree, parsePdfMarkdown, pdfImageUrlsFromTree, type PdfImageAssets } from './pdfDocument';
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 let rendererReady = false;
+let enginePromise: ReturnType<typeof loadPdfEngine> | null = null;
 
 /**
  * On-demand only. The ~MB-sized PDF engine and embedded typeface are NOT
  * included in the editor's initial bundle or its scrolling/rendering path.
  * All generation happens locally in the browser; no upload of page content.
  */
-async function pdfEngine() {
+async function loadPdfEngine() {
   const [module, vfsModule] = await Promise.all([
     import('pdfmake/build/pdfmake'),
     import('pdfmake/build/vfs_fonts'),
@@ -21,6 +22,13 @@ async function pdfEngine() {
     rendererReady = true;
   }
   return pdfMake;
+}
+function pdfEngine() {
+  if (!enginePromise) enginePromise = loadPdfEngine().catch(error => {
+    enginePromise = null;
+    throw error;
+  });
+  return enginePromise;
 }
 
 function imageData(blob: Blob): Promise<string> {
@@ -57,10 +65,9 @@ async function loadImage(url: string): Promise<string | undefined> {
   }
 }
 
-async function prepareImages(markdown: string): Promise<PdfImageAssets> {
-  const urls = pdfImageUrls(markdown);
+async function prepareImages(urls: string[]): Promise<PdfImageAssets> {
   const images = new Map<string, string>();
-  const parallelism = 3;
+  const parallelism = 6; // bounded parallel image fetches
   let next = 0;
   await Promise.all(Array.from({ length: Math.min(parallelism, urls.length) }, async () => {
     while (next < urls.length) {
@@ -77,9 +84,12 @@ function filenameForPdf(title: string): string {
   return base + '.pdf';
 }
 
-export async function downloadStyledPdf(markdown: string, title: string): Promise<void> {
-  const [pdfMake, images] = await Promise.all([pdfEngine(), prepareImages(markdown)]);
-  const doc = buildPdfDefinition(markdown, title, images) as TDocumentDefinitions;
+export async function downloadStyledPdf(markdown: string, title: string, onProgress?: (message: string) => void): Promise<void> {
+  onProgress?.('Preparing PDF…');
+  const tree = parsePdfMarkdown(markdown);
+  const [pdfMake, images] = await Promise.all([pdfEngine(), prepareImages(pdfImageUrlsFromTree(tree))]);
+  onProgress?.('Typesetting PDF…');
+  const doc = buildPdfDefinitionFromTree(tree, title, images) as TDocumentDefinitions;
   const blob: Blob = await new Promise((resolve, reject) => {
     try {
       pdfMake.createPdf(doc).getBlob(result => {
@@ -94,6 +104,7 @@ export async function downloadStyledPdf(markdown: string, title: string): Promis
     // Browsers can omit the MIME type. Its signature is verified in tests.
     if (blob.size < 8) throw new Error('Invalid PDF output.');
   }
+  onProgress?.('Downloading PDF…');
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
