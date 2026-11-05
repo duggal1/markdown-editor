@@ -44,7 +44,14 @@ assert.equal(cachedPreview(text), null, 'LRU entries must be evicted');
 assert.equal((await preparePreview('hello\n\nworld')).chunks.join(''), 'hello\n\nworld');
 
 const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
-assert.match(css, /--preview-orange:#ffad66/, 'Dark preview links and code need a brighter orange.');
+assert.match(css, /--preview-orange:oklch\(64\.6% 0\.222 41\.116\); \/\* text-orange-600 \*\//,
+  'Dark preview must use Tailwind v4 text-orange-600.');
+assert.match(css, /--preview-orange:oklch\(55\.3% 0\.195 38\.402\); \/\* text-orange-700 \*\//,
+  'Light preview must use Tailwind v4 text-orange-700.');
+assert.match(css, /\.markdown-preview a,[\s\S]*?color:var\(--preview-orange\)/,
+  'Preview links and badges must share the theme-specific orange.');
+assert.match(css, /\.markdown-preview :not\(pre\) > code,[\s\S]*?\.markdown-preview \.hljs-number,[\s\S]*?color:var\(--preview-orange\)/,
+  'Inline-code badges and orange syntax tokens must use the same Tailwind shade.');
 assert.match(css, /:root\[data-theme='light'\] \.markdown-preview \{/,
   'Preview accents and table borders must have a separate light theme.');
 assert.match(css, /--preview-table-border:#303030/,
