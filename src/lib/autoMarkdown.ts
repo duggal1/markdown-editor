@@ -1,6 +1,6 @@
 import { detectRawCode } from './code';
 
-export type MarkdownFormatOptions = { atDocumentStart?: boolean };
+export type MarkdownFormatOptions = { atDocumentStart?: boolean; manual?: boolean };
 export const MAX_MANUAL_FORMAT_CHARS = 1_000_000;
 
 type Line = { value: string; type: 'blank' | 'feature' | 'heading' | 'text' | 'protected' };
@@ -34,7 +34,7 @@ export function formatPlainTextAsMarkdown(
   source: string,
   options: MarkdownFormatOptions = {},
 ): string {
-  if (!source.trim() || source.length > MAX_MANUAL_FORMAT_CHARS || detectRawCode(source)) return source;
+  if (!source.trim() || source.length > (options.manual ? MAX_MANUAL_FORMAT_CHARS : 180_000) || detectRawCode(source)) return source;
   const lines = source.replace(/\r\n?/g, '\n').replace(/\u00a0/g, ' ').split('\n');
   const count = lines.reduce((n, line) => n + (featureParts(line) ? 1 : 0), 0);
   const hasFeatureSeries = count >= 2;
@@ -135,7 +135,7 @@ export function formatMarkdownDocument(
   source: string,
   options: MarkdownFormatOptions = {},
 ): string {
-  const formatted = formatPlainTextAsMarkdown(source, options);
+  const formatted = formatPlainTextAsMarkdown(source, { ...options, manual: true });
   if (formatted === source && (source.length > MAX_MANUAL_FORMAT_CHARS || detectRawCode(source))) {
     return source;
   }
