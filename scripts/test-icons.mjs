@@ -34,5 +34,6 @@ assert.match(drawSource, /from '\.\.\/components\/Icons'/);
 assert.match(flowSource, /from '\.\/components\/Icons'/);
 assert.doesNotMatch(source, /rasterCache|canvas|toDataURL/);
 assert.match(css, /\.save-indicator\[data-save-state='saved'\]::before/);
-assert.match(css, /background:\s*#ea580c;\s*opacity:/);
+assert.match(css, /background:\s*var\(--flow-accent\);\s*opacity:/,
+  'Save animation must follow the selected accent theme.');
 console.log(`Validated ${names.length} unmodified Hugeicons SVG glyphs and sharp saving indicator.`);
