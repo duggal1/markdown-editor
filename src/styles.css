@@ -991,13 +991,14 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 :root:not([data-theme='light']) .search-field { background:#151515; }
 :root:not([data-theme='light']) .search-field:hover,
 :root:not([data-theme='light']) .search-field:focus-within { background:#111111; }
-.search-field kbd { padding:0 6px; height:21px; border:1px solid #303030; border-radius:5px;
-  background:#202020; color:#b0b0b0; font:500 10px/1 var(--mono); }
-:root[data-theme='light'] .search-field kbd { background:#e4e4e4; border-color:#d4d4d4; color:#606060; }
+.search-field kbd { padding:0 6px; height:21px; border:0; border-radius:5px; box-shadow:none;
+  background:#303030; color:#dedede; font:500 10px/1 var(--mono); }
+:root[data-theme='light'] .search-field kbd { background:#e4e4e4; color:#606060; }
 /* Keep both panes scrolling independently but eliminate intrusive scrollbar tracks. */
 .editor-area .cm-scroller, .editor-area .preview-scroll { scrollbar-width:none; -ms-overflow-style:none; }
 .editor-area .cm-scroller::-webkit-scrollbar,
 .editor-area .preview-scroll::-webkit-scrollbar { width:0; height:0; display:none; }
-.export-button[aria-busy='true'] { opacity:1; cursor:progress; }
-.export-button[aria-busy='true'] .pixel-save-loader { color:#0a0a0a; }
+.export-button[aria-busy='true'] { opacity:1; cursor:progress; color:#ffffff; }
+.export-button[aria-busy='true'] .pixel-save-loader { color:#ffffff; }
+.export-button[aria-busy='true'] .pixel-save-loader i { background:#ffffff; }
 .notice .pixel-save-loader { flex:0 0 auto; }
