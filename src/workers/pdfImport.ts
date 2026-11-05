@@ -80,7 +80,5 @@ self.onmessage = async (event: MessageEvent<{ buffer: ArrayBuffer }>) => {
     self.postMessage({ ok: true, markdown });
   } catch (error) {
     self.postMessage({ ok: false, error: error instanceof Error ? error.message : 'PDF import failed.' });
-  } finally {
-    await pdf?.destroy().catch(() => undefined);
   }
 };

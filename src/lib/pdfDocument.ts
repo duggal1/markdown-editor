@@ -196,7 +196,7 @@ function blocks(nodes: MdNode[], images: PdfImageAssets, inList = false): PdfBlo
       const raw = node.value || '';
       const content = [
         ...(label ? [{ text: label.toUpperCase(), style: 'codeLabel', margin: [0, 0, 0, 8] }] : []),
-        { text: highlightedCode(raw, label), style: 'code', font: 'Courier', wordBreak: 'break-all' },
+        { text: highlightedCode(raw, label), style: 'code', wordBreak: 'break-all' },
       ];
       out.push({
         table: { widths: ['*'], body: [[{
@@ -341,7 +341,7 @@ export function buildPdfDefinitionFromTree(
       h6: { fontSize: 10.3, bold: true, color: MUTED, lineHeight: 1.36 },
       body: { fontSize: 10.4, color: BODY, lineHeight: 1.48 },
       list: { fontSize: 10.4, color: BODY, lineHeight: 1.45 },
-      code: { font: 'Courier', fontSize: 8.8, color: BLACK, lineHeight: 1.35 },
+      code: { fontSize: 8.8, color: BLACK, lineHeight: 1.35 },
       codeLabel: { fontSize: 8.1, bold: true, color: MUTED, characterSpacing: 0.5 },
       tableHead: { fontSize: 9.1, bold: true, color: BLACK, lineHeight: 1.3 },
       tableCell: { fontSize: 9.1, color: BODY, lineHeight: 1.32 },

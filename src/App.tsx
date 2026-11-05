@@ -758,13 +758,13 @@ export default function App() {
 
     async function importOne(file: File) {
       if (file.size > 50 * 1024 * 1024) throw new Error(file.name + ' exceeds the 50 MB limit');
-      const supportedImage = /^image\\/(png|jpeg|gif|webp|avif|bmp|x-icon|vnd\\.microsoft\\.icon|svg\\+xml)$/i.test(file.type);
-      const image = supportedImage || /\\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i.test(file.name);
-      const pdf = file.type === 'application/pdf' || /\\.pdf$/i.test(file.name);
+      const supportedImage = /^image\/(png|jpeg|gif|webp|avif|bmp|x-icon|vnd\.microsoft\.icon|svg\+xml)$/i.test(file.type);
+      const image = supportedImage || /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i.test(file.name);
+      const pdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
       const recognizedText = file.type.startsWith('text/') ||
-        /^(application\\/(?:json|javascript|xml|x-javascript|x-yaml|yaml|toml|graphql))$/i.test(file.type) ||
+        /^(application\/(?:json|javascript|xml|x-javascript|x-yaml|yaml|toml|graphql))$/i.test(file.type) ||
         Boolean(languageForFile(file.name)) || isMarkdownFile(file.name) ||
-        /\\.(txt|csv|tsv|log|ini|cfg|env|gitignore|editorconfig)$/i.test(file.name);
+        /\.(txt|csv|tsv|log|ini|cfg|env|gitignore|editorconfig)$/i.test(file.name);
       let binary = !image && !pdf && Boolean(file.type && !recognizedText);
       let markdown = '';
       if (pdf) {
@@ -775,7 +775,7 @@ export default function App() {
         const decoded = await readTextImport(file, file.name);
         binary = decoded === null;
         if (decoded !== null) {
-          const plainText = /\\.txt$/i.test(file.name) && !languageForFile(file.name);
+          const plainText = /\.txt$/i.test(file.name) && !languageForFile(file.name);
           markdown = plainText ? formatPlainTextAsMarkdown(decoded, { atDocumentStart: true }) : decoded;
         }
       }
