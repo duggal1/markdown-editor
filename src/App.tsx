@@ -939,10 +939,21 @@ export default function App() {
   }, []);
   const onEditorPosition = useCallback((line: number, kind: 'scroll' | 'cursor', total: number) => {
     if (modeRef.current === 'write') return;
-    if (line === lastSyncLine.current && kind === 'scroll') return;
+    // Ignore sub-pixel movement, not entire wrapped logical lines.
+    if (kind === 'scroll' && Math.abs(line - lastSyncLine.current) < 0.015) return;
     lastSyncLine.current = line;
     targetLine.current = { line, total, kind, id: activeIdRef.current };
-    if (syncFrame.current === null) syncFrame.current = requestAnimationFrame(dispatchPreviewPosition);
+    if (kind === 'scroll') {
+      // MarkdownEditor already throttles scrolling to one animation frame.
+      // An additional frame here made the preview visibly trail long documents.
+      if (syncFrame.current !== null) {
+        cancelAnimationFrame(syncFrame.current);
+        syncFrame.current = null;
+      }
+      dispatchPreviewPosition();
+    } else if (syncFrame.current === null) {
+      syncFrame.current = requestAnimationFrame(dispatchPreviewPosition);
+    }
   }, [dispatchPreviewPosition]);
   useEffect(() => {
     if (mode === 'write') return;
