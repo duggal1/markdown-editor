@@ -44,10 +44,14 @@ assert.equal(cachedPreview(text), null, 'LRU entries must be evicted');
 assert.equal((await preparePreview('hello\n\nworld')).chunks.join(''), 'hello\n\nworld');
 
 const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
-assert.match(css, /--preview-orange:oklch\(64\.6% 0\.222 41\.116\); \/\* text-orange-600 \*\//,
-  'Dark preview must use Tailwind v4 text-orange-600.');
-assert.match(css, /--preview-orange:oklch\(55\.3% 0\.195 38\.402\); \/\* text-orange-700 \*\//,
-  'Light preview must use Tailwind v4 text-orange-700.');
+assert.match(css, /--preview-orange:var\(--accent-600\)/,
+  'Dark preview should use the selected palette at shade 600.');
+assert.match(css, /--preview-orange:var\(--accent-500\)/,
+  'Light preview should use the selected palette at shade 500.');
+assert.match(css, /--palette-orange-600: oklch\(64\.6% 0\.222 41\.116\)/,
+  'Default dark mode must use Tailwind orange-600.');
+assert.match(css, /--palette-orange-500: oklch\(70\.5% 0\.213 47\.604\)/,
+  'Default light mode must use Tailwind orange-500.');
 assert.match(css, /\.markdown-preview a,[\s\S]*?color:var\(--preview-orange\)/,
   'Preview links and badges must share the theme-specific orange.');
 assert.match(css, /\.markdown-preview :not\(pre\) > code,[\s\S]*?\.markdown-preview \.hljs-number,[\s\S]*?color:var\(--preview-orange\)/,
