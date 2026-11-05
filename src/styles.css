@@ -991,8 +991,8 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 :root:not([data-theme='light']) .search-field { background:#151515; }
 :root:not([data-theme='light']) .search-field:hover,
 :root:not([data-theme='light']) .search-field:focus-within { background:#111111; }
-.search-field kbd { padding:0 6px; height:21px; border:0; border-radius:5px; box-shadow:none;
-  background:#282828; color:#d0d0d0; font:500 10px/1 var(--mono); }
+.search-field kbd { padding:0; min-width:21px; height:21px; border:0; border-radius:5px; box-shadow:none;
+  background:#222222; color:#cccccc; font:500 10px/1 var(--mono); }
 :root[data-theme='light'] .search-field kbd { background:#e4e4e4; color:#606060; }
 /* Keep both panes scrolling independently but eliminate intrusive scrollbar tracks. */
 .editor-area .cm-scroller, .editor-area .preview-scroll { scrollbar-width:none; -ms-overflow-style:none; }
@@ -1002,6 +1002,13 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .export-button[aria-busy='true'] .pixel-save-loader { color:#ffffff; }
 .export-button[aria-busy='true'] .pixel-save-loader i { background:#ffffff; }
 .notice .pixel-save-loader { flex:0 0 auto; }
+/* Dim selection without losing the cursor or selection legibility on dark UI. */
+:root:not([data-theme='light']) ::selection { background:#56565652; }
+:root:not([data-theme='light']) .cm-selectionBackground,
+:root:not([data-theme='light']) .cm-focused .cm-selectionBackground { background:#62626255 !important; }
+:root:not([data-theme='light']) .cm-line ::selection,
+:root:not([data-theme='light']) .cm-content ::selection { background:#56565652 !important; }
+
 
 
 /* A centered writing measure in desktop Write mode. CodeMirror's internal
