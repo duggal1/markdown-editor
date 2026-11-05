@@ -41,8 +41,7 @@
     "pdfmake": "^0.2.23",
     "unpdf": "^2.1.0",
     "remark-parse": "^11.0.0",
-    "unified": "^11.0.5",
-    "unpdf": "^1.4.0"
+    "unified": "^11.0.5"
   },
   "devDependencies": {
     "@types/react": "^19.2.0",
