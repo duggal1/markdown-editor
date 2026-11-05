@@ -39,6 +39,7 @@
     "@hugeicons/core-free-icons": "^4.2.1",
     "@number-flow/react": "^0.6.2",
     "pdfmake": "^0.2.23",
+    "unpdf": "^2.1.0",
     "remark-parse": "^11.0.0",
     "unified": "^11.0.5",
     "unpdf": "^1.4.0"
