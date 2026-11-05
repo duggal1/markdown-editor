@@ -2,6 +2,9 @@ import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
 import { detectRawCode } from './code';
+import hljs from 'highlight.js/lib/common';
+import swift from 'highlight.js/lib/languages/swift';
+import rust from 'highlight.js/lib/languages/rust';
 import type { TDocumentDefinitions } from 'pdfmake/interfaces';
 
 /**
@@ -9,6 +12,9 @@ import type { TDocumentDefinitions } from 'pdfmake/interfaces';
  * 595pt A4 page, 58pt outer measure, one grayscale typographic system.
  * Parsing and rendering run only after the user chooses Export PDF.
  */
+hljs.registerLanguage('swift', swift);
+hljs.registerLanguage('rust', rust);
+
 type MdNode = {
   type: string;
   value?: string;
@@ -28,6 +34,15 @@ export type PdfImageAssets = ReadonlyMap<string, string>;
 const BLACK = '#181818';
 const BODY = '#303030';
 const MUTED = '#656565';
+const LINK = '#B45309';
+const CODE_COLORS: Record<string, string> = {
+  keyword: '#8B3F91', built_in: '#8B3F91', literal: '#8B3F91',
+  string: '#167B58', number: '#AD6019', comment: '#76808A',
+  title: '#205D9B', function: '#205D9B', class: '#205D9B', type: '#205D9B',
+  attr: '#9A4D13', attribute: '#9A4D13', variable: '#9A4D13',
+  property: '#9A4D13', meta: '#6A5C99', symbol: '#AD6019',
+  regexp: '#167B58', selector: '#205D9B', tag: '#8B3F91', name: '#8B3F91',
+};
 const LIGHT = '#E5E5E5';
 const PAPER = '#FFFFFF';
 const WASH = '#F6F6F6';
@@ -54,7 +69,7 @@ function inline(nodes: MdNode[] = [], attrs: Record<string, unknown> = {}): PdfP
     else if (node.type === 'link') {
       const link = safeUrl(node.url);
       out.push(...inline(node.children, {
-        ...attrs, color: BLACK, decoration: 'underline',
+        ...attrs, color: LINK, decoration: 'underline',
         ...(link ? { link } : {}),
       }));
     } else if (node.type === 'image') {
@@ -70,6 +85,52 @@ function inline(nodes: MdNode[] = [], attrs: Record<string, unknown> = {}): PdfP
     else if (node.value) out.push({ text: node.value, ...attrs });
   }
   return out.length ? out : [''];
+}
+
+
+function decodeHtml(value: string): string {
+  return value.replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (_, entity: string) => {
+    const key = entity.toLowerCase();
+    if (key[0] === '#') {
+      const hex = key[1] === 'x';
+      const code = parseInt(key.slice(hex ? 2 : 1), hex ? 16 : 10);
+      return Number.isFinite(code) && code >= 0 && code <= 0x10FFFF
+        ? String.fromCodePoint(code) : '';
+    }
+    return ({ amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' } as Record<string, string>)[key] || '';
+  });
+}
+/** Convert Highlight.js spans into selectable, colored PDF text instead of rasterized code. */
+export function highlightedCode(raw: string, language = ''): PdfPart[] {
+  if (!raw) return [' '];
+  if (raw.length > 150_000) return [raw];
+  let html: string;
+  try {
+    const lang = language.toLowerCase().split(/[\s,]/)[0];
+    const aliases: Record<string, string> = {
+      ts: 'typescript', js: 'javascript', py: 'python', sh: 'bash',
+      shell: 'bash', yml: 'yaml', rs: 'rust', rb: 'ruby', cxx: 'cpp',
+      html: 'xml', svg: 'xml', kt: 'kotlin',
+    };
+    const recognized = aliases[lang] || lang;
+    html = recognized && hljs.getLanguage(recognized)
+      ? hljs.highlight(raw, { language: recognized, ignoreIllegals: true }).value
+      : lang ? raw.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        : hljs.highlightAuto(raw, ['javascript', 'typescript', 'python', 'json', 'bash', 'xml', 'css']).value;
+  } catch { return [raw]; }
+  const spans: PdfPart[] = [];
+  const styles: string[] = [];
+  for (const token of html.match(/<[^>]+>|[^<]+/g) || []) {
+    if (token.startsWith('<span')) {
+      const name = /class="([^"]+)"/.exec(token)?.[1] || '';
+      styles.push(name.split(/\s+/).find(s => s.startsWith('hljs-'))?.slice(5) || '');
+    } else if (token.startsWith('</span')) styles.pop();
+    else if (!token.startsWith('<')) {
+      const color = [...styles].reverse().map(style => CODE_COLORS[style]).find(Boolean);
+      spans.push({ text: decodeHtml(token), ...(color ? { color } : {}) });
+    }
+  }
+  return spans.length ? spans : [raw];
 }
 
 function imageBlock(node: MdNode, images: PdfImageAssets): PdfBlock {
@@ -135,7 +196,7 @@ function blocks(nodes: MdNode[], images: PdfImageAssets, inList = false): PdfBlo
       const raw = node.value || '';
       const content = [
         ...(label ? [{ text: label.toUpperCase(), style: 'codeLabel', margin: [0, 0, 0, 8] }] : []),
-        { text: raw || ' ', style: 'code', wordBreak: 'break-all' },
+        { text: highlightedCode(raw, label), style: 'code', font: 'Courier', wordBreak: 'break-all' },
       ];
       out.push({
         table: { widths: ['*'], body: [[{
@@ -227,7 +288,10 @@ export function parsePdfMarkdown(markdown: string): MdNode {
 }
 
 export function pdfImageUrls(markdown: string): string[] {
-  const root = parsePdfMarkdown(markdown);
+  return pdfImageUrlsFromTree(parsePdfMarkdown(markdown));
+}
+
+export function pdfImageUrlsFromTree(root: MdNode): string[] {
   const urls = new Set<string>();
   const visit = (node: MdNode) => {
     if (node.type === 'image' && node.url && /^https?:\/\//i.test(node.url)) {
@@ -242,7 +306,12 @@ export function pdfImageUrls(markdown: string): string[] {
 export function buildPdfDefinition(
   markdown: string, title: string, images: PdfImageAssets = new Map(),
 ): TDocumentDefinitions {
-  const root = parsePdfMarkdown(markdown);
+  return buildPdfDefinitionFromTree(parsePdfMarkdown(markdown), title, images);
+}
+
+export function buildPdfDefinitionFromTree(
+  root: MdNode, title: string, images: PdfImageAssets = new Map(),
+): TDocumentDefinitions {
   const safeTitle = (title || 'Untitled').trim().slice(0, 160) || 'Untitled';
   const nodes = root.children || [];
   const hasTopHeading = nodes.some(node => node.type === 'heading' && node.depth === 1);
@@ -272,7 +341,7 @@ export function buildPdfDefinition(
       h6: { fontSize: 10.3, bold: true, color: MUTED, lineHeight: 1.36 },
       body: { fontSize: 10.4, color: BODY, lineHeight: 1.48 },
       list: { fontSize: 10.4, color: BODY, lineHeight: 1.45 },
-      code: { fontSize: 8.8, color: BLACK, lineHeight: 1.35 },
+      code: { font: 'Courier', fontSize: 8.8, color: BLACK, lineHeight: 1.35 },
       codeLabel: { fontSize: 8.1, bold: true, color: MUTED, characterSpacing: 0.5 },
       tableHead: { fontSize: 9.1, bold: true, color: BLACK, lineHeight: 1.3 },
       tableCell: { fontSize: 9.1, color: BODY, lineHeight: 1.32 },
