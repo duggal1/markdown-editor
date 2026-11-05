@@ -75,6 +75,24 @@ assert.match(styles, /\.virtual-markdown-window\s*\{/, 'Window must have its own
 assert.match(styles, /\.virtual-markdown-section\.continues-list/, 'Preserve list visual continuity');
 assert.match(pipeline, /continuations: boolean\[\]/);
 assert.match(worker, /firstLines, continuations/);
+const editor = read('src/components/MarkdownEditor.tsx');
+const app = read('src/App.tsx');
+assert.match(editor, /view\.lineBlockAtHeight\(height\)/,
+  'Scroll positions must use the physical viewport rather than the overscanned document range.');
+assert.match(editor, /block\.from\)\.number \+ fraction/,
+  'Wrapped logical lines need fractional progress for continuous scroll syncing.');
+assert.doesNotMatch(editor, /view\.viewport\.from/,
+  'Overscanned viewport positions must not determine the visible top line.');
+assert.match(app, /if \(kind === 'scroll'\) \{[\s\S]*?dispatchPreviewPosition\(\)/,
+  'Editor scroll is already frame-throttled and should not incur a second frame.');
+assert.match(preview, /if \(latest\.kind === 'scroll'\) \{/,
+  'Virtualized preview must process pre-throttled scroll events without an extra frame.');
+assert.match(preview, /settleWhenMounted/,
+  'Off-screen virtual chunks need a mount retry before precise anchor alignment.');
+assert.match(styles, /\.editor-area:not\(\.compact\) \.cm-sizer \{ flex:1 1 0%; width:100%; min-width:0; \}/,
+  'The desktop CodeMirror sizer must fill the writing pane for a centered column.');
+assert.match(styles, /\.editor-area:not\(\.compact\) \.cm-content \{ width:100%; max-width:880px; margin-inline:auto; \}/,
+  'Text must use a centered, bounded writing measure on desktop.');
 console.log('Long-document scrolling tests passed:', {
   sourceChars: dense.length, windows: sections.length,
   splitMilliseconds: Number(elapsed.toFixed(2)),
