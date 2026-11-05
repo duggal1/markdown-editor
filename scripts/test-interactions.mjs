@@ -39,6 +39,10 @@ assert.match(css, /\.topbar \.export-button\s*\{[\s\S]*?border-radius:7px;/,
   'Export must not inherit desktop pill rounding');
 assert.match(css, /\.topbar \.theme-toggle\s*\{\s*grid-row:1; grid-column:4;/,
   'Theme must stay in the first row');
+assert.match(css, /\.export-button\[aria-busy='true'\] \{ opacity:1; cursor:progress; color:#ffffff; \}/,
+  'Exporting text must turn white during PDF generation.');
+assert.match(css, /\.export-button\[aria-busy='true'\] \.pixel-save-loader i \{ background:#ffffff; \}/,
+  'The Exporting animation must use white pixels rather than the orange Save indicator.');
 assert.match(app, /className="export-button"\s*title="Export page" aria-label="Export page"/,
   'The mobile icon-only Export button needs an accessible name');
 assert.match(css, /\.topbar \.draw-entry > \.pixel-huge-icon,\s*\.topbar \.export-button > \.pixel-huge-icon\s*\{\s*display:inline-flex!important;/,
