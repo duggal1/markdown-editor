@@ -80,12 +80,16 @@ assert.match(treeStyle, /\.filetree-result-open/);
 assert.match(style, /\.search-field:hover, \.search-field:focus-within \{ background:#151515; \}/);
 assert.match(style, /:root\[data-theme='light'\] \.search-field:hover,/);
 assert.match(style, /\.search-field \{ padding-inline:10px; \}/);
-assert.match(style, /\.search-field kbd \{ padding:0 6px; height:21px; border:0; border-radius:5px; box-shadow:none;/,
-  'The Cmd+K badge must not use a border or shadow.');
-assert.match(style, /background:#282828; color:#d0d0d0; font:500 10px\/1 var\(--mono\);/,
-  'Cmd+K must stand out through a lighter, neutral fill.');
-assert.match(treeStyle, /\.filetree-result\.is-active \.filetree-result-open \{ background:#1d1d1d; \}/,
-  'Selected search results should be subtly darker than before.');
+assert.match(style, /\.search-field kbd \{ padding:0; min-width:21px; height:21px; border:0; border-radius:5px; box-shadow:none;/,
+  'The Cmd+K badge must have no extra padding, border or shadow.');
+assert.match(style, /background:#222222; color:#cccccc; font:500 10px\/1 var\(--mono\);/,
+  'Cmd+K must use the darker neutral keycap.');
+assert.match(treeStyle, /\.filetree-result\.is-active \.filetree-result-open \{ background:#191919; \}/,
+  'Selected search results should be darker.');
+assert.match(treeStyle, /\.filetree-result\.is-active \.filetree-result-open:hover \{ background:#202020; \}/,
+  'Selected result hover should remain subtle and distinguishable.');
+assert.match(treeStyle, /\.filetree-result-open:hover, \.filetree-result-open:focus-visible \{ background:#181818; \}/,
+  'Search results hover should be slightly darker.');
 assert.match(treeStyle, /:root\[data-theme='light'\] \.filetree-result\.is-active \.filetree-result-open/,
   'Selected search results must retain contrast in light mode.');
 assert.doesNotMatch(worker, /fetch\(|Pinecone|embeddings/i);
