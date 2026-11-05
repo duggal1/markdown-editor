@@ -49,4 +49,8 @@ assert.match(css, /\.topbar \.draw-entry > \.pixel-huge-icon,\s*\.topbar \.expor
   'Mobile must not hide native Hugeicons wrappers inside Draw and Export');
 assert.match(css, /\.save-indicator\[data-save-state='saving'\]\s*\{\s*flex:0 0 48px;/,
   'A mobile Saving indicator must not displace the page title');
+assert.match(css, /:root:not\(\[data-theme='light'\]\) ::selection \{ background:#56565652; \}/,
+  'Native text selection in dark mode should have a quieter contrast.');
+assert.match(css, /:root:not\(\[data-theme='light'\]\) \.cm-focused \.cm-selectionBackground \{ background:#62626255 !important; \}/,
+  'CodeMirror text selection should be visibly darker without changing light mode.');
 console.log('Motion, five-second save status, iOS geometry and preview cache checks passed.');
