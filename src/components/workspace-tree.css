@@ -81,8 +81,10 @@
 }
 .filetree-result-open > .pixel-huge-icon { margin-top:2px; color:var(--muted); }
 .filetree-result-open:hover, .filetree-result-open:focus-visible { background:var(--neutral-100); }
-.filetree-result.is-active .filetree-result-open { background:var(--active); }
-.filetree-result.is-active .filetree-result-open:hover { background:var(--neutral-200); }
+.filetree-result.is-active .filetree-result-open { background:#1d1d1d; }
+.filetree-result.is-active .filetree-result-open:hover { background:#232323; }
+:root[data-theme='light'] .filetree-result.is-active .filetree-result-open { background:#e8e8e8; }
+:root[data-theme='light'] .filetree-result.is-active .filetree-result-open:hover { background:#dedede; }
 .filetree-result-copy { display:flex; flex:1; min-width:0; flex-direction:column; gap:4px; }
 .filetree-result-title {
   color:var(--text); font-size:12px; line-height:16px;
