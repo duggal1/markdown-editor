@@ -1,6 +1,7 @@
 import { detectRawCode } from './code';
 
 export type MarkdownFormatOptions = { atDocumentStart?: boolean };
+export const MAX_MANUAL_FORMAT_CHARS = 1_000_000;
 
 type Line = { value: string; type: 'blank' | 'feature' | 'heading' | 'text' | 'protected' };
 
@@ -33,19 +34,21 @@ export function formatPlainTextAsMarkdown(
   source: string,
   options: MarkdownFormatOptions = {},
 ): string {
-  if (!source.trim() || source.length > 180_000 || detectRawCode(source)) return source;
+  if (!source.trim() || source.length > MAX_MANUAL_FORMAT_CHARS || detectRawCode(source)) return source;
   const lines = source.replace(/\r\n?/g, '\n').replace(/\u00a0/g, ' ').split('\n');
   const count = lines.reduce((n, line) => n + (featureParts(line) ? 1 : 0), 0);
   const hasFeatureSeries = count >= 2;
   const result: Line[] = [];
   let fence: '`' | '~' | null = null;
-  const nextContent = (index: number) => {
-    for (let i = index + 1; i < lines.length; i++) {
-      const trimmed = lines[i].trim();
-      if (trimmed) return trimmed;
-    }
-    return '';
-  };
+  // One backwards pass replaces repeated scans over the whole document.
+  // Long imported plans must remain linear, not quadratic in line count.
+  const following: string[] = new Array(lines.length);
+  let nextNonblank = '';
+  for (let i = lines.length - 1; i >= 0; i--) {
+    following[i] = nextNonblank;
+    if (lines[i].trim()) nextNonblank = lines[i].trim();
+  }
+  const firstContentIndex = lines.findIndex(line => Boolean(line.trim()));
   const isFence = (line: string) => /^\s*(`{3,}|~{3,})/.exec(line);
 
   for (let i = 0; i < lines.length; i++) {
@@ -67,7 +70,7 @@ export function formatPlainTextAsMarkdown(
       result.push({ value: '', type: 'blank' });
       continue;
     }
-    const next = nextContent(i);
+    const next = following[i];
     const feature = hasFeatureSeries && !alreadyStructured(trimmed) ? featureParts(trimmed) : null;
     if (feature) {
       result.push({ value: '- **' + feature.label + '** — ' + feature.description, type: 'feature' });
@@ -78,7 +81,7 @@ export function formatPlainTextAsMarkdown(
       continue;
     }
 
-    const preceding = i === 0 || !lines.slice(0, i).some(line => line.trim());
+    const preceding = i === firstContentIndex;
     const sectionBeforeFeatures = hasFeatureSeries && plainSectionTitle(trimmed)
       && Boolean(featureParts(next));
     const startTitle = options.atDocumentStart !== false && preceding
@@ -121,4 +124,43 @@ export function formatPlainTextAsMarkdown(
 export function shouldAutoFormatPaste(value: string): boolean {
   return value.length < 180_000 && value.includes('\n')
     && value.trim().length > 0 && !detectRawCode(value);
+}
+
+/**
+ * Explicit toolbar action: format prose and normalize heading spacing.
+ * Preserve fenced code, tables, nested lists, and all source content.
+ * The text replacement is committed as one undoable CodeMirror transaction.
+ */
+export function formatMarkdownDocument(
+  source: string,
+  options: MarkdownFormatOptions = {},
+): string {
+  const formatted = formatPlainTextAsMarkdown(source, options);
+  if (formatted === source && (source.length > MAX_MANUAL_FORMAT_CHARS || detectRawCode(source))) {
+    return source;
+  }
+  const lines = formatted.split('\n');
+  const output: string[] = [];
+  let fence: { char: string; length: number } | null = null;
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const match = /^ {0,3}(`{3,}|~{3,})/.exec(raw);
+    if (match) {
+      const marker = match[1];
+      if (!fence) fence = { char: marker[0], length: marker.length };
+      else if (marker[0] === fence.char && marker.length >= fence.length &&
+        !raw.slice(match[0].length).trim()) fence = null;
+      output.push(raw);
+      continue;
+    }
+    const heading = !fence && /^ {0,3}#{1,6}[ \t]+\S/.test(raw);
+    if (heading) {
+      if (output.length && output[output.length - 1] !== '') output.push('');
+      output.push(raw);
+      if (lines[i + 1]?.trim()) output.push('');
+      continue;
+    }
+    output.push(raw);
+  }
+  return output.join('\n');
 }
