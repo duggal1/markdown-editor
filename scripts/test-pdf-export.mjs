@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
 
-const { buildPdfDefinition, pdfImageUrls, parsePdfMarkdown } = await import('../src/lib/pdfDocument.ts');
+const { buildPdfDefinition, pdfImageUrls, parsePdfMarkdown, highlightedCode, buildPdfDefinitionFromTree } = await import('../src/lib/pdfDocument.ts');
 
 const plan = [
   '# Lumen: Master Build Plan',
@@ -84,6 +84,16 @@ const imageData = new Map([['https://example.com/test.png', 'data:image/png;base
 const imageDoc = buildPdfDefinition('![Diagram](https://example.com/test.png)', 'Diagram', imageData);
 assert.ok(imageDoc.content.some(x => x.image), 'Embedded PNG data should become a PDF image.');
 
+
+const highlighted = highlightedCode('let answer = 42 // a note\nprint("hello")', 'swift');
+assert.equal(highlighted.map(part => typeof part === 'string' ? part : part.text).join(''),
+  'let answer = 42 // a note\nprint("hello")');
+assert.ok(highlighted.some(part => part.color), 'PDF syntax highlight must contain colored text.');
+const rawTree = parsePdfMarkdown('```swift\nlet answer = 42\n```');
+const fromTree = buildPdfDefinitionFromTree(rawTree, 'Swift');
+assert.ok(fromTree.content.some(block => block.table?.body?.[0]?.[0]?.stack?.some(x =>
+  x.style === 'code' && x.text.some(y => y.color))), 'PDF must render token colors.');
+assert.ok(JSON.stringify(buildPdfDefinition('[Home](https://example.com)', 'Link').content).includes('#B45309'));
 const sourceApp = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
 const exportCode = readFileSync(new URL('../src/lib/pdfExport.ts', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
