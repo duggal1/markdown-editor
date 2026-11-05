@@ -6,6 +6,7 @@ import type { EditorView } from '@codemirror/view';
 import MarkdownEditor, { formatEditor, type Format } from './components/MarkdownEditor';
 import WorkspaceTree from './components/WorkspaceTree';
 import { FlowMark, Icon, type IconName } from './components/Icons';
+import { ACCENT_THEMES, applyAccentTheme, parseAccentTheme, type AccentTheme } from './lib/accentTheme';
 import { downloadMarkdown } from './lib/document';
 import { detectRawCode, isMarkdownFile, languageForFile } from './lib/code';
 import { svgPreviewDocument } from './lib/svgPreview';
@@ -83,6 +84,7 @@ export default function App() {
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [newWorkspaceId, setNewWorkspaceId] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>('dark');
+  const [accentTheme, setAccentTheme] = useState<AccentTheme>(() => parseAccentTheme(readPrefs().accentTheme));
   const [mode, setMode] = useState<Mode>('write');
   const [splitPercent, setSplitPercent] = useState(50);
   const [storedSplitPercent, setStoredSplitPercent] = useState(50);
@@ -101,6 +103,7 @@ export default function App() {
   const saveStarted = useRef(new Map<string, number>());
   const [notice, setNotice] = useState('');
   const [exportMenu, setExportMenu] = useState<{ top: number; right: number } | null>(null);
+  const [accentMenu, setAccentMenu] = useState<{ top: number; right: number } | null>(null);
   const [pdfExporting, setPdfExporting] = useState(false);
   const [autoFormatting, setAutoFormatting] = useState(false);
   const autoFormatInFlight = useRef(false);
@@ -114,6 +117,7 @@ export default function App() {
   const fileRef = useRef<HTMLInputElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const accentButtonRef = useRef<HTMLButtonElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
   const editorAreaRef = useRef<HTMLElement>(null);
   const targetLine = useRef<{ line: number; total: number; kind: 'scroll' | 'cursor'; id: string } | null>(null);
@@ -213,6 +217,7 @@ export default function App() {
       setRecentIds(Array.isArray(prefs.recentIds) ? prefs.recentIds.filter(id => live.current.has(id)) : [first.id]);
       setTheme(prefs.theme === 'dark' || prefs.theme === 'light' ? prefs.theme
         : 'dark');
+      setAccentTheme(parseAccentTheme(prefs.accentTheme));
       // Never restore a desktop-open drawer over the entire phone editor.
       setSidebarOpen(window.matchMedia('(max-width: 800px)').matches ? false : prefs.sidebarOpen !== false);
       modeRef.current = restoredMode;
@@ -240,6 +245,7 @@ export default function App() {
     const color = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
     if (color) color.content = theme === 'dark' ? '#0A0A0A' : '#F4F4F4';
   }, [theme]);
+  useEffect(() => { applyAccentTheme(accentTheme); }, [accentTheme]);
   useEffect(() => {
     const doc = live.current.get(activeId);
     if (!doc?.asset) { setAssetView(null); return; }
@@ -288,10 +294,10 @@ export default function App() {
   }, [compact]);
   useEffect(() => {
     if (!loaded) return;
-    savePrefs({ theme, mode, sidebarOpen, activeDocumentId: activeId,
+    savePrefs({ theme, accentTheme, mode, sidebarOpen, activeDocumentId: activeId,
       activeWorkspaceId: workspaceId, recentIds, expandedWorkspaceIds: expandedIds,
       splitPercent: storedSplitPercent });
-  }, [loaded, theme, mode, sidebarOpen, activeId, workspaceId, recentIds, expandedIds, storedSplitPercent]);
+  }, [loaded, theme, accentTheme, mode, sidebarOpen, activeId, workspaceId, recentIds, expandedIds, storedSplitPercent]);
 
   const flush = useCallback((id: string) => {
     const timer = saveTimers.current.get(id);
@@ -640,6 +646,54 @@ export default function App() {
       document.removeEventListener('keydown', dismiss);
     };
   }, [exportMenu]);
+
+  function toggleAccentMenu(event: React.MouseEvent<HTMLButtonElement>) {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    setExportMenu(null);
+    setAccentMenu(current => current ? null : {
+      top: Math.max(8, Math.min(bounds.bottom + 8, window.innerHeight - 335)),
+      right: Math.max(8, window.innerWidth - bounds.right),
+    });
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLButtonElement>(
+        '.accent-theme-menu [role="menuitemradio"][aria-checked="true"]',
+      )?.focus();
+    });
+  }
+  useEffect(() => {
+    if (!accentMenu) return;
+    const outside = (event: globalThis.PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && !target.closest('.accent-theme-menu,.accent-theme-trigger')) {
+        setAccentMenu(null);
+      }
+    };
+    const dismiss = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setAccentMenu(null);
+        accentButtonRef.current?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', dismiss);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', dismiss);
+    };
+  }, [accentMenu]);
+
+  function onAccentMenuKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+    const options = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>(
+      '[role="menuitemradio"]',
+    ));
+    if (!options.length) return;
+    event.preventDefault();
+    const selected = options.indexOf(document.activeElement as HTMLButtonElement);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1
+      : (selected + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
+    options[next].focus();
+  }
 
   async function exportPdf(doc: FlowDocument) {
     setExportMenu(null);
@@ -1186,6 +1240,15 @@ export default function App() {
           <motion.button {...pressMotion} type="button" className="square-button theme-toggle" title={theme === 'light' ? 'Dark mode' : 'Light mode'} aria-label={theme === 'light' ? 'Dark mode' : 'Light mode'} onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')}>
             <AnimatePresence initial={false} mode="wait"><motion.span key={theme} className="theme-icon" initial={motionOff ? false : { opacity: 0, rotate: -25 }} animate={{ opacity: 1, rotate: 0 }} exit={motionOff ? undefined : { opacity: 0, rotate: 25 }} transition={{ duration: motionOff ? 0 : 0.15 }}><Icon name={theme === 'light' ? 'moon' : 'sun'} size={17} /></motion.span></AnimatePresence>
           </motion.button>
+          <button ref={accentButtonRef} type="button" className="accent-theme-trigger"
+            title={'Accent theme: ' + ACCENT_THEMES.find(option => option.id === accentTheme)?.label}
+            aria-label="Accent theme" aria-haspopup="menu" aria-expanded={Boolean(accentMenu)}
+            aria-controls={accentMenu ? 'accent-theme-menu' : undefined}
+            onClick={toggleAccentMenu}>
+            <span className="accent-theme-dot" aria-hidden="true" />
+            <span className="accent-theme-label">Theme</span>
+            <span className="accent-theme-chevron" aria-hidden="true"><Icon name="chevron" size={12} /></span>
+          </button>
           <input ref={fileRef} type="file" hidden multiple onChange={onFileSelected} aria-label="Import files" />
         </div>
       </header>
@@ -1257,6 +1320,29 @@ export default function App() {
           }}><span className="split-grip" /></div>}
       </motion.main>
       {createPortal(<AnimatePresence initial={false}>
+        {accentMenu && <motion.div id="accent-theme-menu" role="menu"
+          aria-label="Accent color theme" className="accent-theme-menu"
+          style={{ top: accentMenu.top, right: accentMenu.right }}
+          onKeyDown={onAccentMenuKeyDown}
+          initial={motionOff ? false : { opacity: 0, y: -4, scale: 0.985 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={motionOff ? undefined : { opacity: 0, y: -3, scale: 0.99 }}
+          transition={{ duration: motionOff ? 0 : 0.15, ease: [0.22, 1, 0.36, 1] }}>
+          <div className="accent-theme-menu-title">Accent color</div>
+          {ACCENT_THEMES.map(option => <button key={option.id}
+            type="button" role="menuitemradio" aria-checked={option.id === accentTheme}
+            className="accent-theme-option"
+            onClick={() => {
+              setAccentTheme(option.id);
+              setAccentMenu(null);
+              accentButtonRef.current?.focus();
+            }}>
+            <span className="accent-theme-swatch" aria-hidden="true"
+              style={{ backgroundColor: `var(--palette-${option.id}-600)` }} />
+            <span>{option.label}</span>
+            {option.id === accentTheme && <span className="accent-theme-check"><Icon name="check" size={14} /></span>}
+          </button>)}
+        </motion.div>}
         {exportMenu && <motion.div role="menu" aria-label="Export page as"
           className="flow-export-menu" style={{ top: exportMenu.top, right: exportMenu.right }}
           initial={motionOff ? false : { opacity: 0, y: -5, scale: 0.985 }}
