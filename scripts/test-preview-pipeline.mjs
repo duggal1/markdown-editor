@@ -42,4 +42,20 @@ assert.equal(startFence, endFence, 'Fenced code must not be split from its openi
 for (let i = 0; i < 5; i++) immediatePreview('small-' + i);
 assert.equal(cachedPreview(text), null, 'LRU entries must be evicted');
 assert.equal((await preparePreview('hello\n\nworld')).chunks.join(''), 'hello\n\nworld');
+
+const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+assert.match(css, /--preview-orange:#ffad66/, 'Dark preview links and code need a brighter orange.');
+assert.match(css, /:root\[data-theme='light'\] \.markdown-preview \{/,
+  'Preview accents and table borders must have a separate light theme.');
+assert.match(css, /--preview-table-border:#303030/,
+  'Dark-mode table grid must be subtle but complete.');
+assert.match(css, /--preview-table-border:#dedede/,
+  'Light-mode table grid must remain visible and neutral.');
+assert.match(css, /\.markdown-preview \.table-scroll \{[\s\S]*?border:1px solid var\(--preview-table-border\)/,
+  'Tables require a complete outer border.');
+assert.match(css, /\.markdown-preview th,\s*\.markdown-preview td \{[\s\S]*?border-right:1px solid var\(--preview-table-border\);[\s\S]*?border-bottom:1px solid var\(--preview-table-border\)/,
+  'Table cells require vertical and horizontal dividers.');
+assert.match(css, /\.markdown-preview table > :last-child > tr:last-child > :is\(th,td\) \{ border-bottom:0; \}/,
+  'The outer border must not double up on the last row.');
+
 console.log('Preview worker preparation, line indexes and bounded cache tests passed.');
