@@ -1,4 +1,5 @@
 import { restoreDocument } from './document';
+import type { AccentTheme } from './accentTheme';
 
 export type Theme = 'light' | 'dark';
 export type Mode = 'write' | 'split' | 'preview';
@@ -10,7 +11,7 @@ export type FlowDocument = {
   fileName?: string; fileType?: 'text' | 'image' | 'binary'; language?: string; asset?: Blob;
 };
 export type Preferences = {
-  theme: Theme; mode: Mode; sidebarOpen: boolean;
+  theme: Theme; accentTheme?: AccentTheme; mode: Mode; sidebarOpen: boolean;
   activeWorkspaceId: string; activeDocumentId: string; recentIds: string[];
   expandedWorkspaceIds?: string[];
   splitPercent?: number;
