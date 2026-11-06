@@ -36,12 +36,23 @@ const safeMarkdownHtml = {
 };
 const ThemeContext = createContext<'light' | 'dark'>('light');
 const LineContext = createContext(0);
+const TaskLineContext = createContext<number | null>(null);
+const TaskToggleContext = createContext<((line: number, checked: boolean) => void) | null>(null);
 type SourceNode = { position?: { start?: { line?: number } } };
 function sourceLine(node?: SourceNode): number {
   const offset = useContext(LineContext);
   return offset + (node?.position?.start?.line || 1);
 }
 type BlockProps = { children?: ReactNode; node?: SourceNode; className?: string };
+function TaskCheckbox({ type, checked }: React.InputHTMLAttributes<HTMLInputElement>) {
+  const line = useContext(TaskLineContext);
+  const onToggle = useContext(TaskToggleContext);
+  // Ordinary HTML inputs in the preview remain non-interactive.
+  if (type !== 'checkbox' || line === null) return <input type={type} checked={checked} disabled />;
+  return <input type="checkbox" checked={Boolean(checked)}
+    aria-label={checked ? 'Mark task incomplete' : 'Mark task complete'}
+    disabled={!onToggle} onChange={event => onToggle?.(line, event.currentTarget.checked)} />;
+}
 type PositionEvent = CustomEvent<{ line: number; total: number; kind: 'scroll' | 'cursor' }>;
 function locatePreview(scroll: HTMLDivElement, line: number, kind: 'scroll' | 'cursor',
   section?: HTMLElement) {
@@ -234,8 +245,13 @@ const components = {
   h4: ({ children, node }: BlockProps) => <h4 data-source-line={sourceLine(node)}>{children}</h4>,
   h5: ({ children, node }: BlockProps) => <h5 data-source-line={sourceLine(node)}>{children}</h5>,
   h6: ({ children, node }: BlockProps) => <h6 data-source-line={sourceLine(node)}>{children}</h6>,
-  li: ({ children, node, className }: BlockProps) =>
-    <li data-source-line={sourceLine(node)} className={className}>{children}</li>,
+  li: ({ children, node, className }: BlockProps) => {
+    const line = sourceLine(node);
+    const taskLine = className?.split(/\s+/).includes('task-list-item') ? line : null;
+    return <li data-source-line={line} className={className}>
+      <TaskLineContext.Provider value={taskLine}>{children}</TaskLineContext.Provider>
+    </li>;
+  },
   blockquote: ({ children, node }: BlockProps) =>
     <blockquote data-source-line={sourceLine(node)}>{children}</blockquote>,
   table: ({ children, node }: BlockProps) =>
@@ -250,7 +266,7 @@ const components = {
   },
   a: ({ children, href }: { children?: ReactNode; href?: string }) =>
     <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
-  input: (props: React.InputHTMLAttributes<HTMLInputElement>) => <input {...props} aria-label="Task" disabled />,
+  input: (props: React.InputHTMLAttributes<HTMLInputElement>) => <TaskCheckbox {...props} />,
   img: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img {...props} loading="lazy" alt={props.alt || ''} />,
 };
 const MarkdownChunk = memo(function MarkdownChunk({ markdown, lineOffset = 0 }: { markdown: string; lineOffset?: number }) {
@@ -389,10 +405,11 @@ function VirtualMarkdown({ markdown, scrollRef }: {
     </div>
   </article>;
 }
-function MarkdownPreview({ markdown, sourceLanguage, scrollRef, theme }: {
+function MarkdownPreview({ markdown, sourceLanguage, scrollRef, theme, onToggleTask }: {
   markdown: string; sourceLanguage?: string | null;
   scrollRef: RefObject<HTMLDivElement | null>;
   theme: 'light' | 'dark';
+  onToggleTask: (line: number, checked: boolean) => void;
 }) {
   const deferred = useDeferredValue(markdown);
   const value = markdown.length <= 18000 ? markdown : deferred;
@@ -436,6 +453,8 @@ function MarkdownPreview({ markdown, sourceLanguage, scrollRef, theme }: {
       : virtual
         ? <VirtualMarkdown markdown={value} scrollRef={scrollRef} />
         : <article className="markdown-preview"><MarkdownChunk markdown={value} /></article>;
-  return <ThemeContext.Provider value={theme}>{body}</ThemeContext.Provider>;
+  return <TaskToggleContext.Provider value={onToggleTask}>
+    <ThemeContext.Provider value={theme}>{body}</ThemeContext.Provider>
+  </TaskToggleContext.Provider>;
 }
 export default memo(MarkdownPreview);

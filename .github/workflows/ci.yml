@@ -19,6 +19,7 @@ jobs:
       - run: npm run test:long-scroll
       - run: npm run test:search
       - run: npm run test:interactions
+      - run: npm run test:tasks
       - run: npm run test:titles
       - run: npm run test:pdf
       - uses: actions/upload-artifact@v4
