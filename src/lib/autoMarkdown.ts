@@ -1,6 +1,6 @@
 import { detectRawCode } from './code';
 
-export type MarkdownFormatOptions = { atDocumentStart?: boolean; manual?: boolean };
+export type MarkdownFormatOptions = { atDocumentStart?: boolean; manual?: boolean; selection?: boolean };
 export const MAX_MANUAL_FORMAT_CHARS = 1_000_000;
 
 type Line = { value: string; type: 'blank' | 'feature' | 'heading' | 'text' | 'protected' };
@@ -16,6 +16,17 @@ function featureParts(line: string): { label: string; description: string } | nu
     || /^(?:[-*+>]\s|\d+[.)]\s)/.test(label) || label.split(/\s+/).length > 10
     || /^https?:\/\//i.test(label) || !/[a-z]/i.test(description)) return null;
   return { label, description };
+}
+
+/** A section label is not necessarily followed by a feature list. */
+function likelySectionLabel(line: string): boolean {
+  const text = line.replace(/^\d{1,3}\s*[/.)-]\s*/, '').trim();
+  if (!plainSectionTitle(text) || text.length > 58) return false;
+  if (/^(?:feature|section|chapter|part|phase|step|request)\b/i.test(text)) return true;
+  const words = text.split(/\s+/);
+  return words.length >= 2 && words.length <= 8
+    && words.every(word => /^(?:and|or|of|the|a|an|to|for|in|with|on|vs\.?|&)$/i.test(word)
+      || /^[A-Z0-9][\w.+/×-]*$/.test(word));
 }
 
 function alreadyStructured(line: string): boolean {
@@ -36,8 +47,12 @@ export function formatPlainTextAsMarkdown(
 ): string {
   if (!source.trim() || source.length > (options.manual ? MAX_MANUAL_FORMAT_CHARS : 180_000) || detectRawCode(source)) return source;
   const lines = source.replace(/\r\n?/g, '\n').replace(/\u00a0/g, ' ').split('\n');
+  // Explicit formatting can recognize a single titled feature; pastes stay conservative.
   const count = lines.reduce((n, line) => n + (featureParts(line) ? 1 : 0), 0);
-  const hasFeatureSeries = count >= 2;
+  const hasFeatureSeries = count >= 2 || Boolean(options.manual && lines.some(line => {
+    const feature = featureParts(line);
+    return feature && likelySectionLabel(feature.label);
+  }));
   const result: Line[] = [];
   let fence: '`' | '~' | null = null;
   // One backwards pass replaces repeated scans over the whole document.
@@ -86,8 +101,13 @@ export function formatPlainTextAsMarkdown(
       && Boolean(featureParts(next));
     const startTitle = options.atDocumentStart !== false && preceding
       && plainSectionTitle(trimmed) && next.length > 0;
-    if (startTitle || sectionBeforeFeatures) {
-      result.push({ value: (startTitle ? '# ' : '### ') + trimmed, type: 'heading' });
+    const isolatedSection = Boolean(options.manual && likelySectionLabel(trimmed)
+      && (preceding || !lines[i - 1].trim())
+      && (i === lines.length - 1 || !lines[i + 1].trim() || Boolean(featureParts(next))));
+    if (startTitle || sectionBeforeFeatures || isolatedSection) {
+      const level = startTitle ? '# ' :
+        /^(?:feature request|section|chapter|part)\b/i.test(trimmed) ? '## ' : '### ';
+      result.push({ value: level + trimmed, type: 'heading' });
       continue;
     }
     result.push({ value: trimmed.replace(/[ \t]{2,}/g, ' '), type: 'text' });
@@ -109,8 +129,12 @@ export function formatPlainTextAsMarkdown(
     }
     const last = output[output.length - 1];
     if (last && last.type !== 'blank') {
+      const separateProse = Boolean(options.manual && last.type === 'text' && item.type === 'text'
+        && !alreadyStructured(last.value.trim()) && !alreadyStructured(item.value.trim())
+        && last.value.length > 70 && item.value.length > 70
+        && /[.!?]["')\]]?$/.test(last.value) && /^[A-Z]/.test(item.value));
       if (item.type === 'heading' || (item.type === 'feature' && last.type !== 'feature')
-        || (last.type === 'feature' && item.type !== 'feature')) {
+        || (last.type === 'feature' && item.type !== 'feature') || separateProse) {
         output.push({ value: '', type: 'blank' });
       }
     }
@@ -118,6 +142,30 @@ export function formatPlainTextAsMarkdown(
   }
   while (output.length && output[output.length - 1].type === 'blank') output.pop();
   return output.map(line => line.value).join('\n');
+}
+
+/**
+ * Split explicit, dense requirement prose into scannable Markdown without
+ * inventing/rephrasing content. Tiny interjections stay with their sentence.
+ * Pasted prose is intentionally left alone by this manual-only step.
+ */
+function requirementBullets(raw: string, selection: boolean): string[] | null {
+  const trimmed = raw.trim();
+  if (trimmed.length < (selection ? 110 : 155)
+    || alreadyStructured(trimmed) || /^\s{4}|^\t/.test(raw)
+    || /[`]/.test(trimmed) || /!?\[[^\]]+\]\([^)]+\)/.test(trimmed)
+    || !/\b(?:must|should|need|needs|require|requires|include|includes|support|supports|want|feature|capability|ensure|provide)\b/i.test(trimmed)) {
+    return null;
+  }
+  const sentences = trimmed.split(/(?<=[.!?])\s+(?=["'(]?[A-Z])/);
+  if (sentences.length < 2) return null;
+  const groups: string[] = [];
+  for (const sentence of sentences) {
+    if (sentence.length < 40 && groups.length) groups[groups.length - 1] += ' ' + sentence;
+    else groups.push(sentence);
+  }
+  if (groups.length < 2 || groups.filter(group => group.length >= 38).length < 2) return null;
+  return groups.map(group => '- ' + group);
 }
 
 /** Single-line typing is never reinterpreted. */
@@ -154,6 +202,13 @@ export function formatMarkdownDocument(
       continue;
     }
     const heading = !fence && /^ {0,3}#{1,6}[ \t]+\S/.test(raw);
+    const bullets = !fence ? requirementBullets(raw, Boolean(options.selection)) : null;
+    if (bullets) {
+      if (output.length && output[output.length - 1] !== '') output.push('');
+      output.push(...bullets);
+      if (lines[i + 1]?.trim()) output.push('');
+      continue;
+    }
     if (heading) {
       if (output.length && output[output.length - 1] !== '') output.push('');
       output.push(raw);
