@@ -187,7 +187,29 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .markdown-preview ol li::marker { color: var(--muted); }
 .markdown-preview ul > li:not(.task-list-item) { position: relative; }
 .markdown-preview ul > li:not(.task-list-item)::before { content: ''; position: absolute; left: -14px; top: calc(.925em - 2px); width: 4px; height: 4px; border-radius: .5px; background: var(--muted); }
-.markdown-preview li input[type='checkbox'] { width: 14px; height: 14px; margin-right: 6px; vertical-align: middle; accent-color: var(--strong); }
+/* Task controls: flat, borderless, high-contrast and actually interactive. */
+.markdown-preview li.task-list-item input[type='checkbox'] {
+  appearance:none; -webkit-appearance:none;
+  display:inline-grid; place-items:center; width:18px; height:18px;
+  margin:0 9px 0 0; padding:0; vertical-align:-3px;
+  border:0; border-radius:3px; background:#555; box-shadow:none;
+  cursor:pointer; touch-action:manipulation; transition:background-color 120ms ease;
+}
+:root[data-theme='light'] .markdown-preview li.task-list-item input[type='checkbox'] { background:#c2c2c2; }
+.markdown-preview li.task-list-item input[type='checkbox']::after {
+  content:''; width:8px; height:5px; margin-top:-2px;
+  border-left:2px solid var(--flow-accent-ink);
+  border-bottom:2px solid var(--flow-accent-ink);
+  transform:rotate(-45deg); opacity:0;
+}
+.markdown-preview li.task-list-item input[type='checkbox']:checked { background:var(--flow-accent); }
+.markdown-preview li.task-list-item input[type='checkbox']:checked::after { opacity:1; }
+.markdown-preview li.task-list-item input[type='checkbox']:hover:not(:checked) { background:#777; }
+:root[data-theme='light'] .markdown-preview li.task-list-item input[type='checkbox']:hover:not(:checked) { background:#a9a9a9; }
+.markdown-preview li.task-list-item input[type='checkbox']:focus-visible {
+  outline:2px solid var(--strong); outline-offset:3px;
+}
+.markdown-preview li.task-list-item input[type='checkbox']:disabled { opacity:.4; cursor:default; }
 .markdown-preview a { color: var(--blue); text-decoration: underline dotted; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .markdown-preview a:hover { text-decoration-style: solid; }
 .markdown-preview blockquote { margin: 19px 0; padding: 7px 11px; border: 0; border-radius: 3px; background: var(--neutral-100); color: var(--muted); }

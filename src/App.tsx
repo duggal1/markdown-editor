@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import NumberFlow from '@number-flow/react';
 import type { EditorView } from '@codemirror/view';
 import MarkdownEditor, { formatEditor, type Format } from './components/MarkdownEditor';
+import { setTaskChecked, taskMarkerEdit } from './lib/taskList';
 import WorkspaceTree from './components/WorkspaceTree';
 import { FlowMark, Icon, type IconName } from './components/Icons';
 import { ACCENT_THEMES, applyAccentTheme, parseAccentTheme, type AccentTheme } from './lib/accentTheme';
@@ -427,6 +428,40 @@ export default function App() {
       setDocs(items => items.map(item => item.id === next.id ? next : item));
     }
   }, [scheduleSave]);
+
+  const onToggleTask = useCallback((lineNumber: number, checked: boolean) => {
+    const id = activeIdRef.current;
+    const current = live.current.get(id);
+    if (!current || current.asset) return;
+
+    // CodeMirror is the editable source of truth in Write, Split and Preview.
+    // Dispatching a one-character transaction preserves native undo/redo.
+    const view = editorRef.current;
+    if (view) {
+      if (lineNumber < 1 || lineNumber > view.state.doc.lines) return;
+      const line = view.state.doc.line(lineNumber);
+      const edit = taskMarkerEdit(line.text, checked);
+      if (!edit) return;
+      view.dispatch({ changes: {
+        from: line.from + edit.from, to: line.from + edit.to, insert: edit.insert,
+      } });
+      // Update the preview immediately even for long documents whose normal
+      // typing pipeline batches string snapshots.
+      const next = view.state.doc.toString();
+      onEditorChange(next, id);
+      setPreviewText(next);
+      return;
+    }
+
+    // Defensive fallback during editor mounting: keep persistence and the
+    // document snapshot consistent instead of silently dropping the click.
+    const next = setTaskChecked(current.markdown, lineNumber, checked);
+    if (next === current.markdown) return;
+    onEditorChange(next, id);
+    setPreviewText(next);
+    const updated = live.current.get(id);
+    if (updated) setDocs(items => items.map(doc => doc.id === id ? updated : doc));
+  }, [onEditorChange]);
 
   const selectDocument = useCallback((id: string) => {
     const doc = live.current.get(id);
@@ -1303,7 +1338,7 @@ export default function App() {
             <Suspense fallback={<div className="preview-loading">Rendering…</div>}>
               {presentationMode !== 'write' && (active?.asset
                 ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} theme={theme} />
-                : <MarkdownPreview key={active?.id || 'preview'} markdown={previewText} sourceLanguage={active?.language} scrollRef={previewScrollRef} theme={theme} />)}
+                : <MarkdownPreview key={active?.id || 'preview'} markdown={previewText} sourceLanguage={active?.language} scrollRef={previewScrollRef} theme={theme} onToggleTask={onToggleTask} />)}
             </Suspense>
           </motion.div>
         </section>
