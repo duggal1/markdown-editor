@@ -788,8 +788,14 @@ export default function App() {
     }
     // A selection formats only that region; without one, format the document.
     const range = view.state.selection.main;
-    const from = range.empty ? 0 : range.from;
-    const to = range.empty ? view.state.doc.length : range.to;
+    // Markdown blocks start at line boundaries, even when a user drags across
+    // visually wrapped lines or selects only part of a paragraph.
+    const selected = !range.empty;
+    const from = selected ? view.state.doc.lineAt(range.from).from : 0;
+    const endLineStart = view.state.doc.lineAt(range.to).from;
+    const endPosition = selected && range.to === endLineStart && range.to > range.from
+      ? range.to - 1 : range.to;
+    const to = selected ? view.state.doc.lineAt(endPosition).to : view.state.doc.length;
     const originalDocument = view.state.doc;
     const source = originalDocument.sliceString(from, to);
     if (!source.trim()) { setNotice('Select or write some text first.'); return; }
@@ -802,7 +808,7 @@ export default function App() {
     setAutoFormatting(true);
     setNotice('Formatting Markdown…');
     try {
-      const formatted = await formatMarkdownAction(source, { atDocumentStart: from === 0 });
+      const formatted = await formatMarkdownAction(source, { atDocumentStart: !selected && from === 0, selection: selected });
       // The user can type or change pages while a large worker is running.
       // Never overwrite a newer CodeMirror document with stale formatting.
       if (editorRef.current !== view || activeIdRef.current !== current.id ||
@@ -1267,6 +1273,7 @@ export default function App() {
             title="Auto Markdown · format selected text or this page"
             aria-label="Auto Markdown" aria-busy={autoFormatting}
             disabled={Boolean(active?.asset) || autoFormatting}
+            onMouseDown={event => event.preventDefault()}
             onClick={() => { void autoFormatDocument(); }}>
             {autoFormatting ? <TerminalLoader loading /> : <Icon name="format" size={16} />}
             <span>{autoFormatting ? 'Formatting…' : 'Auto Markdown'}</span>
