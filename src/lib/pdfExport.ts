@@ -1,28 +1,65 @@
 import type { TDocumentDefinitions } from 'pdfmake/interfaces';
+import pdfMakeScriptUrl from 'pdfmake/build/pdfmake.js?url';
+import pdfFontsScriptUrl from 'pdfmake/build/vfs_fonts.js?url';
 import { buildPdfDefinitionFromTree, parsePdfMarkdown, pdfImageUrlsFromTree, type PdfImageAssets } from './pdfDocument';
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
-let rendererReady = false;
-let enginePromise: ReturnType<typeof loadPdfEngine> | null = null;
+
+type BrowserPdfMake = {
+  vfs?: Record<string, string>;
+  createPdf: (definition: TDocumentDefinitions) => {
+    getBlob: (callback: (blob: Blob) => void) => unknown;
+  };
+};
+let enginePromise: Promise<BrowserPdfMake> | null = null;
 
 /**
- * On-demand only. The ~MB-sized PDF engine and embedded typeface are NOT
- * included in the editor's initial bundle or its scrolling/rendering path.
- * All generation happens locally in the browser; no upload of page content.
+ * Keep PDFMake's UMD builds intact. When Vite rewrites these CommonJS bundles
+ * into ESM chunks, the font VFS and parts of the PDF layout engine can break
+ * in production despite passing the Node PDF test. ?url emits same-origin,
+ * versioned assets without executing or transforming their source.
+ * These scripts load only after Export as PDF is selected.
  */
-async function loadPdfEngine() {
-  const [module, vfsModule] = await Promise.all([
-    import('pdfmake/build/pdfmake'),
-    import('pdfmake/build/vfs_fonts'),
-  ]);
-  const pdfMake = module.default;
-  if (!rendererReady) {
-    (pdfMake as typeof pdfMake & { addVirtualFileSystem: (files: unknown) => void })
-      .addVirtualFileSystem(vfsModule.default);
-    rendererReady = true;
+function loadClassicScript(src: string, name: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    let settled = false;
+    const timeout = window.setTimeout(
+      () => finish(new Error(`${name} took too long to load.`)), 45000,
+    );
+    function finish(error?: Error) {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      script.onload = null;
+      script.onerror = null;
+      script.remove();
+      if (error) reject(error);
+      else resolve();
+    }
+    script.onload = () => finish();
+    script.onerror = () => finish(new Error(`${name} could not be loaded.`));
+    document.head.appendChild(script);
+  });
+}
+
+async function loadPdfEngine(): Promise<BrowserPdfMake> {
+  // The font script registers its VFS against window.pdfMake.
+  // Loading in sequence is essential; parallel scripts can race.
+  await loadClassicScript(pdfMakeScriptUrl, 'PDF engine');
+  await loadClassicScript(pdfFontsScriptUrl, 'PDF fonts');
+  const pdfMake = (window as Window & { pdfMake?: BrowserPdfMake }).pdfMake;
+  if (typeof pdfMake?.createPdf !== 'function') {
+    throw new Error('PDF engine failed to initialize.');
+  }
+  if (!pdfMake.vfs?.['Roboto-Regular.ttf']) {
+    throw new Error('PDF fonts failed to initialize.');
   }
   return pdfMake;
 }
+
 function pdfEngine() {
   if (!enginePromise) enginePromise = loadPdfEngine().catch(error => {
     enginePromise = null;
@@ -92,17 +129,22 @@ export async function downloadStyledPdf(markdown: string, title: string, onProgr
   const doc = buildPdfDefinitionFromTree(tree, title, images) as TDocumentDefinitions;
   const blob: Blob = await new Promise((resolve, reject) => {
     try {
-      pdfMake.createPdf(doc).getBlob(result => {
+      const pending = pdfMake.createPdf(doc).getBlob(result => {
         if (!result || result.size === 0) reject(new Error('Empty PDF output.'));
         else resolve(result);
       });
+      // pdfmake versions that return a Promise may reject asynchronously.
+      if (pending && typeof (pending as Promise<unknown>).then === 'function') {
+        void (pending as Promise<unknown>).catch(reject);
+      }
     } catch (error) {
       reject(error);
     }
   });
-  if (blob.type !== 'application/pdf') {
-    // Browsers can omit the MIME type. Its signature is verified in tests.
-    if (blob.size < 8) throw new Error('Invalid PDF output.');
+  // A non-empty Blob is not necessarily a PDF, particularly after a failed
+  // renderer initialization. Check the actual file header before downloading.
+  if (await blob.slice(0, 5).text() !== '%PDF-') {
+    throw new Error('PDF renderer produced an invalid file.');
   }
   onProgress?.('Downloading PDF…');
   const url = URL.createObjectURL(blob);
