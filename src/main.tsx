@@ -11,8 +11,9 @@ document.documentElement.dataset.theme = savedAppearance.theme === 'light' ? 'li
 
 const App = React.lazy(() => import('./App'));
 const DrawPage = React.lazy(() => import('./draw/DrawPage'));
+const SharedPage = React.lazy(() => import('./components/SharedPage'));
 const route = window.location.pathname.replace(/\/+$/, '') || '/';
-const Page = route === '/draw' ? DrawPage : App;
+const Page = route === '/draw' ? DrawPage : route.startsWith('/s/') ? SharedPage : App;
 
 // A rendering exception in Draw must never leave an unexplained white screen.
 class DrawErrorBoundary extends React.Component<

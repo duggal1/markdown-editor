@@ -42,7 +42,8 @@
     "pdfmake": "^0.2.23",
     "remark-parse": "^11.0.0",
     "unified": "^11.0.5",
-    "unpdf": "^1.4.0"
+    "unpdf": "^1.4.0",
+    "@vercel/blob": "^2.0.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.0",
