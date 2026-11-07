@@ -10,7 +10,7 @@ import { FlowMark, Icon, type IconName } from './components/Icons';
 import { ACCENT_THEMES, applyAccentTheme, parseAccentTheme, type AccentTheme } from './lib/accentTheme';
 import { downloadMarkdown } from './lib/document';
 import ShareDialog from './components/ShareDialog';
-import { queueSharedSync } from './lib/sharing';
+import { queueSharedSync, readShareRecord, revokeCloudShare } from './lib/sharing';
 import { detectRawCode, isMarkdownFile, languageForFile } from './lib/code';
 import { svgPreviewDocument } from './lib/svgPreview';
 import { readTextImport } from './lib/textImport';
@@ -515,6 +515,12 @@ export default function App() {
   }, [selectDocument, workspaceId, workspaces]);
 
   async function eraseDocument(doc: FlowDocument) {
+    // Shared pages must be revoked before local deletion, or the link would remain online.
+    const shared = readShareRecord(doc.id);
+    if (shared) {
+      try { await revokeCloudShare(doc.id, shared); }
+      catch { setNotice('Could not revoke the share link. Stop sharing before deleting this page.'); return; }
+    }
     // Delete immediately in the UI. Cancel pending writes so a stale save
     // cannot recreate a deleted file after its IndexedDB record is removed.
     const saveTimer = saveTimers.current.get(doc.id);
@@ -626,6 +632,11 @@ export default function App() {
     const otherDocs = [...live.current.values()].filter(doc => doc.workspaceId !== id);
     // Preserve document data if a storage deletion fails; do not silently drop files.
     try {
+      // Do not orphan shared links by deleting a workspace containing hosted pages.
+      for (const doc of deletedDocs) {
+        const shared = readShareRecord(doc.id);
+        if (shared) await revokeCloudShare(doc.id, shared);
+      }
       for (const doc of deletedDocs) await removeDoc(doc.id);
       for (const folder of folders.filter(item => item.workspaceId === id)) await removeFolder(folder.id);
       await removeWorkspace(id);
