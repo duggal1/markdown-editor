@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/s/:id",
+      "destination": "/index.html"
+    },
+    {
       "source": "/draw",
       "destination": "/index.html"
     },

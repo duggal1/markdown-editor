@@ -409,7 +409,7 @@ function MarkdownPreview({ markdown, sourceLanguage, scrollRef, theme, onToggleT
   markdown: string; sourceLanguage?: string | null;
   scrollRef: RefObject<HTMLDivElement | null>;
   theme: 'light' | 'dark';
-  onToggleTask: (line: number, checked: boolean) => void;
+  onToggleTask?: (line: number, checked: boolean) => void;
 }) {
   const deferred = useDeferredValue(markdown);
   const value = markdown.length <= 18000 ? markdown : deferred;
@@ -453,7 +453,7 @@ function MarkdownPreview({ markdown, sourceLanguage, scrollRef, theme, onToggleT
       : virtual
         ? <VirtualMarkdown markdown={value} scrollRef={scrollRef} />
         : <article className="markdown-preview"><MarkdownChunk markdown={value} /></article>;
-  return <TaskToggleContext.Provider value={onToggleTask}>
+  return <TaskToggleContext.Provider value={onToggleTask ?? null}>
     <ThemeContext.Provider value={theme}>{body}</ThemeContext.Provider>
   </TaskToggleContext.Provider>;
 }

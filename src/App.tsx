@@ -9,6 +9,8 @@ import WorkspaceTree from './components/WorkspaceTree';
 import { FlowMark, Icon, type IconName } from './components/Icons';
 import { ACCENT_THEMES, applyAccentTheme, parseAccentTheme, type AccentTheme } from './lib/accentTheme';
 import { downloadMarkdown } from './lib/document';
+import ShareDialog from './components/ShareDialog';
+import { queueSharedSync } from './lib/sharing';
 import { detectRawCode, isMarkdownFile, languageForFile } from './lib/code';
 import { svgPreviewDocument } from './lib/svgPreview';
 import { readTextImport } from './lib/textImport';
@@ -104,6 +106,7 @@ export default function App() {
   const saveStarted = useRef(new Map<string, number>());
   const [notice, setNotice] = useState('');
   const [exportMenu, setExportMenu] = useState<{ top: number; right: number } | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
   const [accentMenu, setAccentMenu] = useState<{ top: number; right: number } | null>(null);
   const [pdfExporting, setPdfExporting] = useState(false);
   const [autoFormatting, setAutoFormatting] = useState(false);
@@ -196,6 +199,8 @@ export default function App() {
         return updated;
       });
       live.current = new Map(restored.map(doc => [doc.id, doc]));
+      // Retry only previously authorized cloud shares that changed while offline.
+      restored.forEach(queueSharedSync);
       const prefs = readPrefs();
       const first = restored.find(doc => doc.id === prefs.activeDocumentId) || restored[0];
       const chosenWorkspace = data.workspaces.find(ws => ws.id === prefs.activeWorkspaceId) ||
@@ -341,6 +346,7 @@ export default function App() {
 
   const scheduleSave = useCallback((doc: FlowDocument) => {
     live.current.set(doc.id, doc);
+    queueSharedSync(doc);
     saveStarted.current.set(doc.id, performance.now());
     setSaveDuration(0);
     setSaveState('saving');
@@ -392,6 +398,8 @@ export default function App() {
     });
     return () => { cancelled = true; };
   }, [activeId, loaded, scheduleSave]);
+
+  useEffect(() => { setShareOpen(false); }, [activeId]);
 
   const onEditorChange = useCallback((value: string, id: string) => {
     const current = live.current.get(id);
@@ -1272,6 +1280,9 @@ export default function App() {
             whileTap={motionOff ? undefined : { scale: 0.985 }}
             transition={motionOff ? { duration: 0 } : { duration: 0.17, ease: [0.22, 1, 0.36, 1] }}>
             <Icon name="edit" size={15}/><span>Draw</span></motion.a>
+          <motion.button {...pressMotion} type="button" className="share-button"
+            title="Share page" aria-label="Share page" disabled={!active || Boolean(active.asset)}
+            onClick={() => setShareOpen(true)}><Icon name="link" size={15} /><span>Share</span></motion.button>
           <motion.button {...pressMotion} type="button" className="export-button"
             title="Export page" aria-label="Export page" aria-haspopup="menu"
             aria-expanded={Boolean(exportMenu)} aria-busy={pdfExporting} disabled={pdfExporting}
@@ -1404,6 +1415,10 @@ export default function App() {
             }}><Icon name="download" size={15}/><span>Export as PDF</span><small>.pdf</small></button>
         </motion.div>}
       </AnimatePresence>, document.body)}
+      {shareOpen && active && <ShareDialog key={active.id} documentId={active.id}
+        title={live.current.get(active.id)?.title || active.title}
+        getCurrent={() => live.current.get(activeIdRef.current) || null}
+        onClose={() => setShareOpen(false)} />}
       <AnimatePresence initial={false}>
       {pendingDelete && <motion.div className="dialog-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: motionOff ? 0 : 0.16 }}
         onMouseDown={event => { if (event.target === event.currentTarget && !deleting) setPendingDelete(null); }}>
