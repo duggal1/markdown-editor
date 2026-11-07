@@ -103,8 +103,8 @@ assert.match(sourceApp, /void exportPdf\(current\)/);
 assert.match(sourceApp, /await import\('\.\/lib\/pdfExport'\)/);
 // Browser output must use unmodified, same-origin PDFMake UMD assets rather
 // than Vite's transformed ESM wrappers. The latter can break in production.
-assert.match(exportCode, /pdfmake\/build\/pdfmake\\.js\\?url/);
-assert.match(exportCode, /pdfmake\/build\/vfs_fonts\\.js\\?url/);
+assert.match(exportCode, /pdfmake\/build\/pdfmake\.js\?url/);
+assert.match(exportCode, /pdfmake\/build\/vfs_fonts\.js\?url/);
 assert.match(exportCode, /await loadClassicScript\(pdfMakeScriptUrl/);
 assert.match(exportCode, /await loadClassicScript\(pdfFontsScriptUrl/);
 assert.doesNotMatch(exportCode, /import\('pdfmake\/build\/pdfmake'\)/);
