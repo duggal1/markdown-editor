@@ -769,7 +769,9 @@ export default function App() {
       setNotice('PDF exported');
     } catch (error) {
       console.error('PDF export failed', error);
-      setNotice('Could not export PDF. Try again.');
+      const reason = error instanceof Error && error.message
+        ? error.message.slice(0, 120) : 'Unknown error.';
+      setNotice(`Could not export PDF: ${reason}`);
     } finally {
       setPdfExporting(false);
     }
