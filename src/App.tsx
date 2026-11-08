@@ -10,6 +10,7 @@ import { FlowMark, Icon, type IconName } from './components/Icons';
 import { ACCENT_THEMES, applyAccentTheme, parseAccentTheme, type AccentTheme } from './lib/accentTheme';
 import { downloadMarkdown } from './lib/document';
 import ShareDialog from './components/ShareDialog';
+import DialogFrame from './components/DialogFrame';
 import { queueSharedSync, readShareRecord, revokeCloudShare } from './lib/sharing';
 import { detectRawCode, isMarkdownFile, languageForFile } from './lib/code';
 import { svgPreviewDocument } from './lib/svgPreview';
@@ -1432,23 +1433,27 @@ export default function App() {
         title={live.current.get(active.id)?.title || active.title}
         getCurrent={() => live.current.get(activeIdRef.current) || null}
         onClose={() => setShareOpen(false)} />}
-      <AnimatePresence initial={false}>
-      {pendingDelete && <motion.div className="dialog-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: motionOff ? 0 : 0.16 }}
-        onMouseDown={event => { if (event.target === event.currentTarget && !deleting) setPendingDelete(null); }}>
-        <motion.section className="delete-dialog" initial={motionOff ? false : { opacity: 0, y: 9, scale: 0.985 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={motionOff ? undefined : { opacity: 0, y: 5, scale: 0.99 }}
-          transition={motionOff ? { duration: 0 } : { duration: 0.21, ease: [0.22, 1, 0.36, 1] }} role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title" aria-describedby="delete-dialog-description">
-          <div className="dialog-header"><Icon name="trash" size={17} /><button type="button" aria-label="Close dialog" disabled={deleting} onClick={() => setPendingDelete(null)}><Icon name="close" size={15} /></button></div>
-          <h2 id="delete-dialog-title">Delete {pendingDelete.kind === 'document' ? 'page' : 'workspace'}?</h2>
-          <p id="delete-dialog-description">“{pendingDelete.title}”{pendingDelete.kind === 'workspace' ? ` and ${pendingDelete.count || 0} page${pendingDelete.count === 1 ? '' : 's'}` : ''} will be removed from this browser. This can't be undone.</p>
-          <div className="dialog-actions">
-            <button autoFocus type="button" disabled={deleting} className="dialog-cancel" onClick={() => setPendingDelete(null)}>Cancel</button>
-            <button type="button" disabled={deleting} className="dialog-delete" aria-label={deleting ? 'Deleting' : 'Delete'} onClick={() => { void confirmDelete(); }}>
-              {deleting && <TerminalLoader loading />}{deleting ? 'Deleting' : 'Delete'}
-            </button>
-          </div>
-        </motion.section>
-      </motion.div>}
-      </AnimatePresence>
+      {pendingDelete && <DialogFrame id="delete-dialog"
+        title={`Delete ${pendingDelete.kind === 'document' ? 'page' : 'workspace'}?`}
+        icon="trash" describedBy="delete-dialog-description"
+        busy={deleting} onClose={() => setPendingDelete(null)}
+        footer={<>
+          <button type="button" className="flow-dialog-button flow-dialog-neutral"
+            data-dialog-initial-focus disabled={deleting}
+            onClick={() => setPendingDelete(null)}>Cancel</button>
+          <button type="button" className="flow-dialog-button flow-dialog-destructive"
+            disabled={deleting} onClick={() => { void confirmDelete(); }}>
+            {deleting && <TerminalLoader loading />}{deleting ? 'Deleting…' : 'Delete'}
+          </button>
+        </>}>
+        <p id="delete-dialog-description" className="flow-dialog-copy flow-dialog-delete-copy">
+          <strong>{pendingDelete.title}</strong>
+          {pendingDelete.kind === 'workspace'
+            ? ` and its ${pendingDelete.count || 0} page${pendingDelete.count === 1 ? '' : 's'} will be permanently removed from this browser.`
+            : ' will be permanently removed from this browser.'}
+          {' '}This cannot be undone.
+        </p>
+      </DialogFrame>}
       <AnimatePresence initial={false}>
         {notice && <motion.div key={notice} role="status" className="notice" aria-live="polite"
           initial={motionOff ? false : { opacity: 0, y: 7 }}

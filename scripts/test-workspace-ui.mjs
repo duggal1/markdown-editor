@@ -6,6 +6,8 @@ const tree = read('src/components/WorkspaceTree.tsx');
 const treeCss = read('src/components/workspace-tree.css');
 const app = read('src/App.tsx');
 const style = read('src/styles.css');
+const dialog = read('src/components/DialogFrame.tsx');
+const share = read('src/components/ShareDialog.tsx');
 
 // Quick-create belongs to the workspace, not to a hidden global bottom action.
 assert.match(tree, /className="filetree-add-page"/);
@@ -32,4 +34,26 @@ assert.match(style, /\.notice \{[\s\S]*?border:0; border-radius:10px; box-shadow
 assert.match(style, /:root\[data-theme='light'\] \.notice \{ background:#ffffff;/);
 assert.match(app, /<AnimatePresence initial=\{false\}>\s*\{notice && <motion\.div/);
 assert.match(app, /aria-label="Dismiss message"/);
-console.log('Workspace quick-add and neutral toast regression checks passed.');
+// Both modals share the same native top-layer dialog, avoiding editor clipping
+// and handling focus, Escape, and close controls without manual focus traps.
+assert.match(dialog, /<dialog ref=\{ref\} className="flow-dialog"/);
+assert.match(dialog, /dialog\.showModal\(\)/);
+assert.match(dialog, /dialog\.querySelector<HTMLElement>/);
+assert.match(dialog, /onCancel=\{event =>/);
+assert.match(dialog, /if \(!busy\) onClose\(\)/);
+assert.match(dialog, /createPortal\(/);
+assert.match(share, /<DialogFrame id="share-dialog" title="Share page"/);
+assert.match(share, /data-dialog-initial-focus/);
+assert.match(share, /Upload to cloud/);
+assert.match(share, /Stop sharing/);
+assert.match(share, /void revoke\(\)/);
+assert.match(app, /<DialogFrame id="delete-dialog"/);
+assert.match(app, /void confirmDelete\(\)/);
+assert.doesNotMatch(app, /className="delete-dialog"/);
+assert.doesNotMatch(share, /className="share-dialog"/);
+assert.match(style, /\.flow-dialog \{[\s\S]*?background:#0e0e10;/);
+assert.match(style, /\.flow-dialog::backdrop/);
+assert.match(style, /\.flow-dialog-footer \{/);
+assert.doesNotMatch(style, /\.(?:dialog-backdrop|share-dialog|delete-dialog)\b/);
+
+console.log('Workspace controls, toast and dark native dialogs passed.');
