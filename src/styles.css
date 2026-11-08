@@ -662,12 +662,6 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
     right:12px; left:12px; bottom:calc(14px + env(safe-area-inset-bottom, 0px));
     width:auto; max-width:calc(100% - 24px);
   }
-  .dialog-backdrop {
-    padding: max(16px, env(safe-area-inset-left, 0px))
-      max(16px, env(safe-area-inset-right, 0px))
-      max(16px, env(safe-area-inset-bottom, 0px));
-  }
-  .delete-dialog { width: 100%; max-width: 370px; }
 }
 @media (max-width: 360px) {
   .topbar { grid-template-columns: minmax(0, 1fr) 36px 36px; gap: 0 3px; }
