@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { createCloudShare, queueSharedSync, readShareRecord, revokeCloudShare, shareUrl, type ShareRecord, type ShareStatus } from '../lib/sharing';
 import type { FlowDocument } from '../lib/store';
 import DialogFrame from './DialogFrame';
@@ -16,6 +17,9 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
   const [status, setStatus] = useState<ShareStatus>('synced');
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const reducedMotion = useReducedMotion();
+  const linkInputRef = useRef<HTMLInputElement>(null);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const onStatus = (event: Event) => {
@@ -28,6 +32,14 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
     window.addEventListener('flow-share-sync', onStatus);
     return () => window.removeEventListener('flow-share-sync', onStatus);
   }, [documentId]);
+
+  useEffect(() => {
+    if (record) linkInputRef.current?.focus();
+  }, [record?.id]);
+
+  useEffect(() => () => {
+    if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+  }, []);
 
   const link = record ? shareUrl(record.id) : '';
 
@@ -48,11 +60,28 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
   }
 
   async function copyLink() {
+    if (!link || busy) return;
+    let successful = false;
     try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
       await navigator.clipboard.writeText(link);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch { setError('Could not copy link. Select and copy it manually.'); }
+      successful = true;
+    } catch {
+      const input = linkInputRef.current;
+      if (input) {
+        input.focus();
+        input.select();
+        successful = document.execCommand('copy');
+      }
+    }
+    if (!successful) {
+      setError('Could not copy the link. Select and copy it manually.');
+      return;
+    }
+    setError('');
+    setCopied(true);
+    if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = window.setTimeout(() => setCopied(false), 1600);
   }
 
   async function revoke() {
@@ -64,73 +93,82 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
       setRecord(null);
       setConsent(false);
       setCopied(false);
+      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not stop sharing');
     } finally { setBusy(false); }
   }
 
   return <DialogFrame id="share-dialog" title="Share page" icon="link"
-    describedBy="share-dialog-description" busy={busy} onClose={onClose}
-    footer={!record ? <>
-      <button type="button" className="flow-dialog-button flow-dialog-neutral"
-        onClick={onClose} disabled={busy}>Cancel</button>
-      <button type="button" className="flow-dialog-button flow-dialog-contrast"
-        disabled={!consent || busy} onClick={() => { void enable(); }}>
+    variant="share" describedBy="share-dialog-description" busy={busy} onClose={onClose}
+    footer={!record ? (
+      <motion.button type="button" className="flow-share-primary"
+        disabled={!consent || busy} onClick={() => { void enable(); }}
+        whileTap={reducedMotion ? undefined : { scale: 0.985 }}>
         {busy ? 'Creating link…' : 'Create link'}
-      </button>
-    </> : <>
-      <button type="button" className="flow-dialog-button flow-dialog-danger"
-        disabled={busy} onClick={() => { void revoke(); }}>
-        {busy ? 'Stopping sharing…' : 'Stop sharing'}
-      </button>
-      <span className="flow-dialog-footer-spacer" />
-      <button type="button" className="flow-dialog-button flow-dialog-neutral"
-        disabled={busy} onClick={onClose}>Done</button>
-    </>}>
-    <div className="flow-dialog-file">
-      <span className="flow-dialog-file-icon"><Icon name="file" size={16} /></span>
-      <span className="flow-dialog-file-text">
-        <strong title={title || 'Untitled'}>{title || 'Untitled'}</strong>
-        <small>Markdown page</small>
-      </span>
-      <span className="flow-dialog-readonly">View only</span>
+      </motion.button>
+    ) : (
+      <>
+        <button type="button" className="flow-share-revoke"
+          disabled={busy} onClick={() => { void revoke(); }}>
+          {busy ? 'Stopping sharing…' : 'Stop sharing'}
+        </button>
+        <button type="button" className="flow-share-done"
+          disabled={busy} onClick={onClose}>Done</button>
+      </>
+    )}>
+    <p id="share-dialog-description" className="flow-share-description">
+      {record
+        ? 'Anyone with this link can view and copy this page.'
+        : 'Create a link anyone can use to view this page. Editing stays private.'}
+    </p>
+
+    <div className="flow-share-file">
+      <span className="flow-share-file-icon"><Icon name="file" size={16} /></span>
+      <span className="flow-share-file-name" title={title || 'Untitled'}>{title || 'Untitled'}</span>
+      <span className="flow-share-file-access">View only</span>
     </div>
 
-    {!record ? <>
-      <p id="share-dialog-description" className="flow-dialog-copy">
-        Create a private link to this page. Anyone with the link can read and copy
-        its contents, but cannot edit it.
-      </p>
-      <label className="flow-dialog-consent">
-        <input type="checkbox" checked={consent}
-          onChange={event => setConsent(event.target.checked)}
-          disabled={busy} data-dialog-initial-focus />
-        <span>
+    {!record ? (
+      <label className="flow-share-consent">
+        <input type="checkbox" checked={consent} data-dialog-initial-focus
+          onChange={event => setConsent(event.target.checked)} disabled={busy} />
+        <span className="flow-share-consent-text">
           <strong>Upload to cloud</strong>
-          <small>Only this page is uploaded when you create the link.</small>
+          <small>Only this page is uploaded when you create a link.</small>
         </span>
       </label>
-    </> : <>
-      <p id="share-dialog-description" className="flow-dialog-status"
-        data-status={status} role="status" aria-live="polite">
-        <span className="flow-dialog-status-dot" aria-hidden="true" />
-        {status === 'syncing' ? 'Syncing changes…' : status === 'error'
-          ? 'Sync failed. Your local page is safe.' : 'Link active · Read only'}
-      </p>
-      <label className="flow-dialog-label" htmlFor="share-link-input">Share link</label>
-      <div className="flow-dialog-link">
-        <input id="share-link-input" value={link} readOnly
-          onFocus={event => event.currentTarget.select()} />
-        <button type="button" className="flow-dialog-button flow-dialog-contrast"
-          onClick={() => { void copyLink(); }}>
-          <Icon name={copied ? 'check' : 'copy'} size={14} />
-          {copied ? 'Copied' : 'Copy'}
-        </button>
+    ) : (
+      <div className="flow-share-link-section">
+        <p className="flow-share-status" data-status={status} role="status" aria-live="polite">
+          <span className="flow-share-status-dot" aria-hidden="true" />
+          {status === 'syncing' ? 'Syncing changes…' : status === 'error'
+            ? 'Sync failed. Your local page is safe.' : 'Link active · Read only'}
+        </p>
+        <label className="flow-share-label" htmlFor="share-link-input">Share link</label>
+        <div className="flow-share-link-field">
+          <Icon name="link" size={16} />
+          <input id="share-link-input" ref={linkInputRef} value={link} readOnly
+            data-dialog-initial-focus aria-label="Share link"
+            onFocus={event => event.currentTarget.select()} />
+        </div>
+        <motion.button type="button" className="flow-share-primary flow-share-copy"
+          disabled={busy} onClick={() => { void copyLink(); }}
+          whileTap={reducedMotion ? undefined : { scale: 0.985 }}>
+          <AnimatePresence initial={false} mode="wait">
+            <motion.span key={copied ? 'copied' : 'copy'} className="flow-share-copy-label"
+              initial={reducedMotion ? false : { opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reducedMotion ? undefined : { opacity: 0, y: -5 }}
+              transition={{ duration: reducedMotion ? 0 : 0.14 }}>
+              <Icon name={copied ? 'check' : 'copy'} size={16} />
+              {copied ? 'Copied' : 'Copy link'}
+            </motion.span>
+          </AnimatePresence>
+        </motion.button>
+        <p className="flow-share-hint">Changes sync while this editor is open.</p>
       </div>
-      <p className="flow-dialog-hint">
-        Changes sync while this editor is open. Anyone with the link can view the latest version.
-      </p>
-    </>}
-    {error && <p className="flow-dialog-error" role="alert">{error}</p>}
+    )}
+    {error && <p className="flow-share-error" role="alert">{error}</p>}
   </DialogFrame>;
 }
