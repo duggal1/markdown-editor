@@ -8,6 +8,7 @@ type DialogFrameProps = {
   icon: IconName;
   describedBy: string;
   busy?: boolean;
+  variant?: 'share';
   onClose: () => void;
   children: ReactNode;
   footer: ReactNode;
@@ -18,7 +19,7 @@ type DialogFrameProps = {
  * Render in the top layer so editor, sidebar and menus cannot clip it.
  */
 export default function DialogFrame({
-  id, title, icon, describedBy, busy = false, onClose, children, footer,
+  id, title, icon, describedBy, busy = false, variant, onClose, children, footer,
 }: DialogFrameProps) {
   const ref = useRef<HTMLDialogElement>(null);
 
@@ -33,7 +34,7 @@ export default function DialogFrame({
   }, []);
 
   return createPortal(
-    <dialog ref={ref} className="flow-dialog"
+    <dialog ref={ref} className={variant === 'share' ? 'flow-dialog flow-dialog--share' : 'flow-dialog'}
       aria-labelledby={id + '-title'} aria-describedby={describedBy}
       onCancel={event => {
         event.preventDefault();
