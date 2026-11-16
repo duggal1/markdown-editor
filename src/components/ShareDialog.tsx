@@ -19,7 +19,7 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
   const [copied, setCopied] = useState(false);
   const reducedMotion = useReducedMotion();
   const linkInputRef = useRef<HTMLInputElement>(null);
-  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const onStatus = (event: Event) => {
