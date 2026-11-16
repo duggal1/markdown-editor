@@ -1509,8 +1509,8 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   background:transparent; font:500 12px 'Geist Variable',-apple-system,sans-serif;
   cursor:pointer; transition:background-color .16s ease;
 }
-.flow-share-revoke { margin-right:auto; padding-left:0; color:var(--share-danger); }
-.flow-share-revoke:hover:not(:disabled) { background:var(--share-control); padding-left:13px; }
+.flow-share-revoke { margin-right:auto; color:var(--share-danger); }
+.flow-share-revoke:hover:not(:disabled) { background:var(--share-control); }
 .flow-share-done { background:var(--share-control); color:var(--share-text); }
 .flow-share-done:hover:not(:disabled) { background:var(--share-control-hover); }
 .flow-share-error { margin:15px 0 0; color:var(--share-danger); font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
