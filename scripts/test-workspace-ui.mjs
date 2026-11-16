@@ -36,7 +36,10 @@ assert.match(app, /<AnimatePresence initial=\{false\}>\s*\{notice && <motion\.di
 assert.match(app, /aria-label="Dismiss message"/);
 // Both modals share the same native top-layer dialog, avoiding editor clipping
 // and handling focus, Escape, and close controls without manual focus traps.
-assert.match(dialog, /<dialog ref=\{ref\} className="flow-dialog"/);
+assert.match(dialog, /<dialog ref=\\{ref\\} className=\\{variant === 'share'/);
+assert.match(dialog, /flow-dialog flow-dialog--share/);
+assert.match(dialog, /: 'flow-dialog'/);
+assert.match(share, /variant="share"/);
 assert.match(dialog, /dialog\.showModal\(\)/);
 assert.match(dialog, /dialog\.querySelector<HTMLElement>/);
 assert.match(dialog, /onCancel=\{event =>/);
