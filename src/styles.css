@@ -1377,3 +1377,151 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 @media(prefers-reduced-motion:reduce) {
   .share-button { transition:none; }
 }
+
+/* Share has its own calm surface; delete keeps the existing compact dialog styling. */
+.flow-dialog--share {
+  --share-bg:#101010; --share-text:#f4f4f4; --share-muted:#969696;
+  --share-line:#292929; --share-control:#1b1b1b; --share-control-hover:#252525;
+  --share-strong:#f4f4f4; --share-strong-text:#171717; --share-strong-hover:#ffffff;
+  --share-danger:#d18b8b; --share-focus:#a3a3a3;
+  width:min(424px,calc(100vw - 28px));
+  border:1px solid var(--share-line); border-radius:22px;
+  background:var(--share-bg); color:var(--share-text); color-scheme:dark;
+  box-shadow:0 24px 80px #0007;
+}
+:root[data-theme='light'] .flow-dialog--share {
+  --share-bg:#fafafa; --share-text:#181818; --share-muted:#737373;
+  --share-line:#e7e7e7; --share-control:#eeeeee; --share-control-hover:#e5e5e5;
+  --share-strong:#171717; --share-strong-text:#ffffff; --share-strong-hover:#303030;
+  --share-danger:#a84747; --share-focus:#777777;
+  color-scheme:light;
+}
+.flow-dialog--share::backdrop {
+  background:rgba(0,0,0,.5);
+  backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px);
+}
+.flow-dialog--share .flow-dialog-header {
+  min-height:32px; height:auto; padding:25px 26px 0;
+  align-items:center; border:0;
+}
+.flow-dialog--share .flow-dialog-heading > .pixel-huge-icon { display:none; }
+.flow-dialog--share .flow-dialog-heading h2 {
+  font-size:22px; font-weight:550; letter-spacing:-.04em;
+  line-height:1.2; color:var(--share-text);
+}
+.flow-dialog--share .flow-dialog-close {
+  flex:0 0 32px; width:32px; height:32px; border-radius:50%;
+  background:var(--share-control); color:var(--share-muted);
+}
+.flow-dialog--share .flow-dialog-close:hover:not(:disabled) {
+  background:var(--share-control-hover); color:var(--share-text);
+}
+.flow-dialog--share .flow-dialog-body { padding:7px 26px 0; }
+.flow-share-description {
+  max-width:320px; margin:0; color:var(--share-muted);
+  font-size:13px; line-height:1.6; letter-spacing:-.01em;
+}
+.flow-share-file {
+  display:flex; align-items:center; gap:10px; min-width:0;
+  margin-top:23px; padding:12px 0;
+  border-top:1px solid var(--share-line);
+  border-bottom:1px solid var(--share-line);
+}
+.flow-share-file-icon {
+  display:grid; place-items:center; flex:0 0 30px; height:30px;
+  border-radius:8px; background:var(--share-control); color:var(--share-text);
+}
+.flow-share-file-name {
+  flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; font-size:13px; font-weight:500; letter-spacing:-.015em;
+}
+.flow-share-file-access {
+  flex:none; font-size:11px; white-space:nowrap; color:var(--share-muted);
+}
+.flow-share-consent {
+  display:flex; align-items:flex-start; gap:11px;
+  margin:21px 0 0; cursor:pointer;
+}
+.flow-share-consent input {
+  appearance:none; display:grid; place-items:center;
+  width:18px; height:18px; flex:0 0 18px; margin:1px 0 0;
+  padding:0; border:1px solid var(--share-muted); border-radius:5px;
+  background:transparent; cursor:pointer;
+}
+.flow-share-consent input::after {
+  content:''; width:8px; height:5px; border-left:2px solid var(--share-strong-text);
+  border-bottom:2px solid var(--share-strong-text);
+  transform:translateY(-1px) rotate(-45deg); opacity:0;
+}
+.flow-share-consent input:checked {
+  border-color:var(--share-strong); background:var(--share-strong);
+}
+.flow-share-consent input:checked::after { opacity:1; }
+.flow-share-consent-text { display:flex; flex-direction:column; gap:2px; }
+.flow-share-consent-text strong { font-size:13px; font-weight:500; color:var(--share-text); }
+.flow-share-consent-text small { font-size:12px; line-height:1.5; color:var(--share-muted); }
+.flow-share-link-section { margin-top:19px; }
+.flow-share-status {
+  display:flex; align-items:center; gap:8px; margin:0 0 18px;
+  color:var(--share-muted); font-size:12px; line-height:1.4;
+}
+.flow-share-status-dot {
+  flex:0 0 6px; height:6px; border-radius:50%; background:var(--share-muted);
+}
+.flow-share-status[data-status='syncing'] .flow-share-status-dot { background:#d6b16d; }
+.flow-share-status[data-status='error'] { color:var(--share-danger); }
+.flow-share-status[data-status='error'] .flow-share-status-dot { background:var(--share-danger); }
+.flow-share-label {
+  display:block; margin:0 0 8px; font-size:12px;
+  font-weight:500; color:var(--share-text);
+}
+.flow-share-link-field {
+  display:flex; align-items:center; gap:10px; min-width:0;
+  height:42px; padding:0 12px; border:1px solid transparent;
+  border-radius:9px; background:var(--share-control); color:var(--share-muted);
+  transition:border-color .16s ease,background-color .16s ease;
+}
+.flow-share-link-field:hover { background:var(--share-control-hover); }
+.flow-share-link-field:focus-within { border-color:var(--share-focus); }
+.flow-share-link-field input {
+  flex:1; min-width:0; width:100%; height:100%; padding:0;
+  border:0; outline:0; background:transparent; color:var(--share-text);
+  font:400 12px/1.4 'Geist Variable',-apple-system,sans-serif;
+  text-overflow:ellipsis;
+}
+.flow-dialog--share .flow-dialog-footer {
+  min-height:0; padding:20px 26px 26px;
+  border:0; background:transparent; gap:10px;
+}
+.flow-share-primary {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:100%; min-height:42px; padding:0 16px; border:0; border-radius:999px;
+  background:var(--share-strong); color:var(--share-strong-text);
+  font:550 13px/1.4 'Geist Variable',-apple-system,sans-serif;
+  cursor:pointer; transition:background-color .16s ease;
+}
+.flow-share-primary:hover:not(:disabled) { background:var(--share-strong-hover); }
+.flow-share-copy { margin-top:9px; }
+.flow-share-copy-label { display:inline-flex; align-items:center; justify-content:center; gap:8px; }
+.flow-share-hint { margin:12px 0 0; font-size:11px; line-height:1.5; color:var(--share-muted); }
+.flow-share-revoke, .flow-share-done {
+  min-height:34px; padding:0 13px; border:0; border-radius:999px;
+  background:transparent; font:500 12px 'Geist Variable',-apple-system,sans-serif;
+  cursor:pointer; transition:background-color .16s ease;
+}
+.flow-share-revoke { margin-right:auto; padding-left:0; color:var(--share-danger); }
+.flow-share-revoke:hover:not(:disabled) { background:var(--share-control); padding-left:13px; }
+.flow-share-done { background:var(--share-control); color:var(--share-text); }
+.flow-share-done:hover:not(:disabled) { background:var(--share-control-hover); }
+.flow-share-error { margin:15px 0 0; color:var(--share-danger); font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
+.flow-dialog--share :is(button,input):focus-visible { outline:2px solid var(--share-focus); outline-offset:3px; }
+.flow-dialog--share .flow-share-link-field input:focus-visible { outline:0; }
+@media(max-width:480px) {
+  .flow-dialog--share { border-radius:19px; }
+  .flow-dialog--share .flow-dialog-header { padding:21px 20px 0; }
+  .flow-dialog--share .flow-dialog-body { padding:7px 20px 0; }
+  .flow-dialog--share .flow-dialog-footer { padding:19px 20px 22px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .flow-dialog--share :is(button,input,.flow-share-link-field) { transition:none; }
+}
