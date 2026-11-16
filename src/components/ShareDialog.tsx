@@ -71,7 +71,8 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
       if (input) {
         input.focus();
         input.select();
-        successful = document.execCommand('copy');
+        try { successful = document.execCommand('copy'); }
+        catch { successful = false; }
       }
     }
     if (!successful) {
