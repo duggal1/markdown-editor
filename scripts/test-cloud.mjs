@@ -130,6 +130,8 @@ assert.equal((await request('POST', details(123), {}, { 'content-length': '50000
 
 const client = readFileSync(new URL('../src/lib/sharing.ts', import.meta.url), 'utf8');
 const reader = readFileSync(new URL('../src/components/SharedPage.tsx', import.meta.url), 'utf8');
+assert.match(source, /get\(path, \{ access: 'private', useCache: false \}\)/,
+  'Metadata reads must bypass stale CDN copies after an overwrite');
 assert.match(client, /bytes\.byteLength > MAX_CLOUD_BYTES/);
 assert.match(client, /PARALLEL_UPLOADS = 4/);
 assert.match(client, /attempt < 4/);
