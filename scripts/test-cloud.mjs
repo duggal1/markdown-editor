@@ -133,6 +133,10 @@ const reader = readFileSync(new URL('../src/components/SharedPage.tsx', import.m
 assert.match(source, /get\(path, \{ access: 'private', useCache: false \}\)/,
   'Metadata reads must bypass stale CDN copies after an overwrite');
 assert.match(client, /bytes\.byteLength > MAX_CLOUD_BYTES/);
+assert.match(source, /allowOverwrite: false, ttlDays: 30/,
+  'Uploaded parts must be immutable after publication');
+assert.match(client, /response.status === 409/,
+  'Retrying an already completed part should be accepted');
 assert.match(client, /PARALLEL_UPLOADS = 4/);
 assert.match(client, /attempt < 4/);
 assert.match(client, /action: 'commit'/);
