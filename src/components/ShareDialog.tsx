@@ -13,15 +13,17 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
   const [record, setRecord] = useState<ShareRecord | null>(() => readShareRecord(documentId));
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
   const [status, setStatus] = useState<ShareStatus>('synced');
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const onStatus = (event: Event) => {
-      const detail = (event as CustomEvent<{ documentId: string; status: ShareStatus }>).detail;
+      const detail = (event as CustomEvent<{ documentId: string; status: ShareStatus; progress?: number }>).detail;
       if (detail?.documentId === documentId) {
         setStatus(detail.status);
+        setProgress(typeof detail.progress === 'number' ? detail.progress : null);
         if (detail.status === 'synced') setRecord(readShareRecord(documentId));
       }
     };
@@ -36,9 +38,10 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
     const doc = getCurrent();
     if (!doc || doc.asset) { setError('This page cannot be shared as Markdown.'); return; }
     setBusy(true);
+    setProgress(0);
     setError('');
     try {
-      const created = await createCloudShare(doc);
+      const created = await createCloudShare(doc, setProgress);
       setRecord(created);
       setStatus('synced');
       queueSharedSync(getCurrent() || doc);
@@ -76,7 +79,7 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
         onClick={onClose} disabled={busy}>Cancel</button>
       <button type="button" className="flow-dialog-button flow-dialog-contrast"
         disabled={!consent || busy} onClick={() => { void enable(); }}>
-        {busy ? 'Creating link…' : 'Create link'}
+        {busy ? 'Uploading ' + (progress ?? 0) + '%…' : 'Create link'}
       </button>
     </> : <>
       <button type="button" className="flow-dialog-button flow-dialog-danger"
@@ -107,14 +110,14 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
           disabled={busy} data-dialog-initial-focus />
         <span>
           <strong>Upload to cloud</strong>
-          <small>Only this page is uploaded when you create the link.</small>
+          <small>Only this page is uploaded. Up to 100 MB of UTF-8 text.</small>
         </span>
       </label>
     </> : <>
       <p id="share-dialog-description" className="flow-dialog-status"
         data-status={status} role="status" aria-live="polite">
         <span className="flow-dialog-status-dot" aria-hidden="true" />
-        {status === 'syncing' ? 'Syncing changes…' : status === 'error'
+        {status === 'syncing' ? 'Syncing changes…' + (progress === null ? '' : ' ' + progress + '%') : status === 'error'
           ? 'Sync failed. Your local page is safe.' : 'Link active · Read only'}
       </p>
       <label className="flow-dialog-label" htmlFor="share-link-input">Share link</label>
