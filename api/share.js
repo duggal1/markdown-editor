@@ -43,7 +43,7 @@ function legacyPayload(value) {
     language: value.language || undefined, updatedAt: Date.now() };
 }
 async function load(path) {
-  const result = await get(path, { access: 'private' });
+  const result = await get(path, { access: 'private', useCache: false });
   if (!result || result.statusCode !== 200 || !result.stream) return null;
   return new Response(result.stream).json();
 }
