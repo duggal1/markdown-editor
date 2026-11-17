@@ -4,6 +4,9 @@
 .filetree-heading button:hover, .filetree-heading button:focus-visible { background:var(--neutral-100); color:var(--strong); }
 .filetree-scroll { display:flex; flex:1; flex-direction:column; gap:3px; min-height:0; padding:0 3px 8px; overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; scrollbar-width:thin; }
 .filetree-workspace, .filetree-folder-group { min-width:0; }
+/* Flex children must keep their intrinsic height so long trees scroll, not clip. */
+.filetree-scroll > .filetree-workspace,
+.filetree-scroll > .filetree-result { flex:0 0 auto; }
 .filetree-row { position:relative; display:flex; align-items:center; gap:7px; width:100%; min-width:0; height:35px; padding:0 5px; border-radius:10px; color:var(--muted); transition:background-color .22s cubic-bezier(.22,1,.36,1),color .22s cubic-bezier(.22,1,.36,1); }
 .filetree-row:hover, .filetree-row:focus-within { background:var(--neutral-100); }
 .filetree-row.is-drop { background:var(--active); }
