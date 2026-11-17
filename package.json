@@ -10,6 +10,7 @@
     "test:format": "node scripts/test-auto-markdown.mjs",
     "test:icons": "node scripts/test-icons.mjs",
     "test:workspace-ui": "node scripts/test-workspace-ui.mjs",
+    "test:cloud": "node scripts/test-cloud.mjs",
     "test:preview": "node scripts/test-preview-pipeline.mjs",
     "test:interactions": "node scripts/test-interactions.mjs",
     "test:tasks": "node --import tsx scripts/test-tasks.mjs",
