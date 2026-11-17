@@ -77,7 +77,7 @@ async function signedUrls(paths, operation) {
     const { presignedUrl } = await presignUrl(token, {
       operation, pathname, access: 'private', validUntil: until,
       ...(operation === 'put' ? {
-        ...options, addRandomSuffix: false, allowOverwrite: true, ttlDays: 30,
+        ...options, addRandomSuffix: false, allowOverwrite: false, ttlDays: 30,
       } : {}),
     });
     return presignedUrl;
