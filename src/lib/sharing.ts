@@ -79,7 +79,9 @@ async function uploadChunk(url: string, body: Blob, index: number): Promise<void
     try {
       const response = await fetch(url, { method: 'PUT', body,
         headers: { 'Content-Type': 'application/octet-stream' } });
-      if (response.ok) return;
+      if (response.ok || response.status === 409) return;
+      // A retry can receive 409 if the first attempt completed but its
+      // response was lost. Immutable parts are never overwritten.
       if (![408, 425, 429, 500, 502, 503, 504].includes(response.status)) {
         throw new Error('Upload rejected for part ' + (index + 1) + ' (HTTP ' + response.status + ')');
       }
