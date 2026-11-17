@@ -27,6 +27,13 @@ assert.match(treeCss, /\.filetree-root:hover \.filetree-add-page/);
 assert.match(treeCss, /\.filetree-root:focus-within \.filetree-add-page/);
 assert.match(treeCss, /@media \(hover:none\)[^\n]*\.filetree-add-page/);
 
+// Workspace containers must never shrink and clip files as the explorer grows.
+assert.match(treeCss, /\.filetree-scroll > \.filetree-workspace,/);
+assert.match(treeCss, /\.filetree-scroll > \.filetree-result \{ flex:0 0 auto; \}/);
+assert.match(app, /setExpandedIds\(data\.workspaces\.map\(ws => ws\.id\)\)/);
+assert.doesNotMatch(app, /setExpandedIds\(Array\.isArray\(prefs\.expandedWorkspaceIds\)/);
+assert.match(app, /setSidebarOpen\(!window\.matchMedia/);
+
 // Toast has a neutral surface, accessible close action, and a reduced-motion
 // exit, without the previous inverted white panel / artificial drop shadow.
 assert.match(style, /\.notice \{[\s\S]*?background:#121212; color:#f0f0f0;/);
