@@ -175,7 +175,8 @@ export function queueSharedSync(doc: FlowDocument) {
         }, Math.min(15_000 * 2 ** (currentJob.retries - 1), 300_000));
       }
     });
-  }, 1500);
+  }, currentJob.latest.markdown.length > 20 * 1024 * 1024 ? 30_000
+    : currentJob.latest.markdown.length > 5 * 1024 * 1024 ? 15_000 : 1500);
 }
 export async function revokeCloudShare(documentId: string, record: ShareRecord) {
   const job = jobs.get(documentId);
