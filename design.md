@@ -48,6 +48,16 @@ The supplied component is the specification. Render **exactly two SVG layers**, 
 
 The embedded iframe has an actual **306px layout viewport** and a visible 623px content area. This is a faithful rendering of the supplied mockup, **not** a claim to emulate Safari, DPR, or an iPhone 17 Pro device size. Do not label it as a different iPhone model unless a genuine corresponding viewport is implemented.
 
+## Publishing, deletion and modal design
+
+- Public interactive HTML lives under a short `/play/html-XXXXXXXX` URL. A public URL is not live until its server commit has been verified. Existing `/slug/<legacy-id>` links continue to load.
+- Full HTML and the shared HTML page use the same player. The local `/play/local/<document-id>` fallback is private to the current browser; never copy it as a public share link.
+- A globally sequential `html-1` counter is unsafe without a transactional ID allocator. Use short, collision-checked lowercase base-36 IDs instead of UUIDs, and never overwrite an existing site's metadata on collision.
+- Delete dialogs use a compact near-black (`#080809`) background, borderless header and footer, and a dark file summary (`#121214`). Keep warning copy short and clear.
+- Share and Publish HTML dialogs have darker file cards and wider Copy and Done buttons. Do not change unrelated preview chrome, the FPS widget, iPhone geometry, or app navigation styles.
+- Deleting a page or workspace removes it from the UI immediately, but failed cloud revocation or IndexedDB operations must restore the local item and show an error. Workspace storage removal uses one IndexedDB transaction.
+- Native browser fullscreen requires a user gesture after reload. Preserve full-window player presentation, remember fullscreen intent in session storage, and offer a clearly labeled Resume fullscreen action. Only show Exit fullscreen when the browser is actually fullscreen.
+
 ## Implementation and release guardrails
 
 - CSS lives in the one HTML runtime section in `src/styles.css`. Remove superseded rules rather than appending competing patches.
