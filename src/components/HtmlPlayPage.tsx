@@ -1,4 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import {
+  ComputerIcon, SmartPhone01Icon, DragDropVerticalIcon, ArrowDown01Icon,
+  Cancel01Icon, ReloadIcon, Maximize01Icon, ArrowLeft01Icon,
+} from '@hugeicons/core-free-icons';
+import RuntimeSelect, { type RuntimeOption } from './RuntimeSelect';
 import { htmlPreviewDocument } from '../lib/htmlPreview';
 import { loadDoc } from '../lib/store';
 import { isHtmlPage } from '../lib/siteHosting';
@@ -31,21 +38,28 @@ function safeRoute(value: string): string | null {
     return parsed.pathname + parsed.search + parsed.hash;
   } catch { return null; }
 }
-function ScreenIcon() {
-  return <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-    stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
-    aria-hidden="true"><rect x="2.5" y="3.5" width="19" height="14" rx="2.5" />
-    <path d="M8 21h8M12 17.5V21" /></svg>;
-}
-function PhoneIcon() {
-  // Matching the rounded rectangular frame of the supplied iPhone SVG.
-  return <svg width="13" height="17" viewBox="0 0 20 28" fill="none"
-    stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
-    aria-hidden="true"><rect x="1.7" y="1.7" width="16.6" height="24.6" rx="4.1" />
-    <rect x="7" y="3.3" width="6" height="2.4" rx="1.2" fill="currentColor" stroke="none" /></svg>;
-}
+const DESKTOP_OPTIONS: RuntimeOption<Resolution>[] = [
+  { value: 'auto', label: 'Auto · Fill window' },
+  { value: '1920x1080', label: '1920 × 1080' },
+  { value: '1280x720', label: '1280 × 720' },
+  { value: '800x600', label: '800 × 600' },
+];
+const IPHONE_OPTIONS: RuntimeOption<IPhoneModel>[] = (
+  Object.entries(IPHONES) as [IPhoneModel, typeof IPHONES[IPhoneModel]][]
+).map(([value, profile]) => ({
+  value, label: profile.name + ' · ' + profile.width + ' × ' + profile.height,
+}));
+const FPS_OPTIONS: RuntimeOption<number>[] = [
+  { value: 0, label: 'Auto' },
+  { value: 30, label: '30 FPS' },
+  { value: 60, label: '60 FPS' },
+  { value: 120, label: '120 FPS' },
+];
+const spring = { type: 'spring' as const, stiffness: 475, damping: 33 };
 
 export default function HtmlPlayPage() {
+  const reduce = useReducedMotion();
+  const [glass, setGlass] = useState<'dark' | 'light'>('dark');
   const [source, setSource] = useState<string | null>(null);
   const [title, setTitle] = useState('HTML preview');
   const [error, setError] = useState('');
@@ -118,7 +132,10 @@ export default function HtmlPlayPage() {
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.source !== iframe.current?.contentWindow || !event.data) return;
-      if (event.data.type === 'flow-runtime-fps' && Number.isFinite(event.data.fps)) {
+      if (event.data.type === 'flow-runtime-theme' &&
+          (event.data.theme === 'dark' || event.data.theme === 'light')) {
+        setGlass(event.data.theme);
+      } else if (event.data.type === 'flow-runtime-fps' && Number.isFinite(event.data.fps)) {
         setObservedFps(Math.min(1000, Math.max(0, Math.round(event.data.fps))));
       } else if (event.data.type === 'flow-runtime-route') {
         const route = safeRoute(event.data.path);
@@ -202,7 +219,7 @@ export default function HtmlPlayPage() {
       ? { width: selectedWidth, height: selectedHeight }
       : frameStyle} onLoad={sendSettings} />;
 
-  return <main className="html-play-page" aria-label="Full HTML preview">
+  return <main className="html-play-page" data-glass={glass} aria-label="Full HTML preview">
     <div className="html-play-surface" ref={surface}>
       {error ? <div className="html-play-error" role="alert">
         <strong>Page unavailable</strong><span>{error}</span>
@@ -232,68 +249,85 @@ export default function HtmlPlayPage() {
           : frame}
     </div>
     {controlsVisible && <div className="html-play-chrome" style={{ left }}>
-      <div className="html-play-compact">
-        <button type="button" className="html-play-drag" title="Drag controls horizontally"
-          aria-label="Drag controls" onPointerDown={startDrag} onPointerMove={moveDrag}
-          onPointerUp={stopDrag} onPointerCancel={stopDrag}>
-          <span aria-hidden="true">⠿</span>
-        </button>
-        <button type="button" className="html-play-toggle"
+      <motion.div className="html-play-compact"
+        initial={reduce ? false : { opacity: 0, y: -8, scale: .96 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: reduce ? 0 : .25, ease: [0.22, 1, 0.36, 1] }}>
+        <motion.button type="button" className="html-play-drag"
+          title="Drag controls horizontally" aria-label="Drag controls"
+          onPointerDown={startDrag} onPointerMove={moveDrag}
+          onPointerUp={stopDrag} onPointerCancel={stopDrag}
+          whileTap={reduce ? undefined : { scale: .92 }} transition={spring}>
+          <HugeiconsIcon icon={DragDropVerticalIcon} size={16} strokeWidth={1.7} />
+        </motion.button>
+        <motion.button type="button" className="html-play-toggle"
           aria-label={expanded ? 'Collapse runtime controls' : 'Expand runtime controls'}
-          aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>
+          aria-expanded={expanded} onClick={() => setExpanded(current => !current)}
+          whileHover={reduce ? undefined : { scale: 1.025 }}
+          whileTap={reduce ? undefined : { scale: .96 }} transition={spring}>
           <span className="html-play-led" />
           <span>{observedFps === null ? 'HTML' : observedFps + ' FPS'}</span>
-          <span className="html-play-chevron">{expanded ? '⌃' : '⌄'}</span>
-        </button>
-        <button type="button" className="html-play-hide" title="Hide all controls (Ctrl/⌘ Shift H)"
-          aria-label="Hide runtime controls" onClick={() => setControlsVisible(false)}>×</button>
-      </div>
-      {expanded && <div className="html-play-panel">
-        <div className="html-play-panel-heading">Runtime</div>
-        <div className="html-play-device-switch" role="group" aria-label="Device preview">
-          <button type="button" aria-pressed={!phone} onClick={() => setPhone(null)}>
-            <ScreenIcon /> Desktop
-          </button>
-          <button type="button" aria-pressed={Boolean(phone)}
-            onClick={() => setPhone(current => current || 'iphone17pro')}>
-            <PhoneIcon /> iPhone
-          </button>
-        </div>
-        {phone
-          ? <label>iPhone model
-              <select aria-label="iPhone model" value={phone}
-                onChange={event => setPhone(event.target.value as IPhoneModel)}>
-                {Object.entries(IPHONES).map(([id, profile]) => <option value={id} key={id}>
-                  {profile.name} · {profile.width} × {profile.height}
-                </option>)}
-              </select>
-            </label>
-          : <label>Desktop resolution
-              <select value={resolution} onChange={event => setResolution(event.target.value as Resolution)}>
-                <option value="auto">Auto · Fill window</option>
-                <option value="1920x1080">1920 × 1080</option>
-                <option value="1280x720">1280 × 720</option>
-                <option value="800x600">800 × 600</option>
-              </select>
-            </label>}
-        <label>Frame rate cap
-          <select value={fpsLimit} onChange={event => setFpsLimit(Number(event.target.value))}>
-            <option value={0}>Auto · Display refresh</option>
-            <option value={30}>30 FPS</option>
-            <option value={60}>60 FPS</option>
-            <option value={120}>120 FPS</option>
-          </select>
-        </label>
-        <div className="html-play-caption">{phone
-          ? 'CSS viewport is genuine. Safari engine, DPR, touch hardware and iOS APIs are not emulated.'
-          : 'Measured animation callbacks. Actual GPU frame rate depends on device and browser.'}</div>
-        <div className="html-play-panel-actions">
-          <button type="button" onClick={() => { setObservedFps(null); setReload(value => value + 1); }}>Reload</button>
-          <button type="button" onClick={() => void document.documentElement.requestFullscreen?.()}>Fullscreen</button>
-          {LOCAL && <a href="/">Editor</a>}
-        </div>
-        <div className="html-play-caption">Ctrl/⌘ Shift H restores hidden controls.</div>
-      </div>}
+          <motion.span className="html-play-chevron" animate={{ rotate: expanded ? 180 : 0 }}
+            transition={{ duration: reduce ? 0 : .2, ease: [0.22, 1, 0.36, 1] }}>
+            <HugeiconsIcon icon={ArrowDown01Icon} size={12} strokeWidth={1.7} />
+          </motion.span>
+        </motion.button>
+        <motion.button type="button" className="html-play-hide"
+          title="Hide controls (Ctrl/⌘ Shift H)" aria-label="Hide runtime controls"
+          onClick={() => setControlsVisible(false)}
+          whileHover={reduce ? undefined : { scale: 1.075 }}
+          whileTap={reduce ? undefined : { scale: .9 }} transition={spring}>
+          <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.75} />
+        </motion.button>
+      </motion.div>
+      <AnimatePresence initial={false}>
+        {expanded && <motion.div className="html-play-panel"
+          initial={reduce ? false : { opacity: 0, y: -8, scale: .97 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={reduce ? { opacity: 0, transition: { duration: 0 } } :
+            { opacity: 0, y: -6, scale: .985 }}
+          transition={{ duration: reduce ? 0 : .23, ease: [0.22, 1, 0.36, 1] }}>
+          <div className="html-play-device-switch" role="group" aria-label="Device preview">
+            <motion.button type="button" aria-pressed={!phone} onClick={() => setPhone(null)}
+              whileTap={reduce ? undefined : { scale: .97 }}
+              whileHover={reduce ? undefined : { y: -1 }} transition={spring}>
+              <HugeiconsIcon icon={ComputerIcon} size={16} strokeWidth={1.6} /> Desktop
+            </motion.button>
+            <motion.button type="button" aria-pressed={Boolean(phone)}
+              onClick={() => setPhone(current => current || 'iphone17pro')}
+              whileTap={reduce ? undefined : { scale: .97 }}
+              whileHover={reduce ? undefined : { y: -1 }} transition={spring}>
+              <HugeiconsIcon icon={SmartPhone01Icon} size={16} strokeWidth={1.6} /> iPhone
+            </motion.button>
+          </div>
+          {phone
+            ? <RuntimeSelect label="iPhone" value={phone} options={IPHONE_OPTIONS}
+                onChange={setPhone} />
+            : <RuntimeSelect label="Resolution" value={resolution} options={DESKTOP_OPTIONS}
+                onChange={setResolution} />}
+          <RuntimeSelect label="Frame rate" value={fpsLimit} options={FPS_OPTIONS}
+            onChange={setFpsLimit} />
+          <div className="html-play-panel-actions">
+            <motion.button type="button"
+              onClick={() => { setObservedFps(null); setReload(value => value + 1); }}
+              whileTap={reduce ? undefined : { scale: .95 }}
+              whileHover={reduce ? undefined : { y: -1 }} transition={spring}>
+              <HugeiconsIcon icon={ReloadIcon} size={15} strokeWidth={1.65} /> Reload
+            </motion.button>
+            <motion.button type="button"
+              onClick={() => void document.documentElement.requestFullscreen?.()}
+              whileTap={reduce ? undefined : { scale: .95 }}
+              whileHover={reduce ? undefined : { y: -1 }} transition={spring}>
+              <HugeiconsIcon icon={Maximize01Icon} size={15} strokeWidth={1.65} /> Fullscreen
+            </motion.button>
+            {LOCAL && <motion.a href="/"
+              whileTap={reduce ? undefined : { scale: .95 }}
+              whileHover={reduce ? undefined : { y: -1 }} transition={spring}>
+              <HugeiconsIcon icon={ArrowLeft01Icon} size={15} strokeWidth={1.65} /> Editor
+            </motion.a>}
+          </div>
+        </motion.div>}
+      </AnimatePresence>
     </div>}
     <span className="html-play-accessible-route" aria-live="polite">{routePath === '/' ? '' : routePath}</span>
   </main>;
