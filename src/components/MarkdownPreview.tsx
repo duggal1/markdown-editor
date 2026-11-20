@@ -141,16 +141,15 @@ function HtmlCanvas({ source, embedded = false, scrollRef }: {
   scrollRef?: RefObject<HTMLDivElement | null>;
 }) {
   const [rendered, setRendered] = useState(source);
-  const latest = useRef(source);
   const iframe = useRef<HTMLIFrameElement>(null);
   const progress = useRef(0);
-  latest.current = source;
   useEffect(() => {
-    const interval = window.setInterval(() => {
-      setRendered(current => current === latest.current ? current : latest.current);
-    }, 125);
-    return () => window.clearInterval(interval);
-  }, []);
+    // Recreating a large WebGL document during every keystroke resets its GPU
+    // context. Render once after edits settle, without polling 10 MB strings.
+    const delay = source.length > 250_000 ? 1000 : source.length > 60_000 ? 350 : 125;
+    const timer = window.setTimeout(() => setRendered(source), delay);
+    return () => clearTimeout(timer);
+  }, [source]);
   const documentHtml = useMemo(() => htmlPreviewDocument(rendered), [rendered]);
   useEffect(() => {
     const parent = scrollRef?.current;
@@ -169,7 +168,7 @@ function HtmlCanvas({ source, embedded = false, scrollRef }: {
     : <div className="html-preview-unavailable">Paste a valid HTML document to preview it.</div>;
   return <div className={embedded ? 'html-embedded-preview' : 'html-document-preview'}>
     <iframe ref={iframe} title={embedded ? 'HTML code preview' : 'HTML document preview'}
-      sandbox="allow-scripts" srcDoc={documentHtml} referrerPolicy="no-referrer"
+      sandbox="allow-scripts allow-pointer-lock allow-forms allow-downloads" srcDoc={documentHtml} referrerPolicy="no-referrer"
       onLoad={() => iframe.current?.contentWindow?.postMessage({
         type: 'flow-html-scroll', progress: progress.current,
       }, '*')} />

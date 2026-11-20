@@ -104,6 +104,21 @@ export function clearRecovery(id: string): void {
     localStorage.removeItem(RECOVERY_ID);
   } catch { /* no-op */ }
 }
+/** Load exactly one document, without reading a workspace of potentially huge files. */
+export async function loadDoc(id: string): Promise<FlowDocument | null> {
+  try {
+    const db = await database();
+    const stored = await new Promise<FlowDocument | null>((resolve, reject) => {
+      const request = db.transaction('documents', 'readonly').objectStore('documents').get(id);
+      request.onsuccess = () => resolve((request.result as FlowDocument | undefined) || null);
+      request.onerror = () => reject(request.error);
+    });
+    if (stored) return stored;
+  } catch { /* Emergency fallback after an IndexedDB failure. */ }
+  return readJson<FlowDocument>(FALLBACK + id) ||
+    (readJson<FlowDocument>(RECOVERY)?.id === id ? readJson<FlowDocument>(RECOVERY) : null);
+}
+
 export async function saveDoc(doc: FlowDocument): Promise<void> {
   try { await put('documents', doc); }
   catch (error) {

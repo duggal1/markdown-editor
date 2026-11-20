@@ -1,6 +1,18 @@
 {
   "rewrites": [
     {
+      "source": "/slug/:id",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/slug/:id/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/play/local/:id",
+      "destination": "/index.html"
+    },
+    {
       "source": "/s/:id",
       "destination": "/index.html"
     },
