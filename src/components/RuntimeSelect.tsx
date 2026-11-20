@@ -21,6 +21,11 @@ export default function RuntimeSelect<T extends string | number>({
 }) {
   const id = useId();
   const reduce = useReducedMotion();
+  const smooth = {
+    type: 'tween' as const,
+    duration: reduce ? 0 : .19,
+    ease: [0.22, 1, 0.36, 1] as [number, number, number, number],
+  };
   const [open, setOpen] = useState(false);
   const [focused, setFocused] = useState(0);
   const [position, setPosition] = useState<MenuPosition>({
@@ -114,11 +119,11 @@ export default function RuntimeSelect<T extends string | number>({
       className="html-runtime-options html-runtime-options-portal"
       style={{ left: position.left, top: position.top, width: position.width,
         maxHeight: position.maxHeight }}
-      initial={reduce ? false : { opacity: 0, y: position.above ? 5 : -5, scale: .98 }}
+      initial={reduce ? false : { opacity: 0, y: position.above ? 3 : -3, scale: .994 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={reduce ? { opacity: 0, transition: { duration: 0 } }
-        : { opacity: 0, y: position.above ? 3 : -3, scale: .99 }}
-      transition={{ duration: reduce ? 0 : .18, ease: [0.22, 1, 0.36, 1] }}
+        : { opacity: 0, y: position.above ? 2 : -2, scale: .998 }}
+      transition={smooth}
       onKeyDown={handleKey}>
       {options.map((option, index) => <motion.button key={option.value}
         type="button"
@@ -126,9 +131,9 @@ export default function RuntimeSelect<T extends string | number>({
         role="option" aria-selected={option.value === value}
         className="html-runtime-option" tabIndex={index === focused ? 0 : -1}
         onClick={() => choose(option.value)} onFocus={() => setFocused(index)}
-        whileHover={reduce ? undefined : { x: 1 }}
-        whileTap={reduce ? undefined : { scale: .985 }}
-        transition={{ duration: reduce ? 0 : .12 }}>
+        whileHover={reduce ? undefined : { scale: 1.008 }}
+        whileTap={reduce ? undefined : { scale: .99 }}
+        transition={smooth}>
         <span>{option.label}</span>
         {option.value === value && <HugeiconsIcon icon={Tick01Icon} size={15} strokeWidth={1.75} />}
       </motion.button>)}
@@ -143,11 +148,11 @@ export default function RuntimeSelect<T extends string | number>({
         aria-labelledby={id + '-label ' + id + '-value'}
         aria-controls={open ? id + '-options' : undefined}
         onClick={toggle} onKeyDown={handleKey}
-        whileTap={reduce ? undefined : { scale: .985 }}
-        transition={{ type: 'spring', stiffness: 420, damping: 32 }}>
+        whileTap={reduce ? undefined : { scale: .99 }}
+        transition={smooth}>
         <span id={id + '-value'}>{options[selected]?.label}</span>
         <motion.span className="html-runtime-chevron" animate={{ rotate: open ? 180 : 0 }}
-          transition={{ duration: reduce ? 0 : .18, ease: [0.22, 1, 0.36, 1] }}>
+          transition={smooth}>
           <HugeiconsIcon icon={ArrowDown01Icon} size={14} strokeWidth={1.7} />
         </motion.span>
       </motion.button>

@@ -189,4 +189,38 @@ assert.match(runtimeRules, /--glass-option-selected: rgba\(255,255,255,\.41\)/);
 assert.match(runtimeRules, /\.html-runtime-option\[aria-selected='true'\] \{[\s\S]*?background: var\(--glass-option-selected\);[\s\S]*?backdrop-filter: blur\(14px\)/);
 assert.match(runtime, /type: 'flow-runtime-settings', fps: fpsLimit, phone/,
   'Phone mode must be delivered into the isolated HTML iframe.');
-console.log('Dynamic borderless glass, translucent selected states, scrollbars and raw iPhone geometry passed.');
+
+assert.match(runtimeRules,
+  /\.html-play-page\[data-glass='light'\] \{[\s\S]*?background: #fafafa; \/\* neutral-50 \*\//,
+  'Light HTML must set the entire outer player canvas to neutral-50.');
+assert.match(runtimeRules,
+  /\.html-play-page\[data-glass='light'\] \.html-play-phone \{[\s\S]*?background: #fafafa;/,
+  'The phone stage must inherit the neutral-50 light canvas.');
+assert.match(runtimeRules,
+  /\.html-play-page\[data-glass='light'\] \.html-iphone-frame \{[\s\S]*?background: #f5f5f5;/,
+  'The original iPhone SVG needs a neutral-100 light-mode backing.');
+assert.match(runtimeRules,
+  /\.html-play-page\[data-glass='light'\] \.html-iphone-content \{[\s\S]*?background: #f5f5f5;/,
+  'Phone clipped screen backing must be neutral-100.');
+assert.match(runtimeRules,
+  /\.html-play-page \{[\s\S]*?background: #101114;/,
+  'Dark-mode player canvas must remain dark.');
+assert.match(runtimeRules, /\.html-play-desktop \{ position: absolute; inset: 0; \}/,
+  'The desktop iframe must fill its new crossfade wrapper.');
+assert.match(runtimeRules, /background-color \.2s cubic-bezier\(\.22,1,\.36,1\)/,
+  'Hovered options and device selection need smooth non-bouncy easing.');
+assert.doesNotMatch(runtimeRules, /transition:[^;]*spring/,
+  'CSS states must never bounce.');
+assert.doesNotMatch(runtime + select, /type:\s*['"]spring['"]|stiffness:|damping:/,
+  'No spring physics allowed in the HTML runtime controls or dropdown.');
+assert.match(runtime, /const smoothEase = \[0\.22, 1, 0\.36, 1\]/);
+assert.match(runtime, /type: 'tween'/,
+  'Device switching must fade with tween easing rather than bounce.');
+assert.match(select, /type: 'tween'/,
+  'Dropdown selection must ease with a tween, not spring physics.');
+assert.match(runtime, /<motion\.div className="html-iphone-stage"/,
+  'Switching to iPhone must animate without spring overshoot.');
+assert.match(runtime, /<motion\.div className="html-play-desktop"/,
+  'Switching to desktop must animate without spring overshoot.');
+
+console.log('Dynamic contrast, neutral-50/100 canvas, smooth tweens, glass, scrollbars and iPhone geometry passed.');
