@@ -46,6 +46,7 @@ const FPS_OPTIONS: RuntimeOption<number>[] = [
   { value: 120, label: '120 FPS' },
 ];
 const spring = { type: 'spring' as const, stiffness: 475, damping: 33 };
+const FULLSCREEN_INTENT = 'flow.html-player.fullscreen.v1';
 
 export default function HtmlPlayPage() {
   const reduce = useReducedMotion();
@@ -64,9 +65,51 @@ export default function HtmlPlayPage() {
   const [left, setLeft] = useState(14);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [reload, setReload] = useState(0);
+  const [nativeFullscreen, setNativeFullscreen] = useState(Boolean(document.fullscreenElement));
+  const [resumeFullscreen, setResumeFullscreen] = useState(() => {
+    try { return sessionStorage.getItem(FULLSCREEN_INTENT) === '1'; } catch { return false; }
+  });
   const iframe = useRef<HTMLIFrameElement>(null);
   const surface = useRef<HTMLDivElement>(null);
   const dragging = useRef<{ x: number; left: number } | null>(null);
+  const unloading = useRef(false);
+  useEffect(() => {
+    const onLeaving = () => { unloading.current = true; };
+    const onFullscreenChange = () => {
+      const active = Boolean(document.fullscreenElement);
+      setNativeFullscreen(active);
+      if (active) {
+        setResumeFullscreen(true);
+        try { sessionStorage.setItem(FULLSCREEN_INTENT, '1'); } catch { /* Storage optional. */ }
+      } else if (!unloading.current) {
+        // Escape exits native fullscreen. Only an intentional user gesture
+        // can enter it again, so reflect the browser's actual state.
+        setResumeFullscreen(false);
+        try { sessionStorage.removeItem(FULLSCREEN_INTENT); } catch { /* no-op */ }
+      }
+    };
+    window.addEventListener('beforeunload', onLeaving);
+    window.addEventListener('pagehide', onLeaving);
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => {
+      window.removeEventListener('beforeunload', onLeaving);
+      window.removeEventListener('pagehide', onLeaving);
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+    };
+  }, []);
+  async function toggleFullscreen() {
+    if (document.fullscreenElement) {
+      try { await document.exitFullscreen(); } catch { /* Browser keeps its own state. */ }
+      setResumeFullscreen(false);
+      try { sessionStorage.removeItem(FULLSCREEN_INTENT); } catch { /* no-op */ }
+      return;
+    }
+    if (!document.documentElement.requestFullscreen) return;
+    // User activation is required by browser policy, including after reload.
+    try {
+      await document.documentElement.requestFullscreen();
+    } catch { setResumeFullscreen(false); }
+  }
 
   useEffect(() => {
     let active = true;
@@ -290,10 +333,11 @@ export default function HtmlPlayPage() {
               <HugeiconsIcon icon={ReloadIcon} size={15} strokeWidth={1.65} /> Reload
             </motion.button>
             <motion.button type="button"
-              onClick={() => void document.documentElement.requestFullscreen?.()}
+              onClick={() => { void toggleFullscreen(); }}
               whileTap={reduce ? undefined : { scale: .95 }}
               whileHover={reduce ? undefined : { y: -1 }} transition={spring}>
-              <HugeiconsIcon icon={Maximize01Icon} size={15} strokeWidth={1.65} /> Fullscreen
+              <HugeiconsIcon icon={Maximize01Icon} size={15} strokeWidth={1.65} />
+              {nativeFullscreen ? 'Exit fullscreen' : resumeFullscreen ? 'Resume fullscreen' : 'Fullscreen'}
             </motion.button>
             {LOCAL && <motion.a href="/"
               whileTap={reduce ? undefined : { scale: .95 }}
