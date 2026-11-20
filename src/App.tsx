@@ -110,6 +110,7 @@ export default function App() {
   const [notice, setNotice] = useState('');
   const [exportMenu, setExportMenu] = useState<{ top: number; right: number } | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const [htmlSurfaceTone, setHtmlSurfaceTone] = useState<'dark' | 'light'>('dark');
   const [accentMenu, setAccentMenu] = useState<{ top: number; right: number } | null>(null);
   const [pdfExporting, setPdfExporting] = useState(false);
   const [autoFormatting, setAutoFormatting] = useState(false);
@@ -126,6 +127,18 @@ export default function App() {
   const searchRef = useRef<HTMLInputElement>(null);
   const accentButtonRef = useRef<HTMLButtonElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
+  // The isolated HTML iframe sends only a contrast hint. Never read DOM across
+  // origins or let unrelated frames override the preview pop-out appearance.
+  useEffect(() => {
+    const onTone = (event: MessageEvent) => {
+      if (event.data?.type !== 'flow-runtime-theme') return;
+      if (event.data.theme !== 'dark' && event.data.theme !== 'light') return;
+      const frame = previewScrollRef.current?.querySelector<HTMLIFrameElement>('.html-document-preview iframe');
+      if (event.source === frame?.contentWindow) setHtmlSurfaceTone(event.data.theme);
+    };
+    window.addEventListener('message', onTone);
+    return () => window.removeEventListener('message', onTone);
+  }, []);
   const editorAreaRef = useRef<HTMLElement>(null);
   const targetLine = useRef<{ line: number; total: number; kind: 'scroll' | 'cursor'; id: string } | null>(null);
   const syncFrame = useRef<number | null>(null);
@@ -1006,6 +1019,7 @@ export default function App() {
   }
   const active = live.current.get(activeId) || docs.find(doc => doc.id === activeId);
   const activeHtml = isHtmlPage(active);
+  useEffect(() => { setHtmlSurfaceTone('dark'); }, [activeId]);
   // HTML previews are automatically hosted; Markdown stays local unless shared.
   useEffect(() => {
     if (!loaded || mode === 'write' || !activeHtml || !active) return;
@@ -1382,7 +1396,8 @@ export default function App() {
           {active?.asset ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} theme={theme} /> : active && <MarkdownEditor key={active.id} documentId={active.id} initialText={active.markdown}
             viewRef={editorRef} onChange={onEditorChange} onPosition={onEditorPosition} />}
         </section>
-        <section className="preview-pane" aria-label="Markdown preview">
+        <section className="preview-pane" data-glass={activeHtml ? htmlSurfaceTone : undefined}
+          aria-label="Markdown preview">
           {activeHtml && presentationMode !== 'write' &&
             <button type="button" className="html-preview-popout"
               aria-label="Open full HTML in a new tab" title="Open full HTML in a new tab"
