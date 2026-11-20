@@ -46,7 +46,7 @@ function mockRequest(method, body = {}, query = {}) {
   const res = {
     req, statusCode: 200, headersSent: false,
     status(code) { this.statusCode = code; return this; },
-    setHeader(name, value) { headers.set(name, value); return this; },
+    setHeader(name, value) { headers.set(name.toLowerCase(), value); return this; },
     json(value) { json = value; this.headersSent = true; return this; },
     write(chunk) { result += chunk; this.headersSent = true; return true; },
     end() { this.headersSent = true; },
