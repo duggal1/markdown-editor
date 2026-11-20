@@ -119,7 +119,7 @@ export default function App() {
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ kind: 'document' | 'workspace'; id: string; title: string; count?: number } | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const deletionInFlight = useRef(false);
+  const deletionsInFlight = useRef(new Set<string>());
   const importInFlight = useRef(false);
   const [assetView, setAssetView] = useState<{ id: string; url: string } | null>(null);
   const editorRef = useRef<EditorView | null>(null);
@@ -711,13 +711,14 @@ export default function App() {
     }
   }
   async function confirmDelete() {
-    if (!pendingDelete || deletionInFlight.current) return;
+    if (!pendingDelete) return;
     const target = pendingDelete;
-    deletionInFlight.current = true;
-    // Close at confirmation time. Never hold a modal on screen while waiting
-    // for 100MB network revocation or a large IndexedDB workspace.
+    const operationKey = target.kind + ':' + target.id;
+    if (deletionsInFlight.current.has(operationKey)) return;
+    deletionsInFlight.current.add(operationKey);
+    // Close immediately, including while a separate file's cloud revoke
+    // is still in flight. The operation is guarded by its own target ID.
     setPendingDelete(null);
-    setDeleting(true);
     try {
       if (target.kind === 'workspace') await eraseWorkspace(target.id);
       else {
@@ -725,8 +726,7 @@ export default function App() {
         if (doc) await eraseDocument(doc);
       }
     } finally {
-      deletionInFlight.current = false;
-      setDeleting(false);
+      deletionsInFlight.current.delete(operationKey);
     }
   }
   function toggleExport(event: React.MouseEvent<HTMLButtonElement>) {
@@ -1542,11 +1542,17 @@ export default function App() {
             {deleting && <TerminalLoader loading />}{deleting ? 'Deleting…' : 'Delete'}
           </button>
         </>}>
+        <div className="flow-dialog-file flow-dialog-delete-file">
+          <span className="flow-dialog-file-icon"><Icon name={pendingDelete.kind === 'workspace' ? 'folder' : 'file'} size={16} /></span>
+          <span className="flow-dialog-file-text">
+            <strong title={pendingDelete.title}>{pendingDelete.title}</strong>
+            <small>{pendingDelete.kind === 'workspace'
+              ? (pendingDelete.count || 0) + ' pages in this workspace'
+              : 'Local page'}</small>
+          </span>
+        </div>
         <p id="delete-dialog-description" className="flow-dialog-copy flow-dialog-delete-copy">
-          <strong>{pendingDelete.title}</strong>
-          {pendingDelete.kind === 'workspace'
-            ? ` and its ${pendingDelete.count || 0} page${pendingDelete.count === 1 ? '' : 's'} will be permanently removed from this browser.`
-            : ' will be permanently removed from this browser.'}
+          Permanently delete {pendingDelete.kind === 'workspace' ? 'this workspace and its pages' : 'this page'}?
           {' '}This cannot be undone.
         </p>
       </DialogFrame>}
