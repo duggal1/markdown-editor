@@ -5,7 +5,7 @@ import { del, get, head, put } from '@vercel/blob';
 // HTML sites are intentionally separate from Markdown shares. A 10 MB site is
 // uploaded in bounded chunks so Vercel's request body limit is never exceeded.
 // Keep legacy 12-char IDs working; new public links use a short, readable slug.
-const ID = /^(?:[A-Za-z0-9_-]{12}|html-[a-z0-9]{8})$/;
+const ID = /^(?:[A-Za-z0-9_-]{12}|html-[a-z0-9]{5})$/;
 const SECRET = /^[A-Za-z0-9_-]{43}$/;
 const VERSION = /^[A-Za-z0-9_-]{8,48}$/;
 const MAX_SITE_BYTES = 10 * 1024 * 1024;
@@ -153,11 +153,11 @@ export default async function handler(req, res) {
       return respond(res, 400, { error: 'Invalid JSON request' });
     }
     if (req.method === 'POST') {
-      // Eight base-36 characters keep URLs compact without relying on an
+      // Five base-36 characters keep URLs compact without relying on an
       // unsafe global sequential counter. Blob create is no-overwrite, and
       // collisions are retried rather than taking over another user's site.
       for (let attempt = 0; attempt < 5; attempt++) {
-        const id = 'html-' + randomBytes(5).readUIntBE(0, 5).toString(36).padStart(8, '0');
+        const id = 'html-' + (randomBytes(4).readUInt32BE(0) % 60_466_176).toString(36).padStart(5, '0');
         const secret = randomBytes(32).toString('base64url');
         try {
           await writeMeta(id, {
