@@ -57,6 +57,25 @@ function mockRequest(method, body = {}, query = {}) {
   }));
 }
 
+// The common small-HTML path must publish its first version in one request,
+// with no separately scheduled chunk/commit calls from the client.
+const quickHtml = '<!doctype html><html><head><title>Quick</title></head><body>Ready</body></html>';
+const quick = await mockRequest('POST', { html: quickHtml });
+assert.equal(quick.status, 201, 'A short HTML page must publish in one HTTP request.');
+assert.match(quick.body.id, /^html-[a-z0-9]{5}$/);
+assert.equal(quick.body.published, true);
+assert.match(quick.body.version, /^[a-f0-9]{32}$/);
+const quickStatus = await mockRequest('GET', {}, { id: quick.body.id, status: '1' });
+assert.equal(quickStatus.status, 200);
+assert.equal(quickStatus.body.published, true);
+assert.equal((await mockRequest('GET', {}, { id: quick.body.id, raw: '1' })).html, quickHtml,
+  'Inline publishing must preserve the original HTML verbatim.');
+assert.equal((await mockRequest('POST', { html: '' })).status, 413,
+  'Empty inline publishing must fail.');
+assert.equal((await mockRequest('POST', { html: 'x'.repeat(256 * 1024 + 1) })).status, 413,
+  'Oversized inline requests must use the existing chunked upload path.');
+assert.equal((await mockRequest('DELETE', { id: quick.body.id, secret: quick.body.secret })).status, 200);
+
 const created = await mockRequest('POST');
 assert.equal(created.status, 201);
 const { id, secret } = created.body;
@@ -156,6 +175,8 @@ assert.ok(rewrites.rewrites.some(rule => rule.source === '/slug/:id/:path*'),
 assert.ok(rewrites.rewrites.some(rule => rule.source === '/play/local/:id/:path*'));
 assert.ok(rewrites.rewrites.some(rule => rule.source === '/play/:id'));
 assert.ok(rewrites.rewrites.some(rule => rule.source === '/play/:id/:path*'));
+assert.equal(rewrites.trailingSlash, false,
+  'Vercel must redirect /play/html-ID/ to slash-free /play/html-ID instead of returning 404.');
 const routeSource = readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8');
 assert.match(routeSource, /route.startsWith\('\/play\/'\) \? HtmlPlayPage/,
   'The new public play route must open the same player as local full HTML.');
@@ -167,6 +188,15 @@ assert.match(hosting, /verifyHostedHtml\(record.id\)/,
 assert.match(modal, /const published = Boolean\(record\?\.syncedVersion && verified && status === 'synced'\)/,
   'Do not enable public Copy before remote HTML is verifiably ready.');
 assert.match(hosting, /siteUrl\(id: string\)/);
+assert.match(hosting, /encodeURIComponent\(id\);/,
+  'Copied public URLs must not append the broken trailing slash.');
+assert.match(hosting, /method: 'HEAD', signal, cache: 'no-store'/,
+  'Status verification must check the public entrypoint, not just Blob metadata.');
+assert.match(hosting, /FAST_PUBLISH_BYTES = 256 \* 1024/,
+  'Keep a single round trip for the normal small HTML case.');
+assert.match(hosting, /\{ html: doc\.markdown \} : \{\}/,
+  'The client must use inline publish for small HTML and chunk uploads for large files.');
+
 assert.match(hosting, /id.startsWith\('html-'\) \? '\/play\/' : '\/slug\/'/,
   'New slugs should be /play/ and previous public URLs must remain valid.');
 assert.match(app, /verifyHostedHtml\(current.id\)/,
