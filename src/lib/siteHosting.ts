@@ -149,9 +149,11 @@ export async function publishHtml(doc: FlowDocument): Promise<SiteRecord> {
   // Existing 12-character links are upgraded on publish, but retained as
   // aliases so links already shared with other people do not suddenly die.
   if (existing?.id.startsWith('html-')) {
-    if (!await verifyHostedHtml(existing.id).catch(() => false)) queueSiteSync(doc, true, true);
-    else queueSiteSync(doc, true);
-    return existing;
+    const ready = await verifyHostedHtml(existing.id).catch(() => false);
+    queueSiteSync(doc, true, !ready);
+    // Never report an old local timestamp as live after the public route
+    // fails its actual HTTP health check.
+    return ready ? existing : { ...existing, syncedVersion: 0 };
   }
   const promise = (async () => {
     signal(doc.id, 'syncing');
