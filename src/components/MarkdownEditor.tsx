@@ -99,9 +99,11 @@ function enterExplicitMarkdownList(view: EditorView): boolean {
   }
 
   if (intent === 'exit-list') {
+    // Keep one blank separator when leaving an empty list item. Without it,
+    // a following GFM table or fenced code block may still parse as list text.
     view.dispatch({
-      changes: { from: line.from, to: line.to, insert: '' },
-      selection: { anchor: line.from },
+      changes: { from: line.from, to: line.to, insert: '\n' },
+      selection: { anchor: line.from + 1 },
       scrollIntoView: true,
       userEvent: 'input',
     });
