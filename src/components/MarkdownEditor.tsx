@@ -92,10 +92,13 @@ function enterExplicitMarkdownList(view: EditorView): boolean {
 
   // A literal "- item" inside a fenced or indented code block is code, not
   // a Markdown list. Keep its normal Enter/indent behavior.
-  for (let node = syntaxTree(state).resolveInner(Math.max(line.from, pos - 1), -1);
-    node; node = node.parent) {
+  let node = syntaxTree(state).resolveInner(Math.max(line.from, pos - 1), -1);
+  while (node) {
     if (node.name === 'FencedCode' || node.name === 'CodeBlock' ||
       node.name === 'HTMLBlock' || node.name === 'InlineCode') return false;
+    const parent = node.parent;
+    if (!parent) break;
+    node = parent;
   }
 
   if (intent === 'exit-list') {
