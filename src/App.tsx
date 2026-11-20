@@ -118,7 +118,6 @@ export default function App() {
   const autoFormatInFlight = useRef(false);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ kind: 'document' | 'workspace'; id: string; title: string; count?: number } | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const deletionsInFlight = useRef(new Set<string>());
   const importInFlight = useRef(false);
   const [assetView, setAssetView] = useState<{ id: string; url: string } | null>(null);
@@ -1532,14 +1531,14 @@ export default function App() {
       {pendingDelete && <DialogFrame id="delete-dialog"
         title={`Delete ${pendingDelete.kind === 'document' ? 'page' : 'workspace'}?`}
         icon="trash" describedBy="delete-dialog-description"
-        busy={deleting} onClose={() => setPendingDelete(null)}
+        busy={false} onClose={() => setPendingDelete(null)}
         footer={<>
           <button type="button" className="flow-dialog-button flow-dialog-neutral"
-            data-dialog-initial-focus disabled={deleting}
+            data-dialog-initial-focus
             onClick={() => setPendingDelete(null)}>Cancel</button>
           <button type="button" className="flow-dialog-button flow-dialog-destructive"
-            disabled={deleting} onClick={() => { void confirmDelete(); }}>
-            {deleting && <TerminalLoader loading />}{deleting ? 'Deleting…' : 'Delete'}
+            onClick={() => { void confirmDelete(); }}>
+            Delete
           </button>
         </>}>
         <div className="flow-dialog-file flow-dialog-delete-file">
