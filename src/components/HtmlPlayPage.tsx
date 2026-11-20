@@ -219,7 +219,7 @@ export default function HtmlPlayPage() {
               }}>
                 <div style={{ width: 340, height: 700, transformOrigin: 'top left',
                   transform: 'scale(' + phoneScale + ')' }}>
-                  <IPhoneFrame isDark={false}>{frame}</IPhoneFrame>
+                  <IPhoneFrame isDark={glass === 'dark'}>{frame}</IPhoneFrame>
                 </div>
               </div>
             </div>
