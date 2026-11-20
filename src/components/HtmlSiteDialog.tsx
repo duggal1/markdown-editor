@@ -30,6 +30,17 @@ export default function HtmlSiteDialog({ documentId, title, getCurrent, onClose 
     const existing = readSiteRecord(documentId);
     if (!existing) return;
     let cancelled = false;
+    const latest = getCurrent();
+    if (!existing.id.startsWith('html-') && isHtmlPage(latest)) {
+      // A legacy local record should receive a short /play/ URL even when
+      // opened directly from Write mode (where auto-publish is not running).
+      void publishHtml(latest!).then(nextRecord => {
+        if (!cancelled) { setRecord(nextRecord); setStatus('syncing'); setVerified(false); }
+      }).catch(cause => {
+        if (!cancelled) { setStatus('error'); setError(String(cause)); }
+      });
+      return () => { cancelled = true; };
+    }
     void verifyHostedHtml(existing.id).then(ok => {
       if (cancelled) return;
       const latest = getCurrent();
