@@ -1874,3 +1874,147 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   #delete-dialog .flow-dialog-footer {padding:9px 16px 16px;}
 }
 
+/* Hosted/share modal polish: one final, borderless neutral treatment.
+   Keep typography calm and buttons optically aligned; never touch the FPS UI. */
+#html-site-dialog.flow-dialog,
+#share-dialog.flow-dialog {
+  width:min(428px,calc(100vw - 28px));
+  border:0;
+  border-radius:17px;
+  background:#080809;
+  color:#f4f4f5;
+  font-weight:400;
+  box-shadow:0 25px 85px rgba(0,0,0,.64);
+}
+#html-site-dialog .flow-dialog-header,
+#share-dialog .flow-dialog-header {
+  height:54px;
+  padding-inline:20px 16px;
+  border:0;
+}
+#html-site-dialog .flow-dialog-heading,
+#share-dialog .flow-dialog-heading {gap:10px;}
+#html-site-dialog .flow-dialog-heading h2,
+#share-dialog .flow-dialog-heading h2 {
+  font-size:13px;
+  font-weight:450;
+  letter-spacing:-.018em;
+}
+#html-site-dialog .flow-dialog-close,
+#share-dialog .flow-dialog-close {
+  cursor:pointer;
+  border:0;
+}
+#html-site-dialog .flow-dialog-body,
+#share-dialog .flow-dialog-body {padding:0 20px 14px;}
+#html-site-dialog .flow-dialog-file,
+#share-dialog .flow-dialog-file {
+  min-height:57px;
+  margin-bottom:13px;
+  padding:10px 11px;
+  border:0;
+  border-radius:11px;
+  background:#111113;
+}
+#html-site-dialog .flow-dialog-file-icon,
+#share-dialog .flow-dialog-file-icon {
+  width:33px;height:33px;flex-basis:33px;
+  border:0;border-radius:9px;
+  color:#d4d4d8;background:#202023;
+}
+#html-site-dialog .flow-dialog-file-text strong,
+#share-dialog .flow-dialog-file-text strong {
+  font-size:12.5px;
+  font-weight:450;
+  letter-spacing:-.012em;
+}
+#html-site-dialog .flow-dialog-file-text small,
+#share-dialog .flow-dialog-file-text small {
+  color:#92929a;
+  font-size:11px;
+  font-weight:400;
+}
+#html-site-dialog .flow-dialog-readonly,
+#share-dialog .flow-dialog-readonly {
+  font-weight:400;
+  color:#92929a;
+}
+#html-site-dialog .flow-dialog-status,
+#share-dialog .flow-dialog-status {
+  margin-bottom:12px;
+  color:#bcbcc2;
+  font-weight:400;
+}
+#html-site-dialog .flow-dialog-label,
+#share-dialog .flow-dialog-label {
+  margin-bottom:7px;
+  color:#a9a9b2;
+  font-size:11px;
+  font-weight:400;
+}
+#html-site-dialog .flow-dialog-link,
+#share-dialog .flow-dialog-link {
+  min-height:43px;
+  gap:5px;
+  padding:4px;
+  border:0;
+  border-radius:11px;
+  background:#161619;
+}
+#html-site-dialog .flow-dialog-link input,
+#share-dialog .flow-dialog-link input {
+  min-height:34px;
+  padding:0 10px;
+  border:0;
+  background:transparent;
+  font-size:11px;
+  color:#ededf0;
+}
+#html-site-dialog .flow-dialog-button,
+#share-dialog .flow-dialog-button {
+  border:0;
+  border-radius:9px;
+  font-weight:450;
+  font-size:12px;
+  letter-spacing:-.01em;
+  cursor:pointer;
+  transition:background-color .19s cubic-bezier(.22,1,.36,1),
+    color .19s cubic-bezier(.22,1,.36,1);
+}
+#html-site-dialog .flow-dialog-link .flow-dialog-button,
+#share-dialog .flow-dialog-link .flow-dialog-button {
+  min-width:90px;
+  min-height:35px;
+  padding:0 20px;
+}
+#html-site-dialog .flow-dialog-footer,
+#share-dialog .flow-dialog-footer {
+  min-height:58px;
+  padding:9px 20px 18px;
+  gap:9px;
+  border:0;
+  background:transparent;
+}
+#html-site-dialog .flow-dialog-footer .flow-dialog-neutral,
+#share-dialog .flow-dialog-footer .flow-dialog-neutral {
+  min-width:80px;
+  min-height:36px;
+  padding:0 21px;
+  background:#222226;
+}
+#html-site-dialog .flow-dialog-footer .flow-dialog-neutral:hover,
+#share-dialog .flow-dialog-footer .flow-dialog-neutral:hover {
+  background:#2c2c31;
+}
+#html-site-dialog .flow-dialog-file,
+#share-dialog .flow-dialog-file,
+#html-site-dialog .flow-dialog-footer,
+#share-dialog .flow-dialog-footer {box-shadow:none;}
+@media(max-width:480px) {
+  #html-site-dialog .flow-dialog-body,
+  #share-dialog .flow-dialog-body {padding-inline:16px;}
+  #html-site-dialog .flow-dialog-header,
+  #share-dialog .flow-dialog-header {padding-inline:16px;}
+  #html-site-dialog .flow-dialog-footer,
+  #share-dialog .flow-dialog-footer {padding-inline:16px;}
+}
