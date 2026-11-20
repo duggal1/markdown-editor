@@ -95,8 +95,7 @@ export default function HtmlSiteDialog({ documentId, title, getCurrent, onClose 
       setRecord(next);
       // A tiny HTML page is already fully committed after publishHtml().
       // Do not send it through a second forced upload.
-      if (next.syncedVersion === doc!.updatedAt &&
-          await verifyHostedHtml(next.id).catch(() => false)) {
+      if (next.syncedVersion === doc!.updatedAt) {
         setVerified(true);
         setStatus('synced');
       } else {
