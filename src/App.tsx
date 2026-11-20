@@ -215,9 +215,8 @@ export default function App() {
       setSplitPercent(width);
       setStoredSplitPercent(width);
       splitNext.current = width;
-      setExpandedIds(Array.isArray(prefs.expandedWorkspaceIds)
-        ? prefs.expandedWorkspaceIds.filter(id => data.workspaces.some(ws => ws.id === id))
-        : data.workspaces.map(ws => ws.id));
+      // Never restore stale collapsed preferences on a new visit.
+      setExpandedIds(data.workspaces.map(ws => ws.id));
       activeIdRef.current = first.id;
       setActiveId(first.id);
       setWorkspaceId(chosenWorkspace.id);
@@ -226,7 +225,7 @@ export default function App() {
         : 'dark');
       setAccentTheme(parseAccentTheme(prefs.accentTheme));
       // Never restore a desktop-open drawer over the entire phone editor.
-      setSidebarOpen(window.matchMedia('(max-width: 800px)').matches ? false : prefs.sidebarOpen !== false);
+      setSidebarOpen(!window.matchMedia('(max-width: 800px)').matches);
       modeRef.current = restoredMode;
       setMode(restoredMode);
       setPreviewText(first.markdown);
@@ -302,9 +301,9 @@ export default function App() {
   useEffect(() => {
     if (!loaded) return;
     savePrefs({ theme, accentTheme, mode, sidebarOpen, activeDocumentId: activeId,
-      activeWorkspaceId: workspaceId, recentIds, expandedWorkspaceIds: expandedIds,
+      activeWorkspaceId: workspaceId, recentIds,
       splitPercent: storedSplitPercent });
-  }, [loaded, theme, accentTheme, mode, sidebarOpen, activeId, workspaceId, recentIds, expandedIds, storedSplitPercent]);
+  }, [loaded, theme, accentTheme, mode, sidebarOpen, activeId, workspaceId, recentIds, storedSplitPercent]);
 
   const flush = useCallback((id: string) => {
     const timer = saveTimers.current.get(id);
