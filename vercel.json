@@ -13,6 +13,10 @@
       "destination": "/index.html"
     },
     {
+      "source": "/play/local/:id/:path*",
+      "destination": "/index.html"
+    },
+    {
       "source": "/s/:id",
       "destination": "/index.html"
     },
