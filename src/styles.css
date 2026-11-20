@@ -2029,7 +2029,7 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .cm-editor.raw-code .cm-sizer {
   min-width: 0;
   flex: 1 1 0%;
-  width: 100%;
+  width: auto;
 }
 .cm-editor.raw-code .cm-gutters {
   flex: 0 0 44px;
