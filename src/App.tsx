@@ -1387,6 +1387,10 @@ export default function App() {
             viewRef={editorRef} onChange={onEditorChange} onPosition={onEditorPosition} />}
         </section>
         <section className="preview-pane" aria-label="Markdown preview">
+          {activeHtml && presentationMode !== 'write' &&
+            <button type="button" className="html-preview-popout"
+              aria-label="Open full HTML in a new tab" title="Open full HTML in a new tab"
+              onClick={openFullHtml}><Icon name="arrowUpRight" size={15} /> <span>Full HTML</span></button>}
           <motion.div ref={previewScrollRef} className="preview-scroll" initial={false}
             animate={{ opacity: presentationMode === 'write' ? 0 : 1 }}
             transition={motionOff ? { duration: 0 } : { duration: 0.2, delay: presentationMode === 'write' ? 0 : 0.035 }}>
