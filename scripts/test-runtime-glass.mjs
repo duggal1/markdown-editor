@@ -116,6 +116,12 @@ assert.match(css, /\.html-runtime-field\[data-open='true'\] \{ z-index: 20; \}/,
   'Open dropdown must layer above neighboring action controls.');
 assert.match(select, /data-open=\{open\}/,
   'Dropdown must expose the stacking state.');
+assert.match(select, /createPortal\(menu, host\)/,
+  'The dropdown must escape the panel backdrop root so it blurs the real HTML scene.');
+assert.match(select, /querySelector<HTMLElement>\('\.html-play-page'\)/,
+  'Portaled dropdowns must inherit the HTML page dark\/light glass theme.');
+assert.match(css, /\.html-runtime-options \{\s*position: fixed; z-index: 250;/,
+  'The dropdown must float over controls instead of clipping within its trigger.');
 assert.match(css, /\.html-iphone-content \{[\s\S]*?width: 306px; height: 667px;[\s\S]*?padding-top: 44px;/,
   'Original SVG interior dimensions and top inset must be preserved.');
 console.log('Dynamic dark/light glass, translucency, blur, dropdown stacking and raw iPhone geometry passed.');
