@@ -10,8 +10,10 @@ import { FlowMark, Icon, type IconName } from './components/Icons';
 import { ACCENT_THEMES, applyAccentTheme, parseAccentTheme, type AccentTheme } from './lib/accentTheme';
 import { downloadMarkdown } from './lib/document';
 import ShareDialog from './components/ShareDialog';
+import HtmlSiteDialog from './components/HtmlSiteDialog';
 import DialogFrame from './components/DialogFrame';
 import { queueSharedSync, readShareRecord, revokeCloudShare } from './lib/sharing';
+import { isHtmlPage, localHtmlUrl, publishHtml, queueSiteSync, readSiteRecord, revokeHtml } from './lib/siteHosting';
 import { detectRawCode, isMarkdownFile, languageForFile } from './lib/code';
 import { svgPreviewDocument } from './lib/svgPreview';
 import { readTextImport } from './lib/textImport';
@@ -202,6 +204,7 @@ export default function App() {
       live.current = new Map(restored.map(doc => [doc.id, doc]));
       // Retry only previously authorized cloud shares that changed while offline.
       restored.forEach(queueSharedSync);
+      restored.forEach(doc => queueSiteSync(doc));
       const prefs = readPrefs();
       const first = restored.find(doc => doc.id === prefs.activeDocumentId) || restored[0];
       const chosenWorkspace = data.workspaces.find(ws => ws.id === prefs.activeWorkspaceId) ||
@@ -347,6 +350,7 @@ export default function App() {
   const scheduleSave = useCallback((doc: FlowDocument) => {
     live.current.set(doc.id, doc);
     queueSharedSync(doc);
+    queueSiteSync(doc);
     saveStarted.current.set(doc.id, performance.now());
     setSaveDuration(0);
     setSaveState('saving');
@@ -521,6 +525,10 @@ export default function App() {
       try { await revokeCloudShare(doc.id, shared); }
       catch { setNotice('Could not revoke the share link. Stop sharing before deleting this page.'); return; }
     }
+    if (readSiteRecord(doc.id)) {
+      try { await revokeHtml(doc.id); }
+      catch { setNotice('Could not revoke the hosted HTML link. Stop hosting before deleting this page.'); return; }
+    }
     // Delete immediately in the UI. Cancel pending writes so a stale save
     // cannot recreate a deleted file after its IndexedDB record is removed.
     const saveTimer = saveTimers.current.get(doc.id);
@@ -636,6 +644,7 @@ export default function App() {
       for (const doc of deletedDocs) {
         const shared = readShareRecord(doc.id);
         if (shared) await revokeCloudShare(doc.id, shared);
+        if (readSiteRecord(doc.id)) await revokeHtml(doc.id);
       }
       for (const doc of deletedDocs) await removeDoc(doc.id);
       for (const folder of folders.filter(item => item.workspaceId === id)) await removeFolder(folder.id);
@@ -996,6 +1005,24 @@ export default function App() {
     void importFiles(Array.from(event.dataTransfer.files));
   }
   const active = live.current.get(activeId) || docs.find(doc => doc.id === activeId);
+  const activeHtml = isHtmlPage(active);
+  // HTML previews are automatically hosted; Markdown stays local unless shared.
+  useEffect(() => {
+    if (!loaded || mode === 'write' || !activeHtml || !active) return;
+    void publishHtml(active).catch(() => { /* Publish status appears in the HTML dialog. */ });
+  }, [loaded, mode, activeId, activeHtml]);
+
+  function openFullHtml() {
+    const doc = live.current.get(activeIdRef.current);
+    if (!isHtmlPage(doc)) return;
+    const tab = window.open('about:blank', '_blank');
+    if (!tab) { setNotice('Your browser blocked the HTML preview tab. Allow popups and retry.'); return; }
+    tab.opener = null;
+    flush(doc!.id);
+    void (saveQueue.current.get(doc!.id) || saveDoc(doc!))
+      .then(() => { tab.location.replace(localHtmlUrl(doc!.id)); })
+      .catch(() => { tab.close(); setNotice('Could not save HTML before opening the full preview.'); });
+  }
   const matching = useMemo(() => {
     if (!query.trim()) return [...docs].sort((a, b) => b.updatedAt - a.updatedAt);
     const byId = new Map(docs.map(doc => [doc.id, doc]));
@@ -1293,8 +1320,11 @@ export default function App() {
             whileTap={motionOff ? undefined : { scale: 0.985 }}
             transition={motionOff ? { duration: 0 } : { duration: 0.17, ease: [0.22, 1, 0.36, 1] }}>
             <Icon name="edit" size={15}/><span>Draw</span></motion.a>
+          {activeHtml && <motion.button {...pressMotion} type="button" className="share-button html-view-button"
+            title="View full HTML without the editor" aria-label="View full HTML"
+            onClick={openFullHtml}><Icon name="eye" size={15} /><span>Full HTML</span></motion.button>}
           <motion.button {...pressMotion} type="button" className="share-button"
-            title="Share page" aria-label="Share page" disabled={!active || Boolean(active.asset)}
+            title={activeHtml ? 'Share interactive HTML' : 'Share page'} aria-label="Share page" disabled={!active || Boolean(active.asset)}
             onClick={() => setShareOpen(true)}><Icon name="link" size={15} /><span>Share</span></motion.button>
           <motion.button {...pressMotion} type="button" className="export-button"
             title="Export page" aria-label="Export page" aria-haspopup="menu"
@@ -1356,6 +1386,10 @@ export default function App() {
             viewRef={editorRef} onChange={onEditorChange} onPosition={onEditorPosition} />}
         </section>
         <section className="preview-pane" aria-label="Markdown preview">
+          {activeHtml && presentationMode !== 'write' &&
+            <button type="button" className="html-preview-popout"
+              aria-label="Open full HTML in a new tab" title="Open full HTML in a new tab"
+              onClick={openFullHtml}><Icon name="arrowUpRight" size={15} /> <span>Full HTML</span></button>}
           <motion.div ref={previewScrollRef} className="preview-scroll" initial={false}
             animate={{ opacity: presentationMode === 'write' ? 0 : 1 }}
             transition={motionOff ? { duration: 0 } : { duration: 0.2, delay: presentationMode === 'write' ? 0 : 0.035 }}>
@@ -1428,10 +1462,15 @@ export default function App() {
             }}><Icon name="download" size={15}/><span>Export as PDF</span><small>.pdf</small></button>
         </motion.div>}
       </AnimatePresence>, document.body)}
-      {shareOpen && active && <ShareDialog key={active.id} documentId={active.id}
-        title={live.current.get(active.id)?.title || active.title}
-        getCurrent={() => live.current.get(activeIdRef.current) || null}
-        onClose={() => setShareOpen(false)} />}
+      {shareOpen && active && (activeHtml || Boolean(readSiteRecord(active.id))
+        ? <HtmlSiteDialog key={active.id} documentId={active.id}
+            title={live.current.get(active.id)?.title || active.title}
+            getCurrent={() => live.current.get(activeIdRef.current) || null}
+            onClose={() => setShareOpen(false)} />
+        : <ShareDialog key={active.id} documentId={active.id}
+            title={live.current.get(active.id)?.title || active.title}
+            getCurrent={() => live.current.get(activeIdRef.current) || null}
+            onClose={() => setShareOpen(false)} />)}
       {pendingDelete && <DialogFrame id="delete-dialog"
         title={`Delete ${pendingDelete.kind === 'document' ? 'page' : 'workspace'}?`}
         icon="trash" describedBy="delete-dialog-description"
