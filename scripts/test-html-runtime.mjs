@@ -123,11 +123,25 @@ assert.ok(transformed.endsWith('x'.repeat(10_000_000) + '</body></html>'),
 assert.equal(htmlPreviewDocument('## markdown'), null);
 
 const player = readFileSync(new URL('../src/components/HtmlPlayPage.tsx', import.meta.url), 'utf8');
-for (const pair of ['width: 393, height: 852', 'width: 402, height: 874',
-  'width: 440, height: 956', 'setControlsVisible(current => !current)']) {
-  assert.ok(player.includes(pair), 'Missing device or control logic: ' + pair);
+const phone = readFileSync(new URL('../src/components/IPhoneFrame.tsx', import.meta.url), 'utf8');
+for (const pair of ['<IPhoneFrame', 'width: 306, height: 623',
+  'width: 340 * phoneScale, height: 700 * phoneScale',
+  'setControlsVisible(current => !current)']) {
+  assert.ok(player.includes(pair), 'Missing exact device viewport or player control: ' + pair);
 }
+for (const pair of ['height={681}', 'width={322}', 'x={9}', 'y={9.5}',
+  'rx={63}', 'ry={63}', 'strokeWidth={5}', 'width={96}',
+  'height={28}', 'x={122}', 'y={24}', 'cx={186}', 'cy={38}',
+  'r={2.8}', 'fill="#07e00a"']) {
+  assert.ok(phone.includes(pair), 'The supplied SVG geometry changed: ' + pair);
+}
+assert.equal((phone.match(/<svg/g) || []).length, 2,
+  'The supplied iPhone has exactly two original SVG layers.');
+assert.doesNotMatch(player, /html-play-device|html-play-device-island|IPHONES/,
+  'Do not introduce a synthetic bezel, island or mislabeled iOS model.');
+assert.doesNotMatch(phone, /boxShadow|linear-gradient|backgroundImage/,
+  'The raw SVG frame must not acquire decorative effects.');
 const rewrites = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
 assert.ok(rewrites.rewrites.some(rule => rule.source === '/slug/:id/:path*'));
 assert.ok(rewrites.rewrites.some(rule => rule.source === '/play/local/:id/:path*'));
-console.log('HTML hosting, 10MB chunking, route reload, safety, runtime, and iPhone dimensions tests passed.');
+console.log('HTML hosting, 10MB chunking, route reload, safety, runtime, and exact iPhone SVG tests passed.');
