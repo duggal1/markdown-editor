@@ -1395,6 +1395,9 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   --glass-option-selected: rgba(0,0,0,.33);
   --glass-shadow: 0 12px 38px rgba(0,0,0,.22), 0 3px 12px rgba(0,0,0,.13);
   --glass-blur: blur(36px) saturate(1.5) brightness(.86);
+  --glass-refraction-top: rgba(223,236,255,.21);
+  --glass-refraction-bottom: rgba(110,147,200,.09);
+  --glass-refraction-blur: blur(44px) saturate(1.85) brightness(1.17);
   position: fixed;
   inset: 0;
   height: 100dvh;
@@ -1418,6 +1421,9 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   --glass-option-selected: rgba(255,255,255,.41);
   --glass-shadow: 0 12px 34px rgba(24,28,42,.12), 0 3px 11px rgba(24,28,42,.07);
   --glass-blur: blur(36px) saturate(1.4) brightness(1.03);
+  --glass-refraction-top: rgba(255,255,255,.40);
+  --glass-refraction-bottom: rgba(126,138,158,.13);
+  --glass-refraction-blur: blur(44px) saturate(1.55) brightness(1.07);
 }
 .html-play-surface { position: absolute; inset: 0; overflow: hidden; }
 .html-play-surface iframe { display: block; border: 0; background: transparent; max-width: none; }
@@ -1443,6 +1449,48 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
 }
+/* Edge definition comes from refracted pixels, never a painted border.
+   A softly masked 5px perimeter blurs the HTML through each glass surface.
+   The middle remains fully transparent to the underlying sheet. */
+.html-play-compact,
+.html-play-panel,
+.html-runtime-options,
+.html-runtime-select-trigger,
+.html-play-device-switch {
+  position: relative;
+  isolation: isolate;
+}
+.html-play-compact::before,
+.html-play-panel::before,
+.html-runtime-options::before,
+.html-runtime-select-trigger::before,
+.html-play-device-switch::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 5px;
+  pointer-events: none;
+  background:
+    radial-gradient(95% 100% at 4% 0%, var(--glass-refraction-top), transparent 78%),
+    radial-gradient(100% 100% at 100% 100%, var(--glass-refraction-bottom), transparent 78%);
+  -webkit-backdrop-filter: var(--glass-refraction-blur);
+  backdrop-filter: var(--glass-refraction-blur);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  filter: blur(1.6px);
+  opacity: .86;
+  z-index: 1;
+}
+@supports not ((-webkit-mask-composite: xor) or (mask-composite: exclude)) {
+  .html-play-compact::before,
+  .html-play-panel::before,
+  .html-runtime-options::before,
+  .html-runtime-select-trigger::before,
+  .html-play-device-switch::before { display: none; }
+}
+
 .html-play-compact {
   pointer-events: auto; display: flex; align-items: center; gap: 2px;
   width: fit-content; max-width: 100%; min-height: 39px;
