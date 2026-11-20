@@ -165,6 +165,23 @@ assert.doesNotMatch(runtimeRules, /--glass-(?:inner-)?edge|border-color:|box-sha
   'No hidden stroke tokens or inset simulated borders are permitted.');
 assert.doesNotMatch(runtimeRules, /outline:\s*[1-9]/,
   'Focus feedback must not introduce another hard border.');
+assert.match(runtimeRules, /--glass-refraction-top: rgba\(223,236,255,\.21\)/,
+  'Dark glass must contain a subtle soft edge refraction.');
+assert.match(runtimeRules, /--glass-refraction-top: rgba\(255,255,255,\.40\)/,
+  'Light glass must contain its own optical edge treatment.');
+assert.match(runtimeRules, /--glass-refraction-blur: blur\(44px\)/,
+  'Refraction must use stronger backdrop blur than the interior.');
+assert.match(runtimeRules, /\.html-play-compact::before,[\s\S]*?\.html-play-panel::before,[\s\S]*?\.html-runtime-options::before,[\s\S]*?\.html-runtime-select-trigger::before,[\s\S]*?\.html-play-device-switch::before \{/,
+  'All major runtime surfaces must get optical edge refraction.');
+assert.match(runtimeRules, /-webkit-backdrop-filter: var\(--glass-refraction-blur\)/);
+assert.match(runtimeRules, /backdrop-filter: var\(--glass-refraction-blur\)/);
+assert.match(runtimeRules, /-webkit-mask-composite: xor;[\s\S]*?mask-composite: exclude;/,
+  'Refracted edge must be a masked perimeter with transparent center.');
+assert.match(runtimeRules, /filter: blur\(1\.6px\)/,
+  'The edge must be feathered rather than a hard stroke.');
+assert.doesNotMatch(runtimeRules, /box-shadow:\s*inset/,
+  'Refraction must not reintroduce an inset border.');
+
 assert.match(runtimeRules, /--glass-option-hover: rgba\(0,0,0,\.26\)/);
 assert.match(runtimeRules, /--glass-option-selected: rgba\(0,0,0,\.33\)/);
 assert.match(runtimeRules, /--glass-option-hover: rgba\(255,255,255,\.30\)/);
