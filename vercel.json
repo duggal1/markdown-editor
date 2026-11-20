@@ -2,11 +2,11 @@
   "rewrites": [
     {
       "source": "/slug/:id",
-      "destination": "/api/site?id=:id"
+      "destination": "/index.html"
     },
     {
       "source": "/slug/:id/:path*",
-      "destination": "/api/site?id=:id"
+      "destination": "/index.html"
     },
     {
       "source": "/play/local/:id",
