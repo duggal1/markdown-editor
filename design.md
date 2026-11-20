@@ -65,3 +65,12 @@ The embedded iframe has an actual **306px layout viewport** and a visible 623px 
 - For iPhone frame preview, hide scrollbar *chrome* inside the sandboxed iframe without disabling mouse, touch or keyboard scrolling. On desktop, tint scrollbar thumbs dark over dark HTML and light over light HTML. Do not replace them with bright grey browser bars.
 - Test dark and light glass variables, translucent backgrounds, **absence of any positive-width runtime border or inset strokes**, opacity-only hover/selected backgrounds, nonzero backdrop blur, fixed SVG frame geometry, removal of duplicate bezels, custom dropdown stacking, and iPhone scrollbar hiding with scrolling preserved.
 - Run the complete CI suite and the production build. Merge only after checks pass and verify the exact production deployment commit.
+
+## Public HTML routing and share dialog (November 2026)
+
+- The canonical URL has **no trailing slash**: `/play/html-xxxxx`. Vercel sets `trailingSlash: false` so older slash-suffixed links redirect instead of 404ing.
+- The server's Blob status is necessary but insufficient: verify the actual public player entrypoint with an HTTP HEAD before showing a document as Live.
+- For HTML up to 256 KiB, publish and commit within a single API round trip; larger files retain 10 MiB chunking. Never issue an immediate second upload after a completed inline publish.
+- Keep the HTML publishing and Markdown sharing dialogs visually simple: Geist regular/normal-weight type, no bold title or controls, no visible decorative border. Use near-black (`#080809`) for the modal, `#111113` for its file card and `#161619` for the link field.
+- Copy and Done are at least 35–36px tall with balanced horizontal padding around 20–21px, without bloated descriptions or saturated decorations.
+- Do not touch the player's upper-left runtime panel, FPS toggle, device switch, or iPhone frame while changing share-dialog styling.

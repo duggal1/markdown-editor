@@ -15,9 +15,8 @@ export default function HtmlSiteDialog({ documentId, title, getCurrent, onClose 
   onClose: () => void;
 }) {
   const motionOff = useReducedMotion();
-  const press = { whileTap: motionOff ? undefined : { scale: 0.96 },
-    whileHover: motionOff ? undefined : { y: -1 },
-    transition: { type: 'spring' as const, stiffness: 470, damping: 32 } };
+  const press = { whileTap: motionOff ? undefined : { scale: 0.985 },
+    transition: { duration: motionOff ? 0 : 0.17, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } };
   const [record, setRecord] = useState<SiteRecord | null>(() => readSiteRecord(documentId));
   // A local syncedVersion cannot establish that a public link still works.
   // It is verified against the server before it becomes copyable.
@@ -35,7 +34,13 @@ export default function HtmlSiteDialog({ documentId, title, getCurrent, onClose 
       // A legacy local record should receive a short /play/ URL even when
       // opened directly from Write mode (where auto-publish is not running).
       void publishHtml(latest!).then(nextRecord => {
-        if (!cancelled) { setRecord(nextRecord); setStatus('syncing'); setVerified(false); }
+        if (!cancelled) {
+          const ready = Boolean(nextRecord.syncedVersion) &&
+            nextRecord.syncedVersion === latest!.updatedAt;
+          setRecord(nextRecord);
+          setStatus(ready ? 'synced' : 'syncing');
+          setVerified(ready);
+        }
       }).catch(cause => {
         if (!cancelled) { setStatus('error'); setError(String(cause)); }
       });
@@ -88,7 +93,16 @@ export default function HtmlSiteDialog({ documentId, title, getCurrent, onClose 
     try {
       const next = await publishHtml(doc!);
       setRecord(next);
-      queueSiteSync(doc!, true, true);
+      // A tiny HTML page is already fully committed after publishHtml().
+      // Do not send it through a second forced upload.
+      if (next.syncedVersion === doc!.updatedAt) {
+        setVerified(true);
+        setStatus('synced');
+      } else {
+        setVerified(false);
+        setStatus('syncing');
+        if (!next.syncedVersion) queueSiteSync(doc!, true);
+      }
     } catch (cause) {
       setStatus('error');
       setError(cause instanceof Error ? cause.message : 'Could not publish HTML');

@@ -62,4 +62,22 @@ assert.match(htmlDialog, /setVerified\(false\)/);
 assert.match(htmlDialog, /publishHtml\(latest!\)/,
   'Preexisting legacy links should upgrade even when user shares from Write mode.');
 assert.match(design, /A globally sequential/);
+// Normal-weight, borderless controls should win the final cascade.
+const polished = css.slice(css.indexOf('/* Hosted/share modal polish:'));
+assert.ok(polished.startsWith('/* Hosted/share modal polish:'),
+  'Share-dialog polish must be placed after legacy dialog rules.');
+assert.match(polished, /#html-site-dialog \.flow-dialog-heading h2,[\s\S]*?font-weight:450;/);
+assert.match(polished, /#html-site-dialog \.flow-dialog-file-text strong,[\s\S]*?font-weight:450;/);
+assert.match(polished, /#html-site-dialog \.flow-dialog-button,[\s\S]*?font-weight:450;/);
+assert.match(polished, /#html-site-dialog \.flow-dialog-link \.flow-dialog-button,[\s\S]*?padding:0 20px;/);
+assert.match(polished, /#html-site-dialog \.flow-dialog-footer \.flow-dialog-neutral,[\s\S]*?padding:0 21px;/);
+assert.doesNotMatch(polished, /\.html-play-(?:panel|compact|chrome|page|toggle)/,
+  'Share dialog polish must never style runtime FPS controls.');
+assert.match(htmlDialog, /if \(next\.syncedVersion === doc!\.updatedAt\)/,
+  'A committed small page must immediately transition to Live.');
+assert.doesNotMatch(htmlDialog, /queueSiteSync\(doc!, true, true\)/,
+  'A completed small publish must not trigger an immediate second upload.');
+assert.match(host, /return ready \? existing : \{ \.\.\.existing, syncedVersion: 0 \};/,
+  'A broken public route cannot be treated as Live by an old cached timestamp.');
+
 console.log('Delete batching, rollback, dialogs, server readiness and fullscreen state checks passed.');

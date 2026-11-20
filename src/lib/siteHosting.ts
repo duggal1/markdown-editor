@@ -8,6 +8,7 @@ const LEGACY_PREFIX = 'flow.html-site.legacy.v1.';
 const ID = /^(?:[A-Za-z0-9_-]{12}|html-[a-z0-9]{5})$/;
 const SECRET = /^[A-Za-z0-9_-]{43}$/;
 const MAX_BYTES = 10 * 1024 * 1024;
+const FAST_PUBLISH_BYTES = 256 * 1024;
 const CHARS_PER_CHUNK = 210_000;
 const jobs = new Map<string, {
   latest: FlowDocument; timer: number | null; work: Promise<void>;
@@ -19,7 +20,7 @@ export function isHtmlPage(doc: FlowDocument | null | undefined): boolean {
     (doc.language === 'html' || detectRawCode(doc.markdown) === 'html'));
 }
 export function siteUrl(id: string): string {
-  return window.location.origin + (id.startsWith('html-') ? '/play/' : '/slug/') + encodeURIComponent(id) + '/';
+  return window.location.origin + (id.startsWith('html-') ? '/play/' : '/slug/') + encodeURIComponent(id);
 }
 export function localHtmlUrl(id: string): string {
   return window.location.origin + '/play/local/' + encodeURIComponent(id);
@@ -51,7 +52,16 @@ async function send(method: 'POST' | 'PUT' | 'DELETE', body: object) {
   if (!response.ok) throw new Error(json?.error || 'HTML publishing failed (' + response.status + ')');
   return json;
 }
-/** Never call a saved link live until Vercel confirms committed content. */
+/** Verify that the actual public player route exists on this deployment.
+ * Blob metadata alone cannot detect a missing Vercel SPA rewrite. */
+async function verifyPublicRoute(id: string, signal?: AbortSignal): Promise<boolean> {
+  const response = await fetch(siteUrl(id), {
+    method: 'HEAD', signal, cache: 'no-store',
+  });
+  return response.ok && (response.headers.get('content-type') || '').includes('text/html');
+}
+
+/** Never claim "Live" merely because a Blob was committed. */
 export async function verifyHostedHtml(id: string, signal?: AbortSignal): Promise<boolean> {
   if (!ID.test(id)) return false;
   const response = await fetch('/api/site?id=' + encodeURIComponent(id) + '&status=1', {
@@ -59,7 +69,8 @@ export async function verifyHostedHtml(id: string, signal?: AbortSignal): Promis
   });
   if (!response.ok) return false;
   const value = await response.json().catch(() => null) as { published?: boolean } | null;
-  return value?.published === true;
+  if (value?.published !== true) return false;
+  return verifyPublicRoute(id, signal);
 }
 
 function chunkText(source: string): string[] {
@@ -138,26 +149,40 @@ export async function publishHtml(doc: FlowDocument): Promise<SiteRecord> {
   // Existing 12-character links are upgraded on publish, but retained as
   // aliases so links already shared with other people do not suddenly die.
   if (existing?.id.startsWith('html-')) {
-    if (!await verifyHostedHtml(existing.id).catch(() => false)) queueSiteSync(doc, true, true);
-    else queueSiteSync(doc, true);
-    return existing;
+    const ready = await verifyHostedHtml(existing.id).catch(() => false);
+    queueSiteSync(doc, true, !ready);
+    // Never report an old local timestamp as live after the public route
+    // fails its actual HTTP health check.
+    return ready ? existing : { ...existing, syncedVersion: 0 };
   }
   const promise = (async () => {
     signal(doc.id, 'syncing');
     try {
       if (new Blob([doc.markdown]).size > MAX_BYTES) throw new Error('HTML exceeds the 10 MB publishing limit.');
-      const created = await send('POST', {}) as { id?: string; secret?: string };
+      // Small HTML pages use one API request. Bigger pages keep the same
+      // bounded chunk upload path, including the existing 10 MiB limit.
+      const size = new Blob([doc.markdown]).size;
+      const created = await send('POST', size <= FAST_PUBLISH_BYTES
+        ? { html: doc.markdown } : {}) as {
+          id?: string; secret?: string; published?: boolean;
+        };
       if (!created || typeof created.id !== 'string' || !ID.test(created.id) ||
           typeof created.secret !== 'string' || !SECRET.test(created.secret)) {
         throw new Error('Cloud returned an invalid site ID.');
       }
-      const record = { id: created.id, secret: created.secret, syncedVersion: 0 };
+      const ready = Boolean(created.published) &&
+        await verifyPublicRoute(created.id).catch(() => false);
+      const record = { id: created.id, secret: created.secret,
+        syncedVersion: ready ? doc.updatedAt : 0 };
       if (existing) {
         // Preserve the old publishing credentials for eventual revocation.
         localStorage.setItem(LEGACY_PREFIX + doc.id, JSON.stringify(existing));
       }
       saveSiteRecord(doc.id, record);
-      queueSiteSync(doc, true);
+      if (ready) signal(doc.id, 'synced');
+      else if (created.published) {
+        signal(doc.id, 'error', 'HTML was saved, but the public page could not be opened.');
+      } else queueSiteSync(doc, true);
       return record;
     } catch (error) {
       signal(doc.id, 'error', error instanceof Error ? error.message : 'Cloud hosting failed');
