@@ -60,21 +60,25 @@ const main = read('src/main.tsx');
 const store = read('src/lib/store.ts');
 const accentSource = read('src/lib/accentTheme.ts');
 const accentModule = { exports: {} };
+const faviconLink = { rel: 'icon', href: '', type: '' };
+const faviconDocument = { documentElement: { dataset: {} }, querySelector: () => faviconLink };
 runInNewContext(ts.transpileModule(accentSource, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText, {
   module: accentModule,
   exports: accentModule.exports,
-  document: { documentElement: { dataset: {} } },
+  document: faviconDocument,
 });
 const { ACCENT_THEMES, DEFAULT_ACCENT, parseAccentTheme, applyAccentTheme } = accentModule.exports;
 assert.equal(ACCENT_THEMES.length, 8, 'Accent picker should expose eight curated options.');
-assert.equal(DEFAULT_ACCENT, 'orange', 'Orange remains the default theme.');
+assert.equal(DEFAULT_ACCENT, 'purple', 'Purple is the default accent for new workspaces.');
 assert.equal(parseAccentTheme('sky'), 'sky');
 assert.equal(parseAccentTheme('purple'), 'purple');
-assert.equal(parseAccentTheme('unknown'), 'orange', 'Invalid preferences must fall back safely.');
-assert.equal(parseAccentTheme(null), 'orange');
+assert.equal(parseAccentTheme('unknown'), 'purple', 'Invalid preferences must fall back to purple safely.');
+assert.equal(parseAccentTheme(null), 'purple');
 assert.equal(applyAccentTheme('teal'), 'teal');
+assert.match(decodeURIComponent(faviconLink.href), /#0d9488/, 'The favicon must follow the selected accent.');
+assert.equal(faviconDocument.documentElement.dataset.accent, 'teal');
 
 assert.match(store, /accentTheme\?: AccentTheme/, 'Existing saved preferences must allow the accent key.');
 assert.match(main, /applyAccentTheme\(savedAppearance\.accentTheme\)/,
