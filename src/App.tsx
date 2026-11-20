@@ -1320,9 +1320,6 @@ export default function App() {
             whileTap={motionOff ? undefined : { scale: 0.985 }}
             transition={motionOff ? { duration: 0 } : { duration: 0.17, ease: [0.22, 1, 0.36, 1] }}>
             <Icon name="edit" size={15}/><span>Draw</span></motion.a>
-          {activeHtml && <motion.button {...pressMotion} type="button" className="share-button html-view-button"
-            title="View full HTML without the editor" aria-label="View full HTML"
-            onClick={openFullHtml}><Icon name="eye" size={15} /><span>Full HTML</span></motion.button>}
           <motion.button {...pressMotion} type="button" className="share-button"
             title={activeHtml ? 'Share interactive HTML' : 'Share page'} aria-label="Share page" disabled={!active || Boolean(active.asset)}
             onClick={() => setShareOpen(true)}><Icon name="link" size={15} /><span>Share</span></motion.button>
