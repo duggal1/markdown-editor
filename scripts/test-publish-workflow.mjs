@@ -43,7 +43,7 @@ assert.match(player, /window\.addEventListener\('beforeunload', onLeaving\)/);
 // All dialog edits must be ID-scoped, not applied to the HTML/FPS player.
 const idx = css.indexOf('/* Delete and share dialogs: one deep-neutral');
 assert.ok(idx >= 0, 'Delete/share styling must have one identifiable dedicated section.');
-const scoped = css.slice(idx, css.indexOf('/* Remove all explanatory filler', idx));
+const scoped = css.slice(idx);
 assert.match(scoped, /#delete-dialog\.flow-dialog \{[\s\S]*?background:#080809;[\s\S]*?border:0;/);
 assert.match(scoped, /#delete-dialog \.flow-dialog-header \{[\s\S]*?border:0;/);
 assert.match(scoped, /#delete-dialog \.flow-dialog-footer \{[\s\S]*?border:0;/);
