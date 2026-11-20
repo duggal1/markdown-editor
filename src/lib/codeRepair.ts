@@ -48,7 +48,9 @@ function repairPython(source: string): string {
   while (first < Math.min(lines.length, 8) && isWrapperLine(lines[first])) first++;
   let lastMeaningful = lines.length - 1;
   while (lastMeaningful >= 0 && !lines[lastMeaningful].trim()) lastMeaningful--;
-  if (first > 0 && first < lines.length && looksPython(lines[first])) {
+  // Leading blank lines are legitimate Python formatting, not corruption.
+  const hasWrapperArtifact = lines.slice(0, first).some(line => Boolean(line.trim()));
+  if (hasWrapperArtifact && first < lines.length && looksPython(lines[first])) {
     const wrapped = lines.slice(0, first).some(line => FENCE.test(line.trim()));
     const closing = lastMeaningful > first && /^`{3,}$/.test(lines[lastMeaningful].trim());
     const end = wrapped && closing ? lastMeaningful : lines.length;
