@@ -13,7 +13,7 @@ Do **not** substitute a nearly opaque grey rectangle for glass. The page behind 
 - Dark HTML: near-black translucent glass (roughly 25–40% alpha), light text and **28–40px real** `backdrop-filter: blur(...) saturate(...)`. **Zero borders and zero inset hairlines.**
 - Light HTML: translucent off-white glass (roughly 30–45% alpha), charcoal text, the **same real** backdrop blur. **Zero borders and zero inset hairlines.**
 - The compact pill, expanded panel, selector trigger, open dropdown, selected row, and action controls must share one consistent optical system. Do not stack opaque backgrounds inside translucent containers.
-- Backdrop brightness is part of readability; avoid creating a solid dark sheet to hide content. **No border, no 1px stroke, no inset border-like shadow and no hard focus ring** on runtime UI. Define the edge through soft *optical refraction*: a masked, 5px-wide perimeter with stronger backdrop blur and very low-opacity directional illumination. Feather that perimeter rather than drawing a crisp ring; leave the center visually transparent and use no `border` property.
+- Backdrop brightness is part of readability; avoid creating a solid dark sheet to hide content. **No border, no 1px stroke, no inset border-like shadow and no hard focus ring** on runtime UI. Rely on spacing, contrast and transparent backdrop blur. No added outer shadow, glows, fake refraction layers, or CSS borders on the player controls.
 - Context comes from the embedded page's computed background color via the existing sandbox message bridge, not the editor theme. Both theme variants need to be visibly different and tested against dark and light HTML.
 - Keep **one authoritative set** of HTML runtime CSS rules. No accumulating overrides at the end of the stylesheet.
 
@@ -27,9 +27,14 @@ Do **not** substitute a nearly opaque grey rectangle for glass. The page behind 
 - Motion: transform and opacity only, ~160–230ms with decelerating easing, spring for taps; honor `prefers-reduced-motion`. No animated blur, shadow, layout shift, or continuous decorations.
 - Controls must not cover or intercept HTML beyond their small footprint. Hide remains available.
 
-## iPhone-only light surface
+## iPhone: respect the embedded HTML theme
 
-When the Desktop/iPhone toggle is on **iPhone**, set only the outer player background to `#fafafa` (neutral-50) and the SVG frame/screen backing to `#f5f5f5` (neutral-100). Use the supplied SVG's light colors. This is unconditional for iPhone mode, not dependent on the HTML document's own theme. Do not recolor user HTML. **Desktop mode and every part of the top-left controls, FPS meter, dropdown, hover/tap animations and transitions must remain exactly as they were before PR #42.** No new animation or styling rules on the controls for this feature.
+The only permitted background change is inside the iPhone preview and is based on the **embedded HTML's computed light/dark tone**, not the editor's theme or simply selecting iPhone.
+
+- Dark HTML in iPhone mode: keep the original dark player canvas and dark SVG frame. Never force a white background.
+- Light HTML in iPhone mode: use neutral-50 (`#fafafa`) outside the phone and neutral-100 (`#f5f5f5`) behind the original SVG and clipped screen. Do not recolor the embedded document.
+- Desktop: no additional color or theme rules.
+- Top-left FPS pill, device switch, resolution and frame-rate dropdowns: restore the pre-refraction layout, colors, and interactions; no new decoration, shadow or motion.
 
 ## iPhone: render the supplied SVG, not an invented phone
 
@@ -48,5 +53,5 @@ The embedded iframe has an actual **306px layout viewport** and a visible 623px 
 - CSS lives in the one HTML runtime section in `src/styles.css`. Remove superseded rules rather than appending competing patches.
 - Keep the HTML iframe sandbox, public routes, autosync and FPS bridge working.
 - For iPhone frame preview, hide scrollbar *chrome* inside the sandboxed iframe without disabling mouse, touch or keyboard scrolling. On desktop, tint scrollbar thumbs dark over dark HTML and light over light HTML. Do not replace them with bright grey browser bars.
-- Test dark and light glass variables, translucent backgrounds, **absence of any positive-width runtime border or inset strokes**, the masked refraction perimeter on the main pill, panel, custom dropdown and selectors (including fallback support), opacity-only hover/selected backgrounds, nonzero backdrop blur, fixed SVG frame geometry, removal of duplicate bezels, custom dropdown stacking, and iPhone scrollbar hiding with scrolling preserved.
+- Test dark and light glass variables, translucent backgrounds, **absence of any positive-width runtime border or inset strokes**, opacity-only hover/selected backgrounds, nonzero backdrop blur, fixed SVG frame geometry, removal of duplicate bezels, custom dropdown stacking, and iPhone scrollbar hiding with scrolling preserved.
 - Run the complete CI suite and the production build. Merge only after checks pass and verify the exact production deployment commit.
