@@ -44,11 +44,10 @@ const FPS_OPTIONS: RuntimeOption<number>[] = [
   { value: 60, label: '60 FPS' },
   { value: 120, label: '120 FPS' },
 ];
-const smoothEase = [0.22, 1, 0.36, 1] as [number, number, number, number];
+const spring = { type: 'spring' as const, stiffness: 475, damping: 33 };
 
 export default function HtmlPlayPage() {
   const reduce = useReducedMotion();
-  const smooth = { type: 'tween' as const, duration: reduce ? 0 : .19, ease: smoothEase };
   const [glass, setGlass] = useState<'dark' | 'light'>('dark');
   const [source, setSource] = useState<string | null>(null);
   const [title, setTitle] = useState('HTML preview');
@@ -206,7 +205,8 @@ export default function HtmlPlayPage() {
       ? { width: 306, height: 623 }
       : frameStyle} onLoad={sendSettings} />;
 
-  return <main className="html-play-page" data-glass={glass} aria-label="Full HTML preview">
+  return <main className="html-play-page" data-glass={glass}
+    data-preview-device={phone ? 'phone' : 'desktop'} aria-label="Full HTML preview">
     <div className="html-play-surface" ref={surface}>
       {error ? <div className="html-play-error" role="alert">
         <strong>Page unavailable</strong><span>{error}</span>
@@ -214,42 +214,34 @@ export default function HtmlPlayPage() {
       </div> : !html ? <div className="html-play-loading" role="status">Opening HTML…</div>
         : phone
           ? <div className="html-play-phone">
-              <motion.div className="html-iphone-stage" style={{
+              <div className="html-iphone-stage" style={{
                 width: 340 * phoneScale, height: 700 * phoneScale,
-              }}
-                initial={reduce ? false : { opacity: 0, scale: .992 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ type: 'tween', duration: reduce ? 0 : .24, ease: smoothEase }}>
+              }}>
                 <div style={{ width: 340, height: 700, transformOrigin: 'top left',
                   transform: 'scale(' + phoneScale + ')' }}>
-                  <IPhoneFrame isDark={glass === 'dark'}>{frame}</IPhoneFrame>
+                  <IPhoneFrame isDark={false}>{frame}</IPhoneFrame>
                 </div>
-              </motion.div>
+              </div>
             </div>
-          : <motion.div className="html-play-desktop"
-              initial={reduce ? false : { opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ type: 'tween', duration: reduce ? 0 : .22, ease: smoothEase }}>
-              {frame}
-            </motion.div>}
+          : frame}
     </div>
     {controlsVisible && <div className="html-play-chrome" style={{ left }}>
       <motion.div className="html-play-compact"
-        initial={reduce ? false : { opacity: 0, y: -5, scale: .992 }}
+        initial={reduce ? false : { opacity: 0, y: -8, scale: .96 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: reduce ? 0 : .25, ease: [0.22, 1, 0.36, 1] }}>
         <motion.button type="button" className="html-play-drag"
           title="Drag controls horizontally" aria-label="Drag controls"
           onPointerDown={startDrag} onPointerMove={moveDrag}
           onPointerUp={stopDrag} onPointerCancel={stopDrag}
-          whileTap={reduce ? undefined : { scale: .985 }} transition={smooth}>
+          whileTap={reduce ? undefined : { scale: .92 }} transition={spring}>
           <HugeiconsIcon icon={DragDropVerticalIcon} size={16} strokeWidth={1.7} />
         </motion.button>
         <motion.button type="button" className="html-play-toggle"
           aria-label={expanded ? 'Collapse runtime controls' : 'Expand runtime controls'}
           aria-expanded={expanded} onClick={() => setExpanded(current => !current)}
-          whileHover={reduce ? undefined : { scale: 1.012 }}
-          whileTap={reduce ? undefined : { scale: .985 }} transition={smooth}>
+          whileHover={reduce ? undefined : { scale: 1.025 }}
+          whileTap={reduce ? undefined : { scale: .96 }} transition={spring}>
           <span className="html-play-led" />
           <span>{observedFps === null ? 'HTML' : observedFps + ' FPS'}</span>
           <motion.span className="html-play-chevron" animate={{ rotate: expanded ? 180 : 0 }}
@@ -260,28 +252,28 @@ export default function HtmlPlayPage() {
         <motion.button type="button" className="html-play-hide"
           title="Hide controls (Ctrl/⌘ Shift H)" aria-label="Hide runtime controls"
           onClick={() => setControlsVisible(false)}
-          whileHover={reduce ? undefined : { scale: 1.035 }}
-          whileTap={reduce ? undefined : { scale: .99 }} transition={smooth}>
+          whileHover={reduce ? undefined : { scale: 1.075 }}
+          whileTap={reduce ? undefined : { scale: .9 }} transition={spring}>
           <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.75} />
         </motion.button>
       </motion.div>
       <AnimatePresence initial={false}>
         {expanded && <motion.div className="html-play-panel"
-          initial={reduce ? false : { opacity: 0, y: -5, scale: .994 }}
+          initial={reduce ? false : { opacity: 0, y: -8, scale: .97 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={reduce ? { opacity: 0, transition: { duration: 0 } } :
-            { opacity: 0, y: -4, scale: .997 }}
+            { opacity: 0, y: -6, scale: .985 }}
           transition={{ duration: reduce ? 0 : .23, ease: [0.22, 1, 0.36, 1] }}>
           <div className="html-play-device-switch" role="group" aria-label="Device preview">
             <motion.button type="button" aria-pressed={!phone} onClick={() => setPhone(false)}
-              whileTap={reduce ? undefined : { scale: .99 }}
-              whileHover={reduce ? undefined : { y: -.5 }} transition={smooth}>
+              whileTap={reduce ? undefined : { scale: .97 }}
+              whileHover={reduce ? undefined : { y: -1 }} transition={spring}>
               <HugeiconsIcon icon={ComputerIcon} size={16} strokeWidth={1.6} /> Desktop
             </motion.button>
             <motion.button type="button" aria-pressed={Boolean(phone)}
               onClick={() => setPhone(true)}
-              whileTap={reduce ? undefined : { scale: .99 }}
-              whileHover={reduce ? undefined : { y: -.5 }} transition={smooth}>
+              whileTap={reduce ? undefined : { scale: .97 }}
+              whileHover={reduce ? undefined : { y: -1 }} transition={spring}>
               <HugeiconsIcon icon={SmartPhone01Icon} size={16} strokeWidth={1.6} /> iPhone
             </motion.button>
           </div>
@@ -292,19 +284,19 @@ export default function HtmlPlayPage() {
           <div className="html-play-panel-actions">
             <motion.button type="button"
               onClick={() => { setObservedFps(null); setReload(value => value + 1); }}
-              whileTap={reduce ? undefined : { scale: .985 }}
-              whileHover={reduce ? undefined : { y: -.5 }} transition={smooth}>
+              whileTap={reduce ? undefined : { scale: .95 }}
+              whileHover={reduce ? undefined : { y: -1 }} transition={spring}>
               <HugeiconsIcon icon={ReloadIcon} size={15} strokeWidth={1.65} /> Reload
             </motion.button>
             <motion.button type="button"
               onClick={() => void document.documentElement.requestFullscreen?.()}
-              whileTap={reduce ? undefined : { scale: .985 }}
-              whileHover={reduce ? undefined : { y: -.5 }} transition={smooth}>
+              whileTap={reduce ? undefined : { scale: .95 }}
+              whileHover={reduce ? undefined : { y: -1 }} transition={spring}>
               <HugeiconsIcon icon={Maximize01Icon} size={15} strokeWidth={1.65} /> Fullscreen
             </motion.button>
             {LOCAL && <motion.a href="/"
-              whileTap={reduce ? undefined : { scale: .985 }}
-              whileHover={reduce ? undefined : { y: -.5 }} transition={smooth}>
+              whileTap={reduce ? undefined : { scale: .95 }}
+              whileHover={reduce ? undefined : { y: -1 }} transition={spring}>
               <HugeiconsIcon icon={ArrowLeft01Icon} size={15} strokeWidth={1.65} /> Editor
             </motion.a>}
           </div>
