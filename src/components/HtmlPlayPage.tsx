@@ -6,18 +6,12 @@ import {
   Cancel01Icon, ReloadIcon, Maximize01Icon, ArrowLeft01Icon,
 } from '@hugeicons/core-free-icons';
 import RuntimeSelect, { type RuntimeOption } from './RuntimeSelect';
+import IPhoneFrame from './IPhoneFrame';
 import { htmlPreviewDocument } from '../lib/htmlPreview';
 import { loadDoc } from '../lib/store';
 import { isHtmlPage } from '../lib/siteHosting';
 
 type Resolution = 'auto' | '1920x1080' | '1280x720' | '800x600';
-type IPhoneModel = 'iphone16' | 'iphone16pro' | 'iphone17pro' | 'iphone17promax';
-const IPHONES: Record<IPhoneModel, { name: string; width: number; height: number }> = {
-  iphone16: { name: 'iPhone 16', width: 393, height: 852 },
-  iphone16pro: { name: 'iPhone 16 Pro', width: 402, height: 874 },
-  iphone17pro: { name: 'iPhone 17 Pro', width: 402, height: 874 },
-  iphone17promax: { name: 'iPhone 17 Pro Max', width: 440, height: 956 },
-};
 const PRESETS: Record<Exclude<Resolution, 'auto'>, [number, number]> = {
   '1920x1080': [1920, 1080], '1280x720': [1280, 720], '800x600': [800, 600],
 };
@@ -44,11 +38,6 @@ const DESKTOP_OPTIONS: RuntimeOption<Resolution>[] = [
   { value: '1280x720', label: '1280 × 720' },
   { value: '800x600', label: '800 × 600' },
 ];
-const IPHONE_OPTIONS: RuntimeOption<IPhoneModel>[] = (
-  Object.entries(IPHONES) as [IPhoneModel, typeof IPHONES[IPhoneModel]][]
-).map(([value, profile]) => ({
-  value, label: profile.name + ' · ' + profile.width + ' × ' + profile.height,
-}));
 const FPS_OPTIONS: RuntimeOption<number>[] = [
   { value: 0, label: 'Auto' },
   { value: 30, label: '30 FPS' },
@@ -66,7 +55,7 @@ export default function HtmlPlayPage() {
   const [routePath, setRoutePath] = useState(FIRST_ROUTE);
   const [frameRoute, setFrameRoute] = useState(FIRST_ROUTE);
   const [resolution, setResolution] = useState<Resolution>('auto');
-  const [phone, setPhone] = useState<IPhoneModel | null>(null);
+  const [phone, setPhone] = useState(false);
   const [fpsLimit, setFpsLimit] = useState(0);
   const [observedFps, setObservedFps] = useState<number | null>(null);
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -169,24 +158,21 @@ export default function HtmlPlayPage() {
     };
   }, []);
 
-  // Keep the HTML opaque-origin and outside the React tree. Device profiles
-  // use actual iframe layout viewport widths; CSS media queries reflow at
-  // 393/402/440px rather than stretching an image of a desktop page.
+  // The original iPhone artboard is 340×700. Its iframe viewport is 306×623
+  // after the supplied 44px top inset. Scale the entire artboard uniformly.
   const html = useMemo(() => source ? htmlPreviewDocument(source, {
     runtime: true, route: frameRoute,
   }) : null, [source, frameRoute]);
-  const dimensions = phone ? [IPHONES[phone].width, IPHONES[phone].height]
-    : resolution === 'auto' ? null : PRESETS[resolution];
+  const dimensions = resolution === 'auto' ? null : PRESETS[resolution];
   const selectedWidth = dimensions?.[0] || 0;
   const selectedHeight = dimensions?.[1] || 0;
-  const bezel = 14;
-  const shellWidth = selectedWidth + bezel * 2;
-  const shellHeight = selectedHeight + bezel * 2;
   const scale = dimensions
-    ? Math.min((viewport.width - (phone ? 24 : 0)) / (phone ? shellWidth : selectedWidth),
-      (viewport.height - (phone ? 24 : 0)) / (phone ? shellHeight : selectedHeight), 1)
+    ? Math.min(viewport.width / selectedWidth, viewport.height / selectedHeight, 1)
     : 1;
   const safeScale = Math.max(0.05, scale);
+  const phoneScale = Math.min(1,
+    Math.max(.05, (viewport.width - 24) / 340),
+    Math.max(.05, (viewport.height - 24) / 700));
   const frameStyle: CSSProperties = dimensions
     ? {
       position: 'absolute', width: selectedWidth, height: selectedHeight,
@@ -206,7 +192,7 @@ export default function HtmlPlayPage() {
   }
   function moveDrag(event: PointerEvent<HTMLButtonElement>) {
     if (!dragging.current) return;
-    const max = Math.max(8, window.innerWidth - (expanded ? 268 : 170) - 8);
+    const max = Math.max(8, window.innerWidth - (expanded ? 252 : 170) - 8);
     setLeft(Math.max(8, Math.min(max, dragging.current.left + event.clientX - dragging.current.x)));
   }
   function stopDrag() { dragging.current = null; }
@@ -216,7 +202,7 @@ export default function HtmlPlayPage() {
     ref={iframe} title={title} srcDoc={html}
     sandbox="allow-scripts allow-forms allow-pointer-lock allow-downloads allow-modals"
     referrerPolicy="no-referrer" style={phone
-      ? { width: selectedWidth, height: selectedHeight }
+      ? { width: 306, height: 623 }
       : frameStyle} onLoad={sendSettings} />;
 
   return <main className="html-play-page" data-glass={glass} aria-label="Full HTML preview">
@@ -227,22 +213,12 @@ export default function HtmlPlayPage() {
       </div> : !html ? <div className="html-play-loading" role="status">Opening HTML…</div>
         : phone
           ? <div className="html-play-phone">
-              <div className="html-play-device" style={{
-                width: shellWidth, height: shellHeight, transform: 'scale(' + safeScale + ')',
+              <div className="html-iphone-stage" style={{
+                width: 340 * phoneScale, height: 700 * phoneScale,
               }}>
-                <div className="html-play-device-screen" style={{
-                  left: bezel, top: bezel, width: selectedWidth, height: selectedHeight,
-                }}>{frame}</div>
-                <svg className="html-play-device-bezel"
-                  width={shellWidth} height={shellHeight}
-                  viewBox={'0 0 ' + shellWidth + ' ' + shellHeight}
-                  aria-hidden="true">
-                  <rect fill="transparent" x="3" y="3"
-                    width={shellWidth - 6} height={shellHeight - 6}
-                    rx="55" ry="55" stroke="#29292b" strokeWidth="5" />
-                </svg>
-                <div className="html-play-device-island" aria-hidden="true">
-                  <i className="html-play-device-camera" />
+                <div style={{ width: 340, height: 700, transformOrigin: 'top left',
+                  transform: 'scale(' + phoneScale + ')' }}>
+                  <IPhoneFrame isDark={glass === 'dark'}>{frame}</IPhoneFrame>
                 </div>
               </div>
             </div>
@@ -288,23 +264,20 @@ export default function HtmlPlayPage() {
             { opacity: 0, y: -6, scale: .985 }}
           transition={{ duration: reduce ? 0 : .23, ease: [0.22, 1, 0.36, 1] }}>
           <div className="html-play-device-switch" role="group" aria-label="Device preview">
-            <motion.button type="button" aria-pressed={!phone} onClick={() => setPhone(null)}
+            <motion.button type="button" aria-pressed={!phone} onClick={() => setPhone(false)}
               whileTap={reduce ? undefined : { scale: .97 }}
               whileHover={reduce ? undefined : { y: -1 }} transition={spring}>
               <HugeiconsIcon icon={ComputerIcon} size={16} strokeWidth={1.6} /> Desktop
             </motion.button>
             <motion.button type="button" aria-pressed={Boolean(phone)}
-              onClick={() => setPhone(current => current || 'iphone17pro')}
+              onClick={() => setPhone(true)}
               whileTap={reduce ? undefined : { scale: .97 }}
               whileHover={reduce ? undefined : { y: -1 }} transition={spring}>
               <HugeiconsIcon icon={SmartPhone01Icon} size={16} strokeWidth={1.6} /> iPhone
             </motion.button>
           </div>
-          {phone
-            ? <RuntimeSelect label="iPhone" value={phone} options={IPHONE_OPTIONS}
-                onChange={setPhone} />
-            : <RuntimeSelect label="Resolution" value={resolution} options={DESKTOP_OPTIONS}
-                onChange={setResolution} />}
+          {!phone && <RuntimeSelect label="Resolution" value={resolution}
+            options={DESKTOP_OPTIONS} onChange={setResolution} />}
           <RuntimeSelect label="Frame rate" value={fpsLimit} options={FPS_OPTIONS}
             onChange={setFpsLimit} />
           <div className="html-play-panel-actions">

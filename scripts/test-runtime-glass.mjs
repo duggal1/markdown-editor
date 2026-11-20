@@ -96,5 +96,32 @@ assert.match(select, /ArrowDown/);
 assert.match(select, /Escape/);
 assert.doesNotMatch(runtime, /<select(?:\s|>)/, 'Runtime must use custom dropdowns.');
 assert.match(css, /\.html-play-page\[data-glass='light'\]/);
-assert.match(css, /\.preview-pane\[data-glass='dark'\] \.html-preview-popout/);
-console.log('HTML dynamic contrast, custom controls, popout and keyboard behavior tests passed.');
+assert.match(css, /\.preview-pane\[data-glass='light'\] \.html-preview-popout/);
+assert.match(css, /\/\* HTML Runtime\. This is the only CSS definition/);
+assert.doesNotMatch(css, /\/\* Adaptive HTML runtime\./,
+  'Legacy competing HTML player CSS rules must be removed.');
+assert.match(css, /--glass-panel: rgba\(9,12,19,\.30\)/,
+  'Dark glass must be translucent, not solid charcoal.');
+assert.match(css, /--glass-panel: rgba\(250,250,253,\.39\)/,
+  'Light glass must remain translucent.');
+assert.match(css, /--glass-menu: rgba\(10,13,20,\.36\)/,
+  'Dark dropdown must be actual glass, not a solid menu.');
+assert.match(css, /--glass-menu: rgba\(252,252,254,\.42\)/,
+  'Light dropdown must be actual glass.');
+assert.match(css, /--glass-blur: blur\(36px\)/,
+  'Both glass themes must use a substantial optical blur.');
+assert.match(css, /backdrop-filter: var\(--glass-blur\)/,
+  'Pill, panel, and dropdown must use actual backdrop-filter.');
+assert.match(css, /\.html-runtime-field\[data-open='true'\] \{ z-index: 20; \}/,
+  'Open dropdown must layer above neighboring action controls.');
+assert.match(select, /data-open=\{open\}/,
+  'Dropdown must expose the stacking state.');
+assert.match(select, /createPortal\(menu, host\)/,
+  'The dropdown must escape the panel backdrop root so it blurs the real HTML scene.');
+assert.match(select, /querySelector<HTMLElement>\('\.html-play-page'\)/,
+  'Portaled dropdowns must inherit the HTML page dark\/light glass theme.');
+assert.match(css, /\.html-runtime-options \{\s*position: fixed; z-index: 250;/,
+  'The dropdown must float over controls instead of clipping within its trigger.');
+assert.match(css, /\.html-iphone-content \{[\s\S]*?width: 306px; height: 667px;[\s\S]*?padding-top: 44px;/,
+  'Original SVG interior dimensions and top inset must be preserved.');
+console.log('Dynamic dark/light glass, translucency, blur, dropdown stacking and raw iPhone geometry passed.');
