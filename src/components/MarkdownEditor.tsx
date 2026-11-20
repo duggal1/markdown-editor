@@ -179,7 +179,8 @@ function MarkdownEditor({
     const setLanguage = (source: string) => {
       // A damaged HTML/Python paste still needs a code gutter and highlighting
       // before the user clicks Auto Fix. Other languages use existing detection.
-      const language = detectRawCode(source) || repairLanguage(source, fileLanguage);
+      const language = fileLanguage === 'html' || fileLanguage === 'python'
+        ? fileLanguage : detectRawCode(source) || repairLanguage(source);
       view.dom.classList.toggle('raw-code', Boolean(language));
       if (language === activeLanguage) return;
       activeLanguage = language;
