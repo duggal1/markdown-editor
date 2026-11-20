@@ -15,8 +15,6 @@ Do **not** substitute a nearly opaque grey rectangle for glass. The page behind 
 - The compact pill, expanded panel, selector trigger, open dropdown, selected row, and action controls must share one consistent optical system. Do not stack opaque backgrounds inside translucent containers.
 - Backdrop brightness is part of readability; avoid creating a solid dark sheet to hide content. **No border, no 1px stroke, no inset border-like shadow and no hard focus ring** on runtime UI. Define the edge through soft *optical refraction*: a masked, 5px-wide perimeter with stronger backdrop blur and very low-opacity directional illumination. Feather that perimeter rather than drawing a crisp ring; leave the center visually transparent and use no `border` property.
 - Context comes from the embedded page's computed background color via the existing sandbox message bridge, not the editor theme. Both theme variants need to be visibly different and tested against dark and light HTML.
-- Light HTML makes the **entire player canvas** `#fafafa` (Tailwind neutral-50). In phone mode the outer canvas remains neutral-50, while the supplied SVG artboard and clipped screen background use `#f5f5f5` (neutral-100) behind the actual iframe. Never recolor the user's actual HTML, which remains inside the sandbox.
-- Dark HTML retains the existing dark canvas and dark phone backing. All color changes must follow the existing theme-detection message and remain correct after a runtime color change.
 - Keep **one authoritative set** of HTML runtime CSS rules. No accumulating overrides at the end of the stylesheet.
 
 ## Hierarchy and geometry
@@ -26,8 +24,12 @@ Do **not** substitute a nearly opaque grey rectangle for glass. The page behind 
 - Custom dropdowns: optically matching glass, readable 11–12px labels, 32–36px rows, rounded 10–12px; menus float above other controls. No OS-native opaque select menu. **Hover and selection are dark black-opacity blur over dark HTML and off-white-opacity blur over light HTML. Never grey or solid selected backgrounds.**
 - A dropdown menu is portaled as a sibling of the blurred panel, inside the HTML player root; it must blur the **page behind it**, not merely another already-blurred surface. Recalculate its fixed anchor position on scroll and resize.
 - Icons: existing Hugeicons, 1.6–1.75 stroke; align to an optical grid. Mouse targets have `cursor: pointer`, while the drag grip uses `grab`.
-- Motion: **no springs or bounce, ever** in the HTML runtime. Use `motion/react` tween transitions with a monotonic cubic Bézier `[0.22,1,0.36,1]`, roughly 160–240ms, for tiny hover/tap transforms, the Desktop/iPhone crossfade, dropdown expansion, and selection. CSS background/color transitions use the same easing. Honor `prefers-reduced-motion` with zero-duration transitions. Do not animate expensive backdrop blur, shadow, layout, or continuous decorations.
+- Motion: transform and opacity only, ~160–230ms with decelerating easing, spring for taps; honor `prefers-reduced-motion`. No animated blur, shadow, layout shift, or continuous decorations.
 - Controls must not cover or intercept HTML beyond their small footprint. Hide remains available.
+
+## iPhone-only light surface
+
+When the Desktop/iPhone toggle is on **iPhone**, set only the outer player background to `#fafafa` (neutral-50) and the SVG frame/screen backing to `#f5f5f5` (neutral-100). Use the supplied SVG's light colors. This is unconditional for iPhone mode, not dependent on the HTML document's own theme. Do not recolor user HTML. **Desktop mode and every part of the top-left controls, FPS meter, dropdown, hover/tap animations and transitions must remain exactly as they were before PR #42.** No new animation or styling rules on the controls for this feature.
 
 ## iPhone: render the supplied SVG, not an invented phone
 
@@ -46,5 +48,5 @@ The embedded iframe has an actual **306px layout viewport** and a visible 623px 
 - CSS lives in the one HTML runtime section in `src/styles.css`. Remove superseded rules rather than appending competing patches.
 - Keep the HTML iframe sandbox, public routes, autosync and FPS bridge working.
 - For iPhone frame preview, hide scrollbar *chrome* inside the sandboxed iframe without disabling mouse, touch or keyboard scrolling. On desktop, tint scrollbar thumbs dark over dark HTML and light over light HTML. Do not replace them with bright grey browser bars.
-- Test dark and light glass variables, neutral-50 player canvas, neutral-100 phone backing, translucent backgrounds, **absence of any positive-width runtime border or inset strokes**, the masked refraction perimeter on the main pill, panel, custom dropdown and selectors (including fallback support), opacity-only hover/selected backgrounds, nonzero backdrop blur, fixed SVG frame geometry, no spring motion, removal of duplicate bezels, custom dropdown stacking, and iPhone scrollbar hiding with scrolling preserved.
+- Test dark and light glass variables, translucent backgrounds, **absence of any positive-width runtime border or inset strokes**, the masked refraction perimeter on the main pill, panel, custom dropdown and selectors (including fallback support), opacity-only hover/selected backgrounds, nonzero backdrop blur, fixed SVG frame geometry, removal of duplicate bezels, custom dropdown stacking, and iPhone scrollbar hiding with scrolling preserved.
 - Run the complete CI suite and the production build. Merge only after checks pass and verify the exact production deployment commit.
