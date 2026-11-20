@@ -120,7 +120,7 @@ assert.equal(formatMarkdownDocument(longFormatted), longFormatted);
 const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
 const action = readFileSync(new URL('../src/lib/autoMarkdownAction.ts', import.meta.url), 'utf8');
 const worker = readFileSync(new URL('../src/workers/autoMarkdown.ts', import.meta.url), 'utf8');
-assert.match(app, /await formatMarkdownAction\(source, \{ atDocumentStart: !selected && from === 0, selection: selected \}\)/);
+assert.match(app, /await formatMarkdownAction\(source, \{\s*atDocumentStart: !selected && from === 0, selection: selected,\s*\}\)/);
 assert.match(app, /onMouseDown=\{event => event.preventDefault\(\)\}/, 'Toolbar must preserve editor selection when clicked.');
 assert.match(app, /lineAt\(range.from\).from/, 'Selection formatting must work on complete Markdown lines.');
 assert.match(app, /range.to === endLineStart/, 'A selection ending at the next line start must not alter that line.');
