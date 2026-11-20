@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { motion, useReducedMotion } from 'motion/react';
 import DialogFrame from './DialogFrame';
 import { Icon } from './Icons';
 import {
@@ -13,6 +14,10 @@ export default function HtmlSiteDialog({ documentId, title, getCurrent, onClose 
   getCurrent: () => FlowDocument | null;
   onClose: () => void;
 }) {
+  const motionOff = useReducedMotion();
+  const press = { whileTap: motionOff ? undefined : { scale: 0.96 },
+    whileHover: motionOff ? undefined : { y: -1 },
+    transition: { type: 'spring' as const, stiffness: 470, damping: 32 } };
   const [record, setRecord] = useState<SiteRecord | null>(() => readSiteRecord(documentId));
   const [status, setStatus] = useState<SiteStatus>(() => {
     const previous = readSiteRecord(documentId);
@@ -75,48 +80,46 @@ export default function HtmlSiteDialog({ documentId, title, getCurrent, onClose 
   return <DialogFrame id="html-site-dialog" title="Publish HTML" icon="link"
     describedBy="html-site-description" busy={busy} onClose={onClose}
     footer={<>
-      {record && <button type="button" className="flow-dialog-button flow-dialog-danger"
-        disabled={busy} onClick={() => { void revoke(); }}>Stop hosting</button>}
+      {record && <motion.button {...press} type="button" className="flow-dialog-button flow-dialog-danger"
+        disabled={busy} onClick={() => { void revoke(); }}>Stop hosting</motion.button>}
       <span className="flow-dialog-footer-spacer" />
-      <button type="button" className="flow-dialog-button flow-dialog-neutral"
-        disabled={busy} onClick={onClose}>Done</button>
-      {(!published || status === 'error') && <button type="button"
+      <motion.button {...press} type="button" className="flow-dialog-button flow-dialog-neutral"
+        disabled={busy} onClick={onClose}>Done</motion.button>
+      {(!published || status === 'error') && <motion.button {...press} type="button"
         className="flow-dialog-button flow-dialog-contrast" disabled={busy}
         onClick={() => { void publish(); }}>
         {busy ? 'Publishing…' : record ? 'Retry publish' : 'Publish'}
-      </button>}
+      </motion.button>}
     </>}>
     <div className="flow-dialog-file">
       <span className="flow-dialog-file-icon"><Icon name="code" size={16} /></span>
       <span className="flow-dialog-file-text">
         <strong title={title}>{title || 'Untitled HTML'}</strong>
-        <small>Interactive HTML · up to 10 MB</small>
+        <small>Interactive HTML</small>
       </span>
       <span className="flow-dialog-readonly">Public link</span>
     </div>
-    <p id="html-site-description" className="flow-dialog-copy">
-      Your HTML is hosted as an interactive page. Anyone with the link can run
-      its scripts and access its public source. Updates publish automatically
-      while the editor is open. Other Markdown pages remain local.
-    </p>
+    <span id="html-site-description" className="html-site-visually-hidden">
+      Public HTML is accessible to anyone with the link.
+    </span>
     {record && <p className="flow-dialog-status" data-status={status} role="status"
       aria-live="polite">
       <span className="flow-dialog-status-dot" aria-hidden="true" />
-      {status === 'syncing' ? 'Uploading HTML in the background…'
-        : status === 'error' ? 'Upload failed · Local HTML is safe'
-          : 'Site published · Link is live'}
+      {status === 'syncing' ? 'Updating…'
+        : status === 'error' ? 'Upload failed'
+          : 'Live'}
     </p>}
     {published && record && <>
       <label className="flow-dialog-label" htmlFor="html-site-url">Public link</label>
       <div className="flow-dialog-link">
         <input id="html-site-url" value={siteUrl(record.id)} readOnly
           onFocus={event => event.currentTarget.select()} />
-        <button type="button" className="flow-dialog-button flow-dialog-contrast"
+        <motion.button {...press} type="button" className="flow-dialog-button flow-dialog-contrast"
           onClick={() => { void copy(); }}>
           <Icon name={copied ? 'check' : 'copy'} size={14} /> {copied ? 'Copied' : 'Copy'}
-        </button>
+        </motion.button>
       </div>
-      <p className="flow-dialog-hint">Routes continue under /slug/{record.id}/.</p>
+
     </>}
     {error && <p className="flow-dialog-error" role="alert">{error}</p>}
   </DialogFrame>;
