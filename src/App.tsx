@@ -13,7 +13,8 @@ import ShareDialog from './components/ShareDialog';
 import HtmlSiteDialog from './components/HtmlSiteDialog';
 import DialogFrame from './components/DialogFrame';
 import { queueSharedSync, readShareRecord, revokeCloudShare } from './lib/sharing';
-import { isHtmlPage, localHtmlUrl, publishHtml, queueSiteSync, readSiteRecord, revokeHtml } from './lib/siteHosting';
+import { isHtmlPage, localHtmlUrl, publishHtml, queueSiteSync, readSiteRecord, revokeHtml,
+  siteUrl, verifyHostedHtml } from './lib/siteHosting';
 import { detectRawCode, isMarkdownFile, languageForFile } from './lib/code';
 import { svgPreviewDocument } from './lib/svgPreview';
 import { readTextImport } from './lib/textImport';
@@ -1033,9 +1034,22 @@ export default function App() {
     if (!tab) { setNotice('Your browser blocked the HTML preview tab. Allow popups and retry.'); return; }
     tab.opener = null;
     flush(doc!.id);
-    void (saveQueue.current.get(doc!.id) || saveDoc(doc!))
-      .then(() => { tab.location.replace(localHtmlUrl(doc!.id)); })
-      .catch(() => { tab.close(); setNotice('Could not save HTML before opening the full preview.'); });
+    void (async () => {
+      await (saveQueue.current.get(doc!.id) || saveDoc(doc!));
+      const current = readSiteRecord(doc!.id);
+      const ready = current?.syncedVersion === doc!.updatedAt &&
+        await verifyHostedHtml(current.id).catch(() => false);
+      // Public and local previews now share one player. Prefer the canonical
+      // shareable URL once the remote snapshot has actually committed.
+      if (ready && current) tab.location.replace(siteUrl(current.id));
+      else {
+        tab.location.replace(localHtmlUrl(doc!.id));
+        void publishHtml(doc!).catch(() => { /* Local HTML remains available. */ });
+      }
+    })().catch(() => {
+      tab.close();
+      setNotice('Could not save HTML before opening the full preview.');
+    });
   }
   const matching = useMemo(() => {
     if (!query.trim()) return [...docs].sort((a, b) => b.updatedAt - a.updatedAt);
