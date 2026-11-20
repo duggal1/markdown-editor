@@ -72,7 +72,7 @@ export default function RuntimeSelect<T extends string | number>({
     if (event.key === 'Home') { event.preventDefault(); setFocused(0); }
     if (event.key === 'End') { event.preventDefault(); setFocused(options.length - 1); }
   }
-  return <div className="html-runtime-field" ref={root}>
+  return <div className="html-runtime-field" data-open={open} ref={root}>
     <span id={id + '-label'} className="html-runtime-label">{label}</span>
     <motion.button ref={trigger} type="button" className="html-runtime-select-trigger"
       aria-haspopup="listbox" aria-expanded={open} aria-labelledby={id + '-label ' + id + '-value'}
