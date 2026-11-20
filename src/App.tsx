@@ -20,6 +20,8 @@ import { svgPreviewDocument } from './lib/svgPreview';
 import { readTextImport } from './lib/textImport';
 import { formatPlainTextAsMarkdown, MAX_MANUAL_FORMAT_CHARS } from './lib/autoMarkdown';
 import { formatMarkdownAction } from './lib/autoMarkdownAction';
+import { detectRepairLanguage, MAX_CODE_REPAIR_CHARS, type RepairLanguage } from './lib/codeRepair';
+import { repairCodeAction } from './lib/codeRepairAction';
 import { inferTitle, isUntitledTitle } from './lib/title';
 import type { SearchHit } from './lib/searchIndex';
 import {
@@ -115,6 +117,7 @@ export default function App() {
   const [accentMenu, setAccentMenu] = useState<{ top: number; right: number } | null>(null);
   const [pdfExporting, setPdfExporting] = useState(false);
   const [autoFormatting, setAutoFormatting] = useState(false);
+  const [codeRepairLanguage, setCodeRepairLanguage] = useState<RepairLanguage | null>(null);
   const autoFormatInFlight = useRef(false);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ kind: 'document' | 'workspace'; id: string; title: string; count?: number } | null>(null);
@@ -417,10 +420,20 @@ export default function App() {
   }, [activeId, loaded, scheduleSave]);
 
   useEffect(() => { setShareOpen(false); }, [activeId]);
+  // File type is explicit for imported .html/.py files. For pasted source,
+  // detect the recognizable HTML/Python body even when junk wraps its header.
+  useEffect(() => {
+    const doc = live.current.get(activeId);
+    setCodeRepairLanguage(doc ? detectRepairLanguage(doc.markdown, doc.language) : null);
+  }, [activeId, loaded]);
 
   const onEditorChange = useCallback((value: string, id: string) => {
     const current = live.current.get(id);
     if (!current || current.markdown === value) return;
+    if (id === activeIdRef.current) {
+      const nextLanguage = detectRepairLanguage(value, current.language);
+      setCodeRepairLanguage(previous => previous === nextLanguage ? previous : nextLanguage);
+    }
     const autoTitle = current.titleAuto || (!current.fileName && isUntitledTitle(current.title));
     // Only re-evaluate the first 12KB when it changes. Large plans stay fast
     // even when editing deep in the document.
@@ -896,54 +909,68 @@ export default function App() {
       setNotice('Open an editable page to format.');
       return;
     }
-    // A selection formats only that region; without one, format the document.
+    const originalDocument = view.state.doc;
     const range = view.state.selection.main;
-    // Markdown blocks start at line boundaries, even when a user drags across
-    // visually wrapped lines or selects only part of a paragraph.
-    const selected = !range.empty;
-    const from = selected ? view.state.doc.lineAt(range.from).from : 0;
-    const endLineStart = view.state.doc.lineAt(range.to).from;
+    // For source files, repair the full code document. A selected slice could
+    // look like a complete pasted wrapper while actually belonging to valid
+    // HTML/CSS/JS or a Python string. Markdown keeps selection formatting.
+    const repairLanguage = detectRepairLanguage(
+      originalDocument.sliceString(0, 12000), current.language,
+    );
+    const selected = !repairLanguage && !range.empty;
+    const from = selected ? originalDocument.lineAt(range.from).from : 0;
+    const endLineStart = originalDocument.lineAt(range.to).from;
     const endPosition = selected && range.to === endLineStart && range.to > range.from
       ? range.to - 1 : range.to;
-    const to = selected ? view.state.doc.lineAt(endPosition).to : view.state.doc.length;
-    const originalDocument = view.state.doc;
+    const to = selected ? originalDocument.lineAt(endPosition).to : originalDocument.length;
     const source = originalDocument.sliceString(from, to);
     if (!source.trim()) { setNotice('Select or write some text first.'); return; }
-    if (source.length > MAX_MANUAL_FORMAT_CHARS) {
-      setNotice('Select a smaller section to format (1 MB maximum).');
+    const maximum = repairLanguage ? MAX_CODE_REPAIR_CHARS : MAX_MANUAL_FORMAT_CHARS;
+    if (source.length > maximum) {
+      setNotice(repairLanguage
+        ? 'Code repair supports documents up to 10 MiB.'
+        : 'Select a smaller section to format (1 MB maximum).');
       return;
     }
 
     autoFormatInFlight.current = true;
     setAutoFormatting(true);
-    setNotice('Formatting Markdown…');
+    setNotice(repairLanguage ? 'Checking ' + repairLanguage.toUpperCase() + ' paste wrappers…'
+      : 'Formatting Markdown…');
     try {
-      const formatted = await formatMarkdownAction(source, { atDocumentStart: !selected && from === 0, selection: selected });
-      // The user can type or change pages while a large worker is running.
-      // Never overwrite a newer CodeMirror document with stale formatting.
+      const result = repairLanguage
+        ? await repairCodeAction(source, repairLanguage)
+        : null;
+      const formatted = result ? result.text : await formatMarkdownAction(source, {
+        atDocumentStart: !selected && from === 0, selection: selected,
+      });
+      // Never overwrite more recent keystrokes, documents or mode changes.
       if (editorRef.current !== view || activeIdRef.current !== current.id ||
         view.state.doc !== originalDocument) {
         setNotice('Page changed during formatting. No edits were overwritten.');
         return;
       }
       if (formatted === source) {
-        setNotice('Already formatted. No changes needed.');
+        setNotice(repairLanguage
+          ? 'No safe ' + repairLanguage.toUpperCase() + ' repairs found. Existing code is unchanged.'
+          : 'Already formatted. No changes needed.');
         return;
       }
-      // One replacement transaction ensures Cmd/Ctrl+Z reverts the entire action.
-      // Preserve the caret on full-page edits and select the changed region otherwise.
+      // A single CodeMirror transaction keeps every repair fully undoable.
       const position = Math.min(from + formatted.length, range.head);
       view.dispatch({
         changes: { from, to, insert: formatted },
-        selection: range.empty ? { anchor: position }
+        selection: range.empty || repairLanguage ? { anchor: position }
           : { anchor: from, head: from + formatted.length },
       });
       if (modeRef.current !== 'preview') view.focus();
-      setNotice(range.empty ? 'Markdown formatted · Undo to revert' :
-        'Selection formatted · Undo to revert');
+      setNotice(repairLanguage
+        ? 'Cleaned ' + repairLanguage.toUpperCase() + ' paste artifacts · Undo to revert'
+        : range.empty ? 'Markdown formatted · Undo to revert'
+          : 'Selection formatted · Undo to revert');
     } catch (error) {
-      console.error('Auto Markdown failed', error);
-      setNotice('Could not format Markdown. Your text was not changed.');
+      console.error('Auto format failed', error);
+      setNotice('Could not format this page. Your text was not changed.');
     } finally {
       autoFormatInFlight.current = false;
       setAutoFormatting(false);
@@ -1415,13 +1442,19 @@ export default function App() {
           </motion.button>)}
           <span className="format-divider" />
           <motion.button type="button" {...pressMotion} className="auto-markdown-button"
-            title="Auto Markdown · format selected text or this page"
-            aria-label="Auto Markdown" aria-busy={autoFormatting}
+            title={codeRepairLanguage
+              ? 'Auto ' + (codeRepairLanguage === 'html' ? 'HTML' : 'Python') + ' Fix · remove provable paste artifacts, never generate code'
+              : 'Auto Markdown · format selected text or this page'}
+            aria-label={codeRepairLanguage
+              ? 'Auto ' + (codeRepairLanguage === 'html' ? 'HTML' : 'Python') + ' Fix'
+              : 'Auto Markdown'}
+            aria-busy={autoFormatting}
             disabled={Boolean(active?.asset) || autoFormatting}
             onMouseDown={event => event.preventDefault()}
             onClick={() => { void autoFormatDocument(); }}>
             {autoFormatting ? <TerminalLoader loading /> : <Icon name="format" size={16} />}
-            <span>{autoFormatting ? 'Formatting…' : 'Auto Markdown'}</span>
+            <span>{autoFormatting ? 'Checking…' : codeRepairLanguage === 'html' ? 'Auto HTML Fix'
+              : codeRepairLanguage === 'python' ? 'Auto Python Fix' : 'Auto Markdown'}</span>
           </motion.button>
           <motion.button type="button" {...pressMotion} className="copy-all-button"
             title="Copy the entire page" aria-label="Copy all" disabled={!active || Boolean(active.asset)}
