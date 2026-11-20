@@ -29,6 +29,19 @@ const CSP = [
   "form-action https:",
 ].join('; ');
 
+// Scrollbars belong to the isolated HTML document, not to the outer
+// iframe. In the phone mockup hide their chrome but retain normal scrolling;
+// on desktop, match thumb color to the page rather than drawing a grey bar.
+const RUNTIME_SCROLLBARS = '<style id="flow-runtime-scrollbars">' + [
+  'html[data-flow-phone="true"],html[data-flow-phone="true"] *{scrollbar-width:none!important;-ms-overflow-style:none!important;}',
+  'html[data-flow-phone="true"]::-webkit-scrollbar,html[data-flow-phone="true"] *::-webkit-scrollbar{display:none!important;width:0!important;height:0!important;}',
+  'html[data-flow-tone="dark"]:not([data-flow-phone="true"]),html[data-flow-tone="dark"]:not([data-flow-phone="true"]) body{scrollbar-width:thin;scrollbar-color:rgba(0,0,0,.46) transparent;}',
+  'html[data-flow-tone="light"]:not([data-flow-phone="true"]),html[data-flow-tone="light"]:not([data-flow-phone="true"]) body{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.56) transparent;}',
+  'html[data-flow-tone="dark"]::-webkit-scrollbar-thumb,html[data-flow-tone="dark"] body::-webkit-scrollbar-thumb{background:rgba(0,0,0,.46);border-radius:999px;}',
+  'html[data-flow-tone="light"]::-webkit-scrollbar-thumb,html[data-flow-tone="light"] body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.56);border-radius:999px;}',
+  'html[data-flow-tone]::-webkit-scrollbar-track,html[data-flow-tone] body::-webkit-scrollbar-track{background:transparent;}',
+].join('') + '</style>';
+
 function injectedBridge(route: string): string {
   // Literal JSON protects quoted paths and avoids inserting user input as JS.
   return '<script>' + [
@@ -92,6 +105,7 @@ function injectedBridge(route: string): string {
     '}',
     'function announceTone(){',
     ' var next=pageTone();',
+    ' if(document.documentElement.dataset)document.documentElement.dataset.flowTone=next;',
     ' if(previousTone!==next){previousTone=next;parent.postMessage({type:"flow-runtime-theme",theme:next},"*");}',
     '}',
     'var colorTimer;',
@@ -131,6 +145,7 @@ function injectedBridge(route: string): string {
     ' }',
     ' if(e.data.type==="flow-runtime-settings"){',
     '  var fps=Number(e.data.fps);target=[30,60,120].includes(fps)?fps:0;',
+    '  if(document.documentElement.dataset)document.documentElement.dataset.flowPhone=e.data.phone===true?"true":"false";',
     ' }',
     ' if(e.data.type==="flow-runtime-popstate"){',
     '  window.__FLOW_SITE_ROUTE__=String(e.data.path||"/");',
@@ -144,7 +159,7 @@ function injectedBridge(route: string): string {
 export function htmlPreviewDocument(source: string, options: HtmlPreviewOptions = {}): string | null {
   if (!looksLikeHtml(source)) return null;
   const csp = '<meta http-equiv="Content-Security-Policy" content="' + CSP.replace(/"/g, '&quot;') + '">';
-  const injected = csp + injectedBridge(options.route || '/');
+  const injected = csp + (options.runtime ? RUNTIME_SCROLLBARS : '') + injectedBridge(options.route || '/');
   // Inject before user-authored scripts. Do not parse/serialize 10 MB of HTML.
   if (/<head\b[^>]*>/i.test(source)) {
     return source.replace(/<head\b[^>]*>/i, head => head + injected);

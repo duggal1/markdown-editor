@@ -17,7 +17,7 @@ const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
 assert.ok(script, 'Injected runtime script must remain executable.');
 
 const body = { tag: 'body' };
-const documentElement = { tag: 'html' };
+const documentElement = { tag: 'html', dataset: {} };
 const messages = [];
 const observers = [];
 let background = '#08080e';
@@ -45,17 +45,19 @@ const doc = {
   elementFromPoint: () => body,
   addEventListener() {},
 };
+const listeners = new Map();
 const win = {
   requestAnimationFrame: () => 1,
   cancelAnimationFrame() {},
-  addEventListener() {},
+  addEventListener(type, listener) { listeners.set(type, listener); },
 };
+const parentWindow = { postMessage: data => messages.push(data) };
 const fakeObserver = class {
   constructor(callback) { observers.push(callback); }
   observe() {}
 };
 runInNewContext(script, {
-  document: doc, window: win, parent: { postMessage: data => messages.push(data) },
+  document: doc, window: win, parent: parentWindow,
   performance: { now: () => 0 },
   getComputedStyle(element) {
     return {
@@ -72,13 +74,42 @@ runInNewContext(script, {
 });
 assert.deepEqual({ ...messages.at(-1) }, { type: 'flow-runtime-theme', theme: 'dark' },
   'A dark HTML background requires dark glass.');
+assert.equal(documentElement.dataset.flowTone, 'dark',
+  'The iframe root must expose dark tone for native scrollbars.');
 background = '#f8f8fb';
 for (const callback of observers) callback();
 assert.deepEqual({ ...messages.at(-1) }, { type: 'flow-runtime-theme', theme: 'light' },
   'A light HTML background requires light glass after a dynamic style change.');
+assert.equal(documentElement.dataset.flowTone, 'light',
+  'The iframe root must update scrollbar tone dynamically.');
 background = '#08080e';
 for (const callback of observers) callback();
 assert.equal(messages.at(-1).theme, 'dark', 'Dark mode must be restorable without a reload.');
+
+// Verify actual message-driven phone toggles and style injection. The iframe
+// remains scrollable; only scrollbar chrome is hidden when phone mode is active.
+const onMessage = listeners.get('message');
+assert.equal(typeof onMessage, 'function', 'Runtime must accept isolated iframe settings.');
+onMessage({ source: parentWindow, data: { type: 'flow-runtime-settings', fps: 60, phone: true } });
+assert.equal(documentElement.dataset.flowPhone, 'true',
+  'Phone preview must suppress iframe scrollbar chrome.');
+onMessage({ source: parentWindow, data: { type: 'flow-runtime-settings', fps: 0, phone: false } });
+assert.equal(documentElement.dataset.flowPhone, 'false',
+  'Returning to desktop must restore themed scrollbar chrome.');
+
+const runtimeHtml = mod.exports.htmlPreviewDocument(
+  '<!doctype html><html><head></head><body>Phone</body></html>', { runtime: true });
+const runtimeScrollbarStyle = runtimeHtml.match(/<style id="flow-runtime-scrollbars">([\s\S]*?)<\/style>/)?.[1];
+assert.ok(runtimeScrollbarStyle, 'Runtime must inject sandbox-local scrollbar styles.');
+assert.match(runtimeScrollbarStyle, /data-flow-phone="true"/);
+assert.match(runtimeScrollbarStyle, /scrollbar-width:none!important/);
+assert.match(runtimeScrollbarStyle, /::-webkit-scrollbar\{display:none!important;width:0!important;height:0!important;/);
+assert.doesNotMatch(runtimeScrollbarStyle, /overflow:\s*hidden/,
+  'Mobile scrollbar hiding must not disable vertical or nested scrolling.');
+assert.match(runtimeScrollbarStyle, /data-flow-tone="dark"/);
+assert.match(runtimeScrollbarStyle, /data-flow-tone="light"/);
+assert.doesNotMatch(html, /flow-runtime-scrollbars/,
+  'Normal embedded Markdown preview must not inherit player-only scrollbar overrides.');
 
 const runtime = readFileSync(new URL('../src/components/HtmlPlayPage.tsx', import.meta.url), 'utf8');
 const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
@@ -124,4 +155,21 @@ assert.match(css, /\.html-runtime-options \{\s*position: fixed; z-index: 250;/,
   'The dropdown must float over controls instead of clipping within its trigger.');
 assert.match(css, /\.html-iphone-content \{[\s\S]*?width: 306px; height: 667px;[\s\S]*?padding-top: 44px;/,
   'Original SVG interior dimensions and top inset must be preserved.');
-console.log('Dynamic dark/light glass, translucency, blur, dropdown stacking and raw iPhone geometry passed.');
+const cssRuntimeStart = css.indexOf('/* HTML Runtime. This is the only CSS definition');
+const cssRuntimeEnd = css.indexOf('/* Share and Publish modals:', cssRuntimeStart);
+assert.ok(cssRuntimeStart >= 0 && cssRuntimeEnd > cssRuntimeStart);
+const runtimeRules = css.slice(cssRuntimeStart, cssRuntimeEnd);
+assert.doesNotMatch(runtimeRules, /border:\s*[1-9]/,
+  'No player, phone, dropdown or selector may draw a positive-width border.');
+assert.doesNotMatch(runtimeRules, /--glass-(?:inner-)?edge|border-color:|box-shadow:\s*inset/,
+  'No hidden stroke tokens or inset simulated borders are permitted.');
+assert.doesNotMatch(runtimeRules, /outline:\s*[1-9]/,
+  'Focus feedback must not introduce another hard border.');
+assert.match(runtimeRules, /--glass-option-hover: rgba\(0,0,0,\.26\)/);
+assert.match(runtimeRules, /--glass-option-selected: rgba\(0,0,0,\.33\)/);
+assert.match(runtimeRules, /--glass-option-hover: rgba\(255,255,255,\.30\)/);
+assert.match(runtimeRules, /--glass-option-selected: rgba\(255,255,255,\.41\)/);
+assert.match(runtimeRules, /\.html-runtime-option\[aria-selected='true'\] \{[\s\S]*?background: var\(--glass-option-selected\);[\s\S]*?backdrop-filter: blur\(14px\)/);
+assert.match(runtime, /type: 'flow-runtime-settings', fps: fpsLimit, phone/,
+  'Phone mode must be delivered into the isolated HTML iframe.');
+console.log('Dynamic borderless glass, translucent selected states, scrollbars and raw iPhone geometry passed.');
