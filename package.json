@@ -20,7 +20,8 @@
     "test:pdf": "node --import tsx scripts/test-pdf-export.mjs",
     "test:html": "node scripts/test-html-runtime.mjs",
     "test:glass": "node scripts/test-runtime-glass.mjs",
-    "test:lists": "node --import tsx scripts/test-list-editing.mjs"
+    "test:lists": "node --import tsx scripts/test-list-editing.mjs",
+    "test:publish-workflow": "node scripts/test-publish-workflow.mjs"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.5.2",
