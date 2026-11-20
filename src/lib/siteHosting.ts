@@ -4,6 +4,7 @@ import type { FlowDocument } from './store';
 export type SiteRecord = { id: string; secret: string; syncedVersion: number };
 export type SiteStatus = 'syncing' | 'synced' | 'error';
 const PREFIX = 'flow.html-site.v1.';
+const LEGACY_PREFIX = 'flow.html-site.legacy.v1.';
 const ID = /^(?:[A-Za-z0-9_-]{12}|html-[a-z0-9]{8})$/;
 const SECRET = /^[A-Za-z0-9_-]{43}$/;
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -131,14 +132,16 @@ export function queueSiteSync(doc: FlowDocument, immediate = false, force = fals
 }
 export async function publishHtml(doc: FlowDocument): Promise<SiteRecord> {
   if (!isHtmlPage(doc)) throw new Error('Only HTML pages can be hosted as interactive sites.');
+  const creating = pendingCreates.get(doc.id);
+  if (creating) return creating;
   const existing = readSiteRecord(doc.id);
-  if (existing) {
+  // Existing 12-character links are upgraded on publish, but retained as
+  // aliases so links already shared with other people do not suddenly die.
+  if (existing?.id.startsWith('html-')) {
     if (!await verifyHostedHtml(existing.id).catch(() => false)) queueSiteSync(doc, true, true);
     else queueSiteSync(doc, true);
     return existing;
   }
-  const creating = pendingCreates.get(doc.id);
-  if (creating) return creating;
   const promise = (async () => {
     signal(doc.id, 'syncing');
     try {
@@ -149,6 +152,10 @@ export async function publishHtml(doc: FlowDocument): Promise<SiteRecord> {
         throw new Error('Cloud returned an invalid site ID.');
       }
       const record = { id: created.id, secret: created.secret, syncedVersion: 0 };
+      if (existing) {
+        // Preserve the old publishing credentials for eventual revocation.
+        localStorage.setItem(LEGACY_PREFIX + doc.id, JSON.stringify(existing));
+      }
       saveSiteRecord(doc.id, record);
       queueSiteSync(doc, true);
       return record;
@@ -171,8 +178,21 @@ export async function revokeHtml(documentId: string): Promise<void> {
     await job.work.catch(() => {});
   }
   const record = readSiteRecord(documentId);
-  if (!record) return;
-  await send('DELETE', { id: record.id, secret: record.secret });
+  let previous: SiteRecord | null = null;
+  try {
+    const raw = localStorage.getItem(LEGACY_PREFIX + documentId);
+    if (raw) previous = JSON.parse(raw) as SiteRecord;
+  } catch { /* Keep the primary site revocation available. */ }
+  for (const current of [record, previous]) {
+    if (!current) continue;
+    try {
+      await send('DELETE', { id: current.id, secret: current.secret });
+    } catch (error) {
+      // Already-deleted remote sites must not block local revocation.
+      if (!String(error).includes('(404)') && !String(error).includes('Site not found')) throw error;
+    }
+  }
   localStorage.removeItem(PREFIX + documentId);
+  localStorage.removeItem(LEGACY_PREFIX + documentId);
   jobs.delete(documentId);
 }
