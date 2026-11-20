@@ -17,6 +17,14 @@
       "destination": "/index.html"
     },
     {
+      "source": "/play/:id",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/play/:id/:path*",
+      "destination": "/index.html"
+    },
+    {
       "source": "/s/:id",
       "destination": "/index.html"
     },

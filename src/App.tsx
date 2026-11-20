@@ -13,7 +13,8 @@ import ShareDialog from './components/ShareDialog';
 import HtmlSiteDialog from './components/HtmlSiteDialog';
 import DialogFrame from './components/DialogFrame';
 import { queueSharedSync, readShareRecord, revokeCloudShare } from './lib/sharing';
-import { isHtmlPage, localHtmlUrl, publishHtml, queueSiteSync, readSiteRecord, revokeHtml } from './lib/siteHosting';
+import { isHtmlPage, localHtmlUrl, publishHtml, queueSiteSync, readSiteRecord, revokeHtml,
+  siteUrl, verifyHostedHtml } from './lib/siteHosting';
 import { detectRawCode, isMarkdownFile, languageForFile } from './lib/code';
 import { svgPreviewDocument } from './lib/svgPreview';
 import { readTextImport } from './lib/textImport';
@@ -22,7 +23,7 @@ import { formatMarkdownAction } from './lib/autoMarkdownAction';
 import { inferTitle, isUntitledTitle } from './lib/title';
 import type { SearchHit } from './lib/searchIndex';
 import {
-  clearRecovery, loadWorkspace, readPrefs, removeDoc, removeFolder, removeWorkspace,
+  clearRecovery, loadWorkspace, readPrefs, removeDoc, removeFolder, removeWorkspaceTree,
   saveDoc, saveFolder, savePrefs, saveRecovery, saveWorkspace, uid, wordCount,
   type FlowDocument, type Folder, type Mode, type Theme, type Workspace,
 } from './lib/store';
@@ -117,8 +118,7 @@ export default function App() {
   const autoFormatInFlight = useRef(false);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ kind: 'document' | 'workspace'; id: string; title: string; count?: number } | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const deletionInFlight = useRef(false);
+  const deletionsInFlight = useRef(new Set<string>());
   const importInFlight = useRef(false);
   const [assetView, setAssetView] = useState<{ id: string; url: string } | null>(null);
   const editorRef = useRef<EditorView | null>(null);
@@ -532,47 +532,43 @@ export default function App() {
   }, [selectDocument, workspaceId, workspaces]);
 
   async function eraseDocument(doc: FlowDocument) {
-    // Shared pages must be revoked before local deletion, or the link would remain online.
-    const shared = readShareRecord(doc.id);
-    if (shared) {
-      try { await revokeCloudShare(doc.id, shared); }
-      catch { setNotice('Could not revoke the share link. Stop sharing before deleting this page.'); return; }
-    }
-    if (readSiteRecord(doc.id)) {
-      try { await revokeHtml(doc.id); }
-      catch { setNotice('Could not revoke the hosted HTML link. Stop hosting before deleting this page.'); return; }
-    }
-    // Delete immediately in the UI. Cancel pending writes so a stale save
-    // cannot recreate a deleted file after its IndexedDB record is removed.
+    // Remove the row instantly. Cloud revocation and IndexedDB writes are
+    // asynchronous; restore the original page if any required operation fails.
+    const pendingSave = saveQueue.current.get(doc.id);
     const saveTimer = saveTimers.current.get(doc.id);
     if (saveTimer !== undefined) clearTimeout(saveTimer);
     saveTimers.current.delete(doc.id);
     const visualTimer = visualTimers.current.get(doc.id);
     if (visualTimer !== undefined) clearTimeout(visualTimer);
     visualTimers.current.delete(doc.id);
-    const pendingSave = saveQueue.current.get(doc.id);
+    const shared = readShareRecord(doc.id);
+    const hosted = Boolean(readSiteRecord(doc.id));
+    const wasActive = activeIdRef.current === doc.id;
     const remaining = [...live.current.values()].filter(item => item.id !== doc.id);
     live.current.delete(doc.id);
     workerRef.current?.postMessage({ type: 'remove', id: doc.id });
     setDocs(remaining);
-    setRecentIds(current => current.filter(id => id !== doc.id));
-    if (activeIdRef.current === doc.id) {
-      const other = remaining[0];
-      if (other) selectDocument(other.id);
-      else makeDocument(doc.workspaceId);
-    }
+    setRecentIds(ids => ids.filter(id => id !== doc.id));
+    if (wasActive && remaining.length) selectDocument(remaining[0].id);
     try {
-      if (pendingSave) await pendingSave.catch(() => {});
+      // Parallelize independent cloud revocations, but do not pretend a
+      // deleted local document has revoked public links until both succeed.
+      await Promise.all([
+        pendingSave?.catch(() => {}),
+        shared ? revokeCloudShare(doc.id, shared) : Promise.resolve(),
+        hosted ? revokeHtml(doc.id) : Promise.resolve(),
+      ]);
       await removeDoc(doc.id);
+      if (wasActive && !remaining.length) makeDocument(doc.workspaceId);
     } catch {
-      // Failed deletion should not silently lose access to the original.
       live.current.set(doc.id, doc);
-      setDocs(items => [...items, doc]);
+      setDocs([...live.current.values()]);
       workerRef.current?.postMessage({ type: 'upsert', document: {
         id: doc.id, workspaceId: doc.workspaceId, title: doc.title,
         markdown: doc.markdown, updatedAt: doc.updatedAt,
       } });
-      setNotice("Couldn't delete the page. It's still here.");
+      if (wasActive) selectDocument(doc.id);
+      setNotice('Deletion could not finish. The page has been restored. Check its share links.');
     }
   }
   function toggleWorkspace(id: string) {
@@ -648,52 +644,88 @@ export default function App() {
     if (workspaces.length < 2) return;
     const ws = workspaces.find(item => item.id === id);
     if (!ws) return;
+    const previousActive = activeIdRef.current;
+    const previousWorkspaces = workspaces;
+    const previousFolders = folders;
     const remainingWorkspaces = workspaces.filter(item => item.id !== id);
     const deletedDocs = [...live.current.values()].filter(doc => doc.workspaceId === id);
     const otherDocs = [...live.current.values()].filter(doc => doc.workspaceId !== id);
-    // Preserve document data if a storage deletion fails; do not silently drop files.
-    try {
-      // Do not orphan shared links by deleting a workspace containing hosted pages.
-      for (const doc of deletedDocs) {
-        const shared = readShareRecord(doc.id);
-        if (shared) await revokeCloudShare(doc.id, shared);
-        if (readSiteRecord(doc.id)) await revokeHtml(doc.id);
-      }
-      for (const doc of deletedDocs) await removeDoc(doc.id);
-      for (const folder of folders.filter(item => item.workspaceId === id)) await removeFolder(folder.id);
-      await removeWorkspace(id);
-    } catch {
-      setNotice('Could not delete the workspace completely. Refresh to reconcile your files.');
-      return;
-    }
+    const deletedFolders = folders.filter(item => item.workspaceId === id);
+    const pendingWrites: Promise<unknown>[] = [];
     for (const doc of deletedDocs) {
+      const timer = saveTimers.current.get(doc.id);
+      if (timer !== undefined) clearTimeout(timer);
+      saveTimers.current.delete(doc.id);
+      const visual = visualTimers.current.get(doc.id);
+      if (visual !== undefined) clearTimeout(visual);
+      visualTimers.current.delete(doc.id);
+      const pending = saveQueue.current.get(doc.id);
+      if (pending) pendingWrites.push(pending.catch(() => {}));
       live.current.delete(doc.id);
       workerRef.current?.postMessage({ type: 'remove', id: doc.id });
     }
+    // UI removal is immediate even for workspaces with hundreds of pages.
     setWorkspaces(remainingWorkspaces);
     setFolders(items => items.filter(folder => folder.workspaceId !== id));
     setExpandedIds(ids => ids.filter(item => item !== id));
     setDocs(otherDocs);
     setRecentIds(ids => ids.filter(docId => live.current.has(docId)));
-    if (activeIdRef.current && !live.current.has(activeIdRef.current)) {
+    if (previousActive && !live.current.has(previousActive)) {
       if (otherDocs.length) selectDocument(otherDocs[0].id);
-      else makeDocument(remainingWorkspaces[0].id);
+      else setActiveId('');
     } else if (workspaceId === id) setWorkspaceId(remainingWorkspaces[0].id);
+
+    try {
+      await Promise.all(pendingWrites);
+      // Keep public links from surviving workspace deletion. Bound concurrency
+      // so hundreds of files do not create hundreds of network requests at once.
+      const revocations: Array<() => Promise<unknown>> = [];
+      for (const doc of deletedDocs) {
+        const shared = readShareRecord(doc.id);
+        if (shared) revocations.push(() => revokeCloudShare(doc.id, shared));
+        if (readSiteRecord(doc.id)) revocations.push(() => revokeHtml(doc.id));
+      }
+      let cursor = 0;
+      await Promise.all(Array.from({ length: Math.min(4, revocations.length) }, async () => {
+        while (cursor < revocations.length) await revocations[cursor++]();
+      }));
+      await removeWorkspaceTree(id, deletedDocs.map(doc => doc.id),
+        deletedFolders.map(folder => folder.id));
+      if (!otherDocs.length) makeDocument(remainingWorkspaces[0].id);
+    } catch {
+      // Keep the documents if revocation or the atomic IndexedDB transaction
+      // fails. No partial local workspace deletion should be acknowledged.
+      for (const doc of deletedDocs) {
+        live.current.set(doc.id, doc);
+        workerRef.current?.postMessage({ type: 'upsert', document: {
+          id: doc.id, workspaceId: doc.workspaceId, title: doc.title,
+          markdown: doc.markdown, updatedAt: doc.updatedAt,
+        } });
+      }
+      setWorkspaces(previousWorkspaces);
+      setFolders(previousFolders);
+      setDocs([...live.current.values()]);
+      if (previousActive && live.current.has(previousActive)) selectDocument(previousActive);
+      setNotice('Workspace deletion could not finish. Its files were restored; check public share links.');
+    }
   }
   async function confirmDelete() {
-    if (!pendingDelete || deletionInFlight.current) return;
-    deletionInFlight.current = true;
-    setDeleting(true);
+    if (!pendingDelete) return;
+    const target = pendingDelete;
+    const operationKey = target.kind + ':' + target.id;
+    if (deletionsInFlight.current.has(operationKey)) return;
+    deletionsInFlight.current.add(operationKey);
+    // Close immediately, including while a separate file's cloud revoke
+    // is still in flight. The operation is guarded by its own target ID.
+    setPendingDelete(null);
     try {
-      if (pendingDelete.kind === 'workspace') await eraseWorkspace(pendingDelete.id);
+      if (target.kind === 'workspace') await eraseWorkspace(target.id);
       else {
-        const doc = live.current.get(pendingDelete.id);
+        const doc = live.current.get(target.id);
         if (doc) await eraseDocument(doc);
       }
-      setPendingDelete(null);
     } finally {
-      deletionInFlight.current = false;
-      setDeleting(false);
+      deletionsInFlight.current.delete(operationKey);
     }
   }
   function toggleExport(event: React.MouseEvent<HTMLButtonElement>) {
@@ -1033,9 +1065,22 @@ export default function App() {
     if (!tab) { setNotice('Your browser blocked the HTML preview tab. Allow popups and retry.'); return; }
     tab.opener = null;
     flush(doc!.id);
-    void (saveQueue.current.get(doc!.id) || saveDoc(doc!))
-      .then(() => { tab.location.replace(localHtmlUrl(doc!.id)); })
-      .catch(() => { tab.close(); setNotice('Could not save HTML before opening the full preview.'); });
+    void (async () => {
+      await (saveQueue.current.get(doc!.id) || saveDoc(doc!));
+      const current = readSiteRecord(doc!.id);
+      const ready = current?.syncedVersion === doc!.updatedAt &&
+        await verifyHostedHtml(current.id).catch(() => false);
+      // Public and local previews now share one player. Prefer the canonical
+      // shareable URL once the remote snapshot has actually committed.
+      if (ready && current) tab.location.replace(siteUrl(current.id));
+      else {
+        tab.location.replace(localHtmlUrl(doc!.id));
+        void publishHtml(doc!).catch(() => { /* Local HTML remains available. */ });
+      }
+    })().catch(() => {
+      tab.close();
+      setNotice('Could not save HTML before opening the full preview.');
+    });
   }
   const matching = useMemo(() => {
     if (!query.trim()) return [...docs].sort((a, b) => b.updatedAt - a.updatedAt);
@@ -1486,21 +1531,27 @@ export default function App() {
       {pendingDelete && <DialogFrame id="delete-dialog"
         title={`Delete ${pendingDelete.kind === 'document' ? 'page' : 'workspace'}?`}
         icon="trash" describedBy="delete-dialog-description"
-        busy={deleting} onClose={() => setPendingDelete(null)}
+        busy={false} onClose={() => setPendingDelete(null)}
         footer={<>
           <button type="button" className="flow-dialog-button flow-dialog-neutral"
-            data-dialog-initial-focus disabled={deleting}
+            data-dialog-initial-focus
             onClick={() => setPendingDelete(null)}>Cancel</button>
           <button type="button" className="flow-dialog-button flow-dialog-destructive"
-            disabled={deleting} onClick={() => { void confirmDelete(); }}>
-            {deleting && <TerminalLoader loading />}{deleting ? 'Deleting…' : 'Delete'}
+            onClick={() => { void confirmDelete(); }}>
+            Delete
           </button>
         </>}>
+        <div className="flow-dialog-file flow-dialog-delete-file">
+          <span className="flow-dialog-file-icon"><Icon name={pendingDelete.kind === 'workspace' ? 'folder' : 'file'} size={16} /></span>
+          <span className="flow-dialog-file-text">
+            <strong title={pendingDelete.title}>{pendingDelete.title}</strong>
+            <small>{pendingDelete.kind === 'workspace'
+              ? (pendingDelete.count || 0) + ' pages in this workspace'
+              : 'Local page'}</small>
+          </span>
+        </div>
         <p id="delete-dialog-description" className="flow-dialog-copy flow-dialog-delete-copy">
-          <strong>{pendingDelete.title}</strong>
-          {pendingDelete.kind === 'workspace'
-            ? ` and its ${pendingDelete.count || 0} page${pendingDelete.count === 1 ? '' : 's'} will be permanently removed from this browser.`
-            : ' will be permanently removed from this browser.'}
+          Permanently delete {pendingDelete.kind === 'workspace' ? 'this workspace and its pages' : 'this page'}?
           {' '}This cannot be undone.
         </p>
       </DialogFrame>}

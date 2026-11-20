@@ -19,6 +19,7 @@ jobs:
       - run: npm run test:cloud
       - run: npm run test:preview
       - run: npm run test:html
+      - run: npm run test:publish-workflow
       - run: npm run test:glass
       - run: npm run test:long-scroll
       - run: npm run test:search

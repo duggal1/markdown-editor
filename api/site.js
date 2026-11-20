@@ -4,7 +4,8 @@ import { del, get, head, put } from '@vercel/blob';
 
 // HTML sites are intentionally separate from Markdown shares. A 10 MB site is
 // uploaded in bounded chunks so Vercel's request body limit is never exceeded.
-const ID = /^[A-Za-z0-9_-]{12}$/;
+// Keep legacy 12-char IDs working; new public links use a short, readable slug.
+const ID = /^(?:[A-Za-z0-9_-]{12}|html-[a-z0-9]{5})$/;
 const SECRET = /^[A-Za-z0-9_-]{43}$/;
 const VERSION = /^[A-Za-z0-9_-]{8,48}$/;
 const MAX_SITE_BYTES = 10 * 1024 * 1024;
@@ -51,7 +52,7 @@ const SITE_CSP = [
 ].join('; ');
 
 function routeBootstrap(id) {
-  const prefix = '/slug/' + id;
+  const prefix = id.startsWith('html-') ? '/play/' + id : '/slug/' + id;
   return '<script>' + [
     '(function(){',
     'var prefix=' + JSON.stringify(prefix) + ';',
@@ -129,6 +130,14 @@ export default async function handler(req, res) {
       if (typeof id !== 'string' || !ID.test(id)) return respond(res, 404, { error: 'Site not found' });
       const meta = await readMeta(id);
       if (!meta) return respond(res, 404, { error: 'Site not found' });
+      // Tiny authoritative readiness response. The client must validate a
+      // committed version before offering a URL to other people.
+      if (req.query?.status === '1') {
+        res.setHeader('Cache-Control', 'no-store, max-age=0');
+        return meta.version && VERSION.test(meta.version)
+          ? respond(res, 200, { published: true, version: meta.version })
+          : respond(res, 404, { error: 'Site not yet published' });
+      }
       return await streamSite(res, id, meta, req.query?.raw === '1');
     }
     const origin = req.headers.origin;
@@ -144,13 +153,24 @@ export default async function handler(req, res) {
       return respond(res, 400, { error: 'Invalid JSON request' });
     }
     if (req.method === 'POST') {
-      const id = randomBytes(9).toString('base64url');
-      const secret = randomBytes(32).toString('base64url');
-      await writeMeta(id, {
-        ownerHash: createHash('sha256').update(secret).digest('hex'),
-        createdAt: Date.now(),
-      });
-      return respond(res, 201, { id, secret });
+      // Five base-36 characters keep URLs compact without relying on an
+      // unsafe global sequential counter. Blob create is no-overwrite, and
+      // collisions are retried rather than taking over another user's site.
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const id = 'html-' + (randomBytes(4).readUInt32BE(0) % 60_466_176).toString(36).padStart(5, '0');
+        const secret = randomBytes(32).toString('base64url');
+        try {
+          await writeMeta(id, {
+            ownerHash: createHash('sha256').update(secret).digest('hex'),
+            createdAt: Date.now(),
+          });
+          return respond(res, 201, { id, secret });
+        } catch (error) {
+          const code = String(error?.code || error?.message || '');
+          if (!/already.exists|already_exists|conflict|409/i.test(code)) throw error;
+        }
+      }
+      return respond(res, 503, { error: 'Could not allocate a unique site URL. Retry.' });
     }
     const { id, secret } = body;
     if (typeof id !== 'string' || !ID.test(id)) {

@@ -144,6 +144,32 @@ export async function removeDoc(id: string): Promise<void> {
 export async function removeWorkspace(id: string): Promise<void> {
   await remove('workspaces', id);
 }
+
+/** Delete an entire workspace atomically in one IndexedDB transaction.
+ * Sequential per-file transactions were extremely slow for large workspaces
+ * and could leave half a workspace deleted after an error.
+ */
+export async function removeWorkspaceTree(
+  workspaceId: string, documentIds: string[], folderIds: string[],
+): Promise<void> {
+  const db = await database();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(['documents', 'folders', 'workspaces'], 'readwrite');
+    const docs = tx.objectStore('documents');
+    const dirs = tx.objectStore('folders');
+    for (const id of documentIds) docs.delete(id);
+    for (const id of folderIds) dirs.delete(id);
+    tx.objectStore('workspaces').delete(workspaceId);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || Error('Workspace deletion failed'));
+    tx.onabort = () => reject(tx.error || Error('Workspace deletion was rolled back'));
+  });
+  for (const id of documentIds) {
+    try { localStorage.removeItem(FALLBACK + id); } catch { /* IndexedDB is primary. */ }
+    clearRecovery(id);
+  }
+}
+
 export async function loadWorkspace(): Promise<{ workspaces: Workspace[]; folders: Folder[]; documents: FlowDocument[] }> {
   let workspaces: Workspace[] = [];
   let folders: Folder[] = [];

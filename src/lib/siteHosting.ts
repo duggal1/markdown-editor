@@ -4,7 +4,8 @@ import type { FlowDocument } from './store';
 export type SiteRecord = { id: string; secret: string; syncedVersion: number };
 export type SiteStatus = 'syncing' | 'synced' | 'error';
 const PREFIX = 'flow.html-site.v1.';
-const ID = /^[A-Za-z0-9_-]{12}$/;
+const LEGACY_PREFIX = 'flow.html-site.legacy.v1.';
+const ID = /^(?:[A-Za-z0-9_-]{12}|html-[a-z0-9]{5})$/;
 const SECRET = /^[A-Za-z0-9_-]{43}$/;
 const MAX_BYTES = 10 * 1024 * 1024;
 const CHARS_PER_CHUNK = 210_000;
@@ -18,7 +19,7 @@ export function isHtmlPage(doc: FlowDocument | null | undefined): boolean {
     (doc.language === 'html' || detectRawCode(doc.markdown) === 'html'));
 }
 export function siteUrl(id: string): string {
-  return window.location.origin + '/slug/' + id + '/';
+  return window.location.origin + (id.startsWith('html-') ? '/play/' : '/slug/') + encodeURIComponent(id) + '/';
 }
 export function localHtmlUrl(id: string): string {
   return window.location.origin + '/play/local/' + encodeURIComponent(id);
@@ -50,6 +51,17 @@ async function send(method: 'POST' | 'PUT' | 'DELETE', body: object) {
   if (!response.ok) throw new Error(json?.error || 'HTML publishing failed (' + response.status + ')');
   return json;
 }
+/** Never call a saved link live until Vercel confirms committed content. */
+export async function verifyHostedHtml(id: string, signal?: AbortSignal): Promise<boolean> {
+  if (!ID.test(id)) return false;
+  const response = await fetch('/api/site?id=' + encodeURIComponent(id) + '&status=1', {
+    method: 'GET', signal, cache: 'no-store',
+  });
+  if (!response.ok) return false;
+  const value = await response.json().catch(() => null) as { published?: boolean } | null;
+  return value?.published === true;
+}
+
 function chunkText(source: string): string[] {
   const chunks: string[] = [];
   for (let start = 0; start < source.length;) {
@@ -81,8 +93,11 @@ async function uploadSnapshot(doc: FlowDocument, record: SiteRecord) {
   }));
   await send('PUT', { action: 'commit', id: record.id, secret: record.secret,
     version, chunks: chunks.length, size });
+  if (!await verifyHostedHtml(record.id)) {
+    throw new Error('Published HTML is not available yet. Retry publishing.');
+  }
 }
-export function queueSiteSync(doc: FlowDocument, immediate = false): void {
+export function queueSiteSync(doc: FlowDocument, immediate = false, force = false): void {
   if (!isHtmlPage(doc) || !readSiteRecord(doc.id)) return;
   let job = jobs.get(doc.id);
   if (!job) {
@@ -97,7 +112,7 @@ export function queueSiteSync(doc: FlowDocument, immediate = false): void {
     current.work = current.work.catch(() => {}).then(async () => {
       const snapshot = current.latest;
       const record = readSiteRecord(doc.id);
-      if (!record || record.syncedVersion === snapshot.updatedAt) return;
+      if (!record || (!force && record.syncedVersion === snapshot.updatedAt)) return;
       signal(doc.id, 'syncing');
       try {
         await uploadSnapshot(snapshot, record);
@@ -117,10 +132,16 @@ export function queueSiteSync(doc: FlowDocument, immediate = false): void {
 }
 export async function publishHtml(doc: FlowDocument): Promise<SiteRecord> {
   if (!isHtmlPage(doc)) throw new Error('Only HTML pages can be hosted as interactive sites.');
-  const existing = readSiteRecord(doc.id);
-  if (existing) { queueSiteSync(doc, true); return existing; }
   const creating = pendingCreates.get(doc.id);
   if (creating) return creating;
+  const existing = readSiteRecord(doc.id);
+  // Existing 12-character links are upgraded on publish, but retained as
+  // aliases so links already shared with other people do not suddenly die.
+  if (existing?.id.startsWith('html-')) {
+    if (!await verifyHostedHtml(existing.id).catch(() => false)) queueSiteSync(doc, true, true);
+    else queueSiteSync(doc, true);
+    return existing;
+  }
   const promise = (async () => {
     signal(doc.id, 'syncing');
     try {
@@ -131,6 +152,10 @@ export async function publishHtml(doc: FlowDocument): Promise<SiteRecord> {
         throw new Error('Cloud returned an invalid site ID.');
       }
       const record = { id: created.id, secret: created.secret, syncedVersion: 0 };
+      if (existing) {
+        // Preserve the old publishing credentials for eventual revocation.
+        localStorage.setItem(LEGACY_PREFIX + doc.id, JSON.stringify(existing));
+      }
       saveSiteRecord(doc.id, record);
       queueSiteSync(doc, true);
       return record;
@@ -153,8 +178,21 @@ export async function revokeHtml(documentId: string): Promise<void> {
     await job.work.catch(() => {});
   }
   const record = readSiteRecord(documentId);
-  if (!record) return;
-  await send('DELETE', { id: record.id, secret: record.secret });
+  let previous: SiteRecord | null = null;
+  try {
+    const raw = localStorage.getItem(LEGACY_PREFIX + documentId);
+    if (raw) previous = JSON.parse(raw) as SiteRecord;
+  } catch { /* Keep the primary site revocation available. */ }
+  for (const current of [record, previous]) {
+    if (!current) continue;
+    try {
+      await send('DELETE', { id: current.id, secret: current.secret });
+    } catch (error) {
+      // Already-deleted remote sites must not block local revocation.
+      if (!String(error).includes('(404)') && !String(error).includes('Site not found')) throw error;
+    }
+  }
   localStorage.removeItem(PREFIX + documentId);
+  localStorage.removeItem(LEGACY_PREFIX + documentId);
   jobs.delete(documentId);
 }

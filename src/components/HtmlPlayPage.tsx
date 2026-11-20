@@ -18,6 +18,7 @@ const PRESETS: Record<Exclude<Resolution, 'auto'>, [number, number]> = {
 const PATH = window.location.pathname.split('/').filter(Boolean);
 const LOCAL = PATH[0] === 'play' && PATH[1] === 'local';
 const ID = LOCAL ? PATH[2] || '' : PATH[1] || '';
+const PUBLIC_PREFIX = PATH[0] === 'slug' ? '/slug/' : '/play/';
 const FIRST_ROUTE = '/' + PATH.slice(LOCAL ? 3 : 2).join('/');
 
 function currentRoute(): string {
@@ -45,6 +46,7 @@ const FPS_OPTIONS: RuntimeOption<number>[] = [
   { value: 120, label: '120 FPS' },
 ];
 const spring = { type: 'spring' as const, stiffness: 475, damping: 33 };
+const FULLSCREEN_INTENT = 'flow.html-player.fullscreen.v1';
 
 export default function HtmlPlayPage() {
   const reduce = useReducedMotion();
@@ -63,9 +65,51 @@ export default function HtmlPlayPage() {
   const [left, setLeft] = useState(14);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [reload, setReload] = useState(0);
+  const [nativeFullscreen, setNativeFullscreen] = useState(Boolean(document.fullscreenElement));
+  const [resumeFullscreen, setResumeFullscreen] = useState(() => {
+    try { return sessionStorage.getItem(FULLSCREEN_INTENT) === '1'; } catch { return false; }
+  });
   const iframe = useRef<HTMLIFrameElement>(null);
   const surface = useRef<HTMLDivElement>(null);
   const dragging = useRef<{ x: number; left: number } | null>(null);
+  const unloading = useRef(false);
+  useEffect(() => {
+    const onLeaving = () => { unloading.current = true; };
+    const onFullscreenChange = () => {
+      const active = Boolean(document.fullscreenElement);
+      setNativeFullscreen(active);
+      if (active) {
+        setResumeFullscreen(true);
+        try { sessionStorage.setItem(FULLSCREEN_INTENT, '1'); } catch { /* Storage optional. */ }
+      } else if (!unloading.current) {
+        // Escape exits native fullscreen. Only an intentional user gesture
+        // can enter it again, so reflect the browser's actual state.
+        setResumeFullscreen(false);
+        try { sessionStorage.removeItem(FULLSCREEN_INTENT); } catch { /* no-op */ }
+      }
+    };
+    window.addEventListener('beforeunload', onLeaving);
+    window.addEventListener('pagehide', onLeaving);
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => {
+      window.removeEventListener('beforeunload', onLeaving);
+      window.removeEventListener('pagehide', onLeaving);
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+    };
+  }, []);
+  async function toggleFullscreen() {
+    if (document.fullscreenElement) {
+      try { await document.exitFullscreen(); } catch { /* Browser keeps its own state. */ }
+      setResumeFullscreen(false);
+      try { sessionStorage.removeItem(FULLSCREEN_INTENT); } catch { /* no-op */ }
+      return;
+    }
+    if (!document.documentElement.requestFullscreen) return;
+    // User activation is required by browser policy, including after reload.
+    try {
+      await document.documentElement.requestFullscreen();
+    } catch { setResumeFullscreen(false); }
+  }
 
   useEffect(() => {
     let active = true;
@@ -129,7 +173,7 @@ export default function HtmlPlayPage() {
       } else if (event.data.type === 'flow-runtime-route') {
         const route = safeRoute(event.data.path);
         if (!route) return;
-        const prefix = LOCAL ? '/play/local/' + ID : '/slug/' + ID;
+        const prefix = LOCAL ? '/play/local/' + ID : PUBLIC_PREFIX + ID;
         const next = prefix + (route === '/' ? '/' : route);
         if (next === window.location.pathname + window.location.search + window.location.hash) return;
         window.history.pushState(null, '', next);
@@ -289,10 +333,11 @@ export default function HtmlPlayPage() {
               <HugeiconsIcon icon={ReloadIcon} size={15} strokeWidth={1.65} /> Reload
             </motion.button>
             <motion.button type="button"
-              onClick={() => void document.documentElement.requestFullscreen?.()}
+              onClick={() => { void toggleFullscreen(); }}
               whileTap={reduce ? undefined : { scale: .95 }}
               whileHover={reduce ? undefined : { y: -1 }} transition={spring}>
-              <HugeiconsIcon icon={Maximize01Icon} size={15} strokeWidth={1.65} /> Fullscreen
+              <HugeiconsIcon icon={Maximize01Icon} size={15} strokeWidth={1.65} />
+              {nativeFullscreen ? 'Exit fullscreen' : resumeFullscreen ? 'Resume fullscreen' : 'Fullscreen'}
             </motion.button>
             {LOCAL && <motion.a href="/"
               whileTap={reduce ? undefined : { scale: .95 }}

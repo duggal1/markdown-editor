@@ -3,7 +3,7 @@ import { motion, useReducedMotion } from 'motion/react';
 import DialogFrame from './DialogFrame';
 import { Icon } from './Icons';
 import {
-  isHtmlPage, publishHtml, queueSiteSync, readSiteRecord, revokeHtml, siteUrl,
+  isHtmlPage, publishHtml, queueSiteSync, readSiteRecord, revokeHtml, siteUrl, verifyHostedHtml,
   type SiteRecord, type SiteStatus,
 } from '../lib/siteHosting';
 import type { FlowDocument } from '../lib/store';
@@ -19,13 +19,49 @@ export default function HtmlSiteDialog({ documentId, title, getCurrent, onClose 
     whileHover: motionOff ? undefined : { y: -1 },
     transition: { type: 'spring' as const, stiffness: 470, damping: 32 } };
   const [record, setRecord] = useState<SiteRecord | null>(() => readSiteRecord(documentId));
-  const [status, setStatus] = useState<SiteStatus>(() => {
-    const previous = readSiteRecord(documentId);
-    return previous?.syncedVersion ? 'synced' : 'syncing';
-  });
+  // A local syncedVersion cannot establish that a public link still works.
+  // It is verified against the server before it becomes copyable.
+  const [status, setStatus] = useState<SiteStatus>('syncing');
+  const [verified, setVerified] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    const existing = readSiteRecord(documentId);
+    if (!existing) return;
+    let cancelled = false;
+    const latest = getCurrent();
+    if (!existing.id.startsWith('html-') && isHtmlPage(latest)) {
+      // A legacy local record should receive a short /play/ URL even when
+      // opened directly from Write mode (where auto-publish is not running).
+      void publishHtml(latest!).then(nextRecord => {
+        if (!cancelled) { setRecord(nextRecord); setStatus('syncing'); setVerified(false); }
+      }).catch(cause => {
+        if (!cancelled) { setStatus('error'); setError(String(cause)); }
+      });
+      return () => { cancelled = true; };
+    }
+    void verifyHostedHtml(existing.id).then(ok => {
+      if (cancelled) return;
+      const latest = getCurrent();
+      if (!ok || (latest && existing.syncedVersion !== latest.updatedAt)) {
+        setVerified(false);
+        setStatus('syncing');
+        if (isHtmlPage(latest)) queueSiteSync(latest!, true, !ok);
+      } else {
+        setVerified(true);
+        setStatus('synced');
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setVerified(false);
+        setStatus('error');
+        setError('Could not verify the public link. Retry publishing.');
+      }
+    });
+    return () => { cancelled = true; };
+  }, [documentId]);
+
   useEffect(() => {
     const onStatus = (event: Event) => {
       const detail = (event as CustomEvent<{
@@ -34,6 +70,8 @@ export default function HtmlSiteDialog({ documentId, title, getCurrent, onClose 
       if (detail?.documentId !== documentId) return;
       setRecord(readSiteRecord(documentId));
       setStatus(detail.status);
+      if (detail.status === 'synced') setVerified(true);
+      else setVerified(false);
       if (detail.error) setError(detail.error);
       else if (detail.status === 'synced') setError('');
     };
@@ -50,14 +88,14 @@ export default function HtmlSiteDialog({ documentId, title, getCurrent, onClose 
     try {
       const next = await publishHtml(doc!);
       setRecord(next);
-      queueSiteSync(doc!, true);
+      queueSiteSync(doc!, true, true);
     } catch (cause) {
       setStatus('error');
       setError(cause instanceof Error ? cause.message : 'Could not publish HTML');
     } finally { setBusy(false); }
   }
   async function copy() {
-    if (!record?.syncedVersion) return;
+    if (!record?.syncedVersion || !verified) return;
     try {
       await navigator.clipboard.writeText(siteUrl(record.id));
       setCopied(true);
@@ -70,13 +108,14 @@ export default function HtmlSiteDialog({ documentId, title, getCurrent, onClose 
     try {
       await revokeHtml(documentId);
       setRecord(null);
-      setStatus('synced');
+      setVerified(false);
+      setStatus('syncing');
       setCopied(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not revoke site');
     } finally { setBusy(false); }
   }
-  const published = Boolean(record?.syncedVersion);
+  const published = Boolean(record?.syncedVersion && verified && status === 'synced');
   return <DialogFrame id="html-site-dialog" title="Publish HTML" icon="link"
     describedBy="html-site-description" busy={busy} onClose={onClose}
     footer={<>

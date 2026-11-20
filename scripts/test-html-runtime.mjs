@@ -60,7 +60,9 @@ function mockRequest(method, body = {}, query = {}) {
 const created = await mockRequest('POST');
 assert.equal(created.status, 201);
 const { id, secret } = created.body;
-assert.match(id, /^[\w-]{12}$/);
+assert.match(id, /^html-[a-z0-9]{5}$/, 'Public sites should have a short human-readable HTML slug.');
+assert.equal((await mockRequest('GET', {}, { id, status: '1' })).status, 404,
+  'Unpublished metadata must not be exposed as a valid public link.');
 const source = '<!doctype html><html><head><title>Game</title></head><body><a href="/engine">Engine</a>';
 const extra = '<script>const a = "3D";</script></body></html>';
 const version = 'abcdefgh1234';
@@ -74,12 +76,19 @@ assert.equal((await mockRequest('PUT', { ...credentials, action: 'chunk',
   version, index: 1, text: extra })).status, 200);
 assert.equal((await mockRequest('PUT', { ...credentials, action: 'commit',
   version, chunks: 2, size: Buffer.byteLength(source + extra) })).status, 200);
+const readiness = await mockRequest('GET', {}, { id, status: '1' });
+assert.equal(readiness.status, 200, 'Only committed hosted HTML is shareable.');
+assert.equal(readiness.body.published, true);
+assert.equal(readiness.body.version, version);
+assert.equal(readiness.headers.get('cache-control'), 'no-store, max-age=0');
 const shared = await mockRequest('GET', {}, { id, raw: '1' });
 assert.equal(shared.status, 200);
 assert.equal(shared.html, source + extra, 'Raw loads must not rewrite source');
 assert.match(shared.headers.get('content-security-policy'), /sandbox/);
 const hosted = await mockRequest('GET', {}, { id });
 assert.match(hosted.html, /__FLOW_SITE_BASE__/, 'Hosted route bootstrap is installed');
+assert.match(hosted.html, new RegExp('/play/' + id),
+  'Hosted HTML internal navigation must use the new /play/ slug, not /slug/.');
 assert.match(hosted.html, /href="\/engine"/, 'Source links are preserved');
 assert.equal((await mockRequest('DELETE', { id, secret: 'invalid' })).status, 403);
 assert.equal((await mockRequest('DELETE', credentials)).status, 200);
@@ -142,6 +151,26 @@ assert.doesNotMatch(player, /<div className="html-play-device"|html-play-device-
 assert.doesNotMatch(phone, /boxShadow|linear-gradient|backgroundImage/,
   'The raw SVG frame must not acquire decorative effects.');
 const rewrites = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
-assert.ok(rewrites.rewrites.some(rule => rule.source === '/slug/:id/:path*'));
+assert.ok(rewrites.rewrites.some(rule => rule.source === '/slug/:id/:path*'),
+  'Old URLs must remain routable.');
 assert.ok(rewrites.rewrites.some(rule => rule.source === '/play/local/:id/:path*'));
+assert.ok(rewrites.rewrites.some(rule => rule.source === '/play/:id'));
+assert.ok(rewrites.rewrites.some(rule => rule.source === '/play/:id/:path*'));
+const routeSource = readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8');
+assert.match(routeSource, /route.startsWith\('\/play\/'\) \? HtmlPlayPage/,
+  'The new public play route must open the same player as local full HTML.');
+const hosting = readFileSync(new URL('../src/lib/siteHosting.ts', import.meta.url), 'utf8');
+const modal = readFileSync(new URL('../src/components/HtmlSiteDialog.tsx', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+assert.match(hosting, /verifyHostedHtml\(record.id\)/,
+  'Sync must verify real server readiness after commit.');
+assert.match(modal, /const published = Boolean\(record\?\.syncedVersion && verified && status === 'synced'\)/,
+  'Do not enable public Copy before remote HTML is verifiably ready.');
+assert.match(hosting, /siteUrl\(id: string\)/);
+assert.match(hosting, /id.startsWith\('html-'\) \? '\/play\/' : '\/slug\/'/,
+  'New slugs should be /play/ and previous public URLs must remain valid.');
+assert.match(app, /verifyHostedHtml\(current.id\)/,
+  'Full HTML should prefer the same verified share link after synchronization.');
+assert.match(player, /const PUBLIC_PREFIX = PATH\[0\] === 'slug' \? '\/slug\/' : '\/play\/'/,
+  'Hosted subroutes must stay scoped under the current public URL prefix.');
 console.log('HTML hosting, 10MB chunking, route reload, safety, runtime, and exact iPhone SVG tests passed.');
