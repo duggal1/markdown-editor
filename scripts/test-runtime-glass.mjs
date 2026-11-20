@@ -165,23 +165,6 @@ assert.doesNotMatch(runtimeRules, /--glass-(?:inner-)?edge|border-color:|box-sha
   'No hidden stroke tokens or inset simulated borders are permitted.');
 assert.doesNotMatch(runtimeRules, /outline:\s*[1-9]/,
   'Focus feedback must not introduce another hard border.');
-assert.match(runtimeRules, /--glass-refraction-top: rgba\(223,236,255,\.21\)/,
-  'Dark glass must contain a subtle soft edge refraction.');
-assert.match(runtimeRules, /--glass-refraction-top: rgba\(255,255,255,\.40\)/,
-  'Light glass must contain its own optical edge treatment.');
-assert.match(runtimeRules, /--glass-refraction-blur: blur\(44px\)/,
-  'Refraction must use stronger backdrop blur than the interior.');
-assert.match(runtimeRules, /\.html-play-compact::before,[\s\S]*?\.html-play-panel::before,[\s\S]*?\.html-runtime-options::before,[\s\S]*?\.html-runtime-select-trigger::before,[\s\S]*?\.html-play-device-switch::before \{/,
-  'All major runtime surfaces must get optical edge refraction.');
-assert.match(runtimeRules, /-webkit-backdrop-filter: var\(--glass-refraction-blur\)/);
-assert.match(runtimeRules, /backdrop-filter: var\(--glass-refraction-blur\)/);
-assert.match(runtimeRules, /-webkit-mask-composite: xor;[\s\S]*?mask-composite: exclude;/,
-  'Refracted edge must be a masked perimeter with transparent center.');
-assert.match(runtimeRules, /filter: blur\(1\.6px\)/,
-  'The edge must be feathered rather than a hard stroke.');
-assert.doesNotMatch(runtimeRules, /box-shadow:\s*inset/,
-  'Refraction must not reintroduce an inset border.');
-
 assert.match(runtimeRules, /--glass-option-hover: rgba\(0,0,0,\.26\)/);
 assert.match(runtimeRules, /--glass-option-selected: rgba\(0,0,0,\.33\)/);
 assert.match(runtimeRules, /--glass-option-hover: rgba\(255,255,255,\.30\)/);
@@ -189,28 +172,32 @@ assert.match(runtimeRules, /--glass-option-selected: rgba\(255,255,255,\.41\)/);
 assert.match(runtimeRules, /\.html-runtime-option\[aria-selected='true'\] \{[\s\S]*?background: var\(--glass-option-selected\);[\s\S]*?backdrop-filter: blur\(14px\)/);
 assert.match(runtime, /type: 'flow-runtime-settings', fps: fpsLimit, phone/,
   'Phone mode must be delivered into the isolated HTML iframe.');
-const prePhoneCss = runtimeRules;
-assert.match(runtime, /data-preview-device=\{phone \? 'phone' : 'desktop'\}/,
-  'Only iPhone mode may change the outer player canvas.');
-assert.match(runtime, /<IPhoneFrame isDark=\{false\}>/,
-  'Use the original SVG light mode without changing its shapes.');
-assert.match(prePhoneCss,
-  /\.html-play-page\[data-preview-device='phone'\] \{\s*background: #fafafa;/,
-  'iPhone mode needs neutral-50 exterior even for dark HTML.');
-assert.match(prePhoneCss,
-  /\.html-play-page\[data-preview-device='phone'\] \.html-iphone-frame \{[\s\S]*?background: #f5f5f5;/,
-  'iPhone frame must use neutral-100.');
-assert.match(prePhoneCss,
-  /\.html-play-page\[data-preview-device='phone'\] \.html-iphone-content \{[\s\S]*?background: #f5f5f5;/,
-  'iPhone clipped screen backing must use neutral-100.');
-assert.doesNotMatch(prePhoneCss,
-  /\.html-play-page\[data-glass='light'\] \{[^}]*background: #fafafa;/,
-  'Do not change the desktop background based on light HTML.');
-assert.match(runtime, /const spring = \{ type: 'spring'/,
-  'Restore original FPS panel and control Motion config.');
-assert.doesNotMatch(runtime, /const smoothEase|className="html-play-desktop"|<motion\.div className="html-iphone-stage"/,
-  'Do not bring back the unrequested PR #42 FPS or viewport animations.');
-assert.match(select, /type: 'spring', stiffness: 420, damping: 32/,
-  'Restore the original top-left dropdown interaction unmodified.');
 
-console.log('Dynamic borderless glass, translucent selected states, scrollbars and raw iPhone geometry passed.');
+assert.match(runtime, /data-preview-device=\{phone \? 'phone' : 'desktop'\}/,
+  'Phone-only CSS must be tied to the device toggle.');
+assert.match(runtime, /<IPhoneFrame isDark=\{glass === 'dark'\}>/,
+  'The existing HTML tone must control the original iPhone frame colors.');
+assert.match(runtimeRules,
+  /\.html-play-page\[data-preview-device='phone'\]\[data-glass='light'\] \{\s*background: #fafafa;/,
+  'Only light HTML in phone mode gets the neutral-50 background.');
+assert.match(runtimeRules,
+  /\.html-play-page\[data-preview-device='phone'\]\[data-glass='light'\] \.html-iphone-frame \{[\s\S]*?background: #f5f5f5;/,
+  'The light iPhone frame uses neutral-100.');
+assert.match(runtimeRules,
+  /\.html-play-page\[data-preview-device='phone'\]\[data-glass='light'\] \.html-iphone-content \{[\s\S]*?background: #f5f5f5;/,
+  'The light iPhone screen uses neutral-100.');
+assert.doesNotMatch(runtimeRules,
+  /\.html-play-page\[data-preview-device='phone'\](?!\[data-glass='light'\])\s*\{/,
+  'Selecting iPhone alone must not force a white canvas.');
+assert.doesNotMatch(runtimeRules, /refraction|::before/,
+  'Refracted pseudo-element effects must not come back.');
+assert.doesNotMatch(runtimeRules, /box-shadow:/,
+  'Do not add shadows to the top-left pill, panel or menu.');
+assert.match(runtimeRules, /background: #101114;/,
+  'Dark mode must keep its original dark outer background.');
+assert.match(runtime, /const spring = \{ type: 'spring'/,
+  'The original top-left animation settings must stay untouched.');
+assert.match(select, /type: 'spring', stiffness: 420, damping: 32/,
+  'The FPS control dropdown must retain its original implementation.');
+
+console.log('Theme-correct iPhone, reverted shadow-free controls, and borderless glass, translucent selected states, scrollbars and raw iPhone geometry passed.');
