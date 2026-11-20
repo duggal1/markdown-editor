@@ -22,6 +22,7 @@ Do **not** substitute a nearly opaque grey rectangle for glass. The page behind 
 - Compact handle: about 170px wide, 39px tall, 14–16px radii, 12px text. Drag area and toggle are distinct hit targets.
 - Expanded glass: about 252px wide, tight 10–12px interior spacing, 15–17px radii. Device switch, resolution, FPS, and compact actions only. No paragraphs or technical explanations.
 - Custom dropdowns: optically matching glass, readable 11–12px labels, 32–36px rows, rounded 10–12px; menus float above other controls. No OS-native opaque select menu.
+- A dropdown menu is portaled as a sibling of the blurred panel, inside the HTML player root; it must blur the **page behind it**, not merely another already-blurred surface. Recalculate its fixed anchor position on scroll and resize.
 - Icons: existing Hugeicons, 1.6–1.75 stroke; align to an optical grid. Mouse targets have `cursor: pointer`, while the drag grip uses `grab`.
 - Motion: transform and opacity only, ~160–230ms with decelerating easing, spring for taps; honor `prefers-reduced-motion`. No animated blur, shadow, layout shift, or continuous decorations.
 - Controls must not cover or intercept HTML beyond their small footprint. Hide remains available.
