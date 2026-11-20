@@ -17,11 +17,11 @@ const PRESETS: Record<Exclude<Resolution, 'auto'>, [number, number]> = {
 const PATH = window.location.pathname.split('/').filter(Boolean);
 const LOCAL = PATH[0] === 'play' && PATH[1] === 'local';
 const ID = LOCAL ? PATH[2] || '' : PATH[1] || '';
-const FIRST_ROUTE = LOCAL ? '/' : '/' + PATH.slice(2).join('/');
+const FIRST_ROUTE = '/' + PATH.slice(LOCAL ? 3 : 2).join('/');
 
 function currentRoute(): string {
   const parts = window.location.pathname.split('/').filter(Boolean);
-  return LOCAL ? '/' : '/' + parts.slice(2).join('/');
+  return '/' + parts.slice(LOCAL ? 3 : 2).join('/');
 }
 function safeRoute(value: string): string | null {
   if (!value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return null;
@@ -120,10 +120,11 @@ export default function HtmlPlayPage() {
       if (event.source !== iframe.current?.contentWindow || !event.data) return;
       if (event.data.type === 'flow-runtime-fps' && Number.isFinite(event.data.fps)) {
         setObservedFps(Math.min(1000, Math.max(0, Math.round(event.data.fps))));
-      } else if (event.data.type === 'flow-runtime-route' && !LOCAL) {
+      } else if (event.data.type === 'flow-runtime-route') {
         const route = safeRoute(event.data.path);
         if (!route) return;
-        const next = '/slug/' + ID + (route === '/' ? '/' : route);
+        const prefix = LOCAL ? '/play/local/' + ID : '/slug/' + ID;
+        const next = prefix + (route === '/' ? '/' : route);
         if (next === window.location.pathname + window.location.search + window.location.hash) return;
         window.history.pushState(null, '', next);
         setRoutePath(route);
