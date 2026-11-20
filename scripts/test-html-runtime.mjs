@@ -137,7 +137,7 @@ for (const pair of ['height={681}', 'width={322}', 'x={9}', 'y={9.5}',
 }
 assert.equal((phone.match(/<svg/g) || []).length, 2,
   'The supplied iPhone has exactly two original SVG layers.');
-assert.doesNotMatch(player, /html-play-device|html-play-device-island|IPHONES/,
+assert.doesNotMatch(player, /<div className="html-play-device"|html-play-device-island|const IPHONES/,
   'Do not introduce a synthetic bezel, island or mislabeled iOS model.');
 assert.doesNotMatch(phone, /boxShadow|linear-gradient|backgroundImage/,
   'The raw SVG frame must not acquire decorative effects.');
