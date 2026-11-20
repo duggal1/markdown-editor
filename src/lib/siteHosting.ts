@@ -19,7 +19,7 @@ export function isHtmlPage(doc: FlowDocument | null | undefined): boolean {
     (doc.language === 'html' || detectRawCode(doc.markdown) === 'html'));
 }
 export function siteUrl(id: string): string {
-  return window.location.origin + (id.startsWith('html-') ? '/play/' : '/slug/') + encodeURIComponent(id) + '/';
+  return window.location.origin + (id.startsWith('html-') ? '/play/' : '/slug/') + encodeURIComponent(id);
 }
 export function localHtmlUrl(id: string): string {
   return window.location.origin + '/play/local/' + encodeURIComponent(id);
