@@ -12,6 +12,8 @@ assert.equal(repairLanguage(html), 'html');
 assert.equal(repairCodeSource(html, 'html'), html, 'Working HTML is byte-for-byte unchanged.');
 assert.equal(repairCodeSource(rawHtml, 'html'), rawHtml);
 assert.equal(repairCodeSource(python, 'python'), python, 'Working Python is byte-for-byte unchanged.');
+assert.equal(repairCodeSource('\n\n' + python, 'python'), '\n\n' + python,
+  'Initial blank lines are legitimate Python source, not paste artifacts.');
 
 const brokenHtml = [
   'https://markdown-editor.opalhq.fun/play/html-fe40h',
