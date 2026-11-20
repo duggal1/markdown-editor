@@ -10,10 +10,10 @@ The HTML remains edge-to-edge and visually untouched in Desktop mode. Editor chr
 
 Do **not** substitute a nearly opaque grey rectangle for glass. The page behind a panel must remain visibly present, but softly diffused.
 
-- Dark HTML: near-black translucent glass (roughly 25–40% alpha), light text, a subtle white edge and **28–40px real** `backdrop-filter: blur(...) saturate(...)`.
-- Light HTML: translucent off-white glass (roughly 30–45% alpha), charcoal text, a subtle dark edge, the **same real** backdrop blur.
+- Dark HTML: near-black translucent glass (roughly 25–40% alpha), light text and **28–40px real** `backdrop-filter: blur(...) saturate(...)`. **Zero borders and zero inset hairlines.**
+- Light HTML: translucent off-white glass (roughly 30–45% alpha), charcoal text, the **same real** backdrop blur. **Zero borders and zero inset hairlines.**
 - The compact pill, expanded panel, selector trigger, open dropdown, selected row, and action controls must share one consistent optical system. Do not stack opaque backgrounds inside translucent containers.
-- Backdrop brightness is part of readability; avoid creating a solid dark sheet to hide content. Use 1px translucent hairlines and a restrained shadow, not heavy borders or gradients.
+- Backdrop brightness is part of readability; avoid creating a solid dark sheet to hide content. **No border, no 1px stroke, no inset border-like shadow and no hard focus ring** on runtime UI. Rely on spacing, contrast, blur, and a restrained diffuse outer shadow.
 - Context comes from the embedded page's computed background color via the existing sandbox message bridge, not the editor theme. Both theme variants need to be visibly different and tested against dark and light HTML.
 - Keep **one authoritative set** of HTML runtime CSS rules. No accumulating overrides at the end of the stylesheet.
 
@@ -21,7 +21,7 @@ Do **not** substitute a nearly opaque grey rectangle for glass. The page behind 
 
 - Compact handle: about 170px wide, 39px tall, 14–16px radii, 12px text. Drag area and toggle are distinct hit targets.
 - Expanded glass: about 252px wide, tight 10–12px interior spacing, 15–17px radii. Device switch, resolution, FPS, and compact actions only. No paragraphs or technical explanations.
-- Custom dropdowns: optically matching glass, readable 11–12px labels, 32–36px rows, rounded 10–12px; menus float above other controls. No OS-native opaque select menu.
+- Custom dropdowns: optically matching glass, readable 11–12px labels, 32–36px rows, rounded 10–12px; menus float above other controls. No OS-native opaque select menu. **Hover and selection are dark black-opacity blur over dark HTML and off-white-opacity blur over light HTML. Never grey or solid selected backgrounds.**
 - A dropdown menu is portaled as a sibling of the blurred panel, inside the HTML player root; it must blur the **page behind it**, not merely another already-blurred surface. Recalculate its fixed anchor position on scroll and resize.
 - Icons: existing Hugeicons, 1.6–1.75 stroke; align to an optical grid. Mouse targets have `cursor: pointer`, while the drag grip uses `grab`.
 - Motion: transform and opacity only, ~160–230ms with decelerating easing, spring for taps; honor `prefers-reduced-motion`. No animated blur, shadow, layout shift, or continuous decorations.
@@ -43,5 +43,6 @@ The embedded iframe has an actual **306px layout viewport** and a visible 623px 
 
 - CSS lives in the one HTML runtime section in `src/styles.css`. Remove superseded rules rather than appending competing patches.
 - Keep the HTML iframe sandbox, public routes, autosync and FPS bridge working.
-- Test dark and light glass variables, translucent backgrounds and nonzero backdrop blur, fixed SVG frame geometry, removal of duplicate bezels, and custom dropdown stacking.
+- For iPhone frame preview, hide scrollbar *chrome* inside the sandboxed iframe without disabling mouse, touch or keyboard scrolling. On desktop, tint scrollbar thumbs dark over dark HTML and light over light HTML. Do not replace them with bright grey browser bars.
+- Test dark and light glass variables, translucent backgrounds, **absence of any positive-width runtime border or inset strokes**, opacity-only hover/selected backgrounds, nonzero backdrop blur, fixed SVG frame geometry, removal of duplicate bezels, custom dropdown stacking, and iPhone scrollbar hiding with scrolling preserved.
 - Run the complete CI suite and the production build. Merge only after checks pass and verify the exact production deployment commit.
