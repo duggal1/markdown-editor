@@ -1507,3 +1507,105 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 @media(max-width:800px) {
   .html-preview-popout { top:8px; right:9px; min-height:33px; }
 }
+
+
+/* Share and Publish modals: borderless neutral UI, visually independent of
+   legacy delete/other dialogs. The native dialog still traps keyboard focus. */
+#share-dialog.flow-dialog, #html-site-dialog.flow-dialog {
+  width:min(440px,calc(100vw - 28px));
+  background:#121214; color:#f5f5f5;
+  border:0; border-radius:19px;
+  box-shadow:0 24px 90px rgba(0,0,0,.68),0 2px 9px rgba(0,0,0,.23);
+  overflow:hidden;
+}
+#share-dialog .flow-dialog-header, #html-site-dialog .flow-dialog-header {
+  height:59px; padding:0 18px 0 22px;
+  background:transparent; border:0;
+}
+#share-dialog .flow-dialog-heading, #html-site-dialog .flow-dialog-heading {gap:10px;color:#d4d4d8;}
+#share-dialog .flow-dialog-heading h2, #html-site-dialog .flow-dialog-heading h2 {
+  color:#fafafa; font-size:14px; font-weight:600; letter-spacing:-.025em;
+}
+#share-dialog .flow-dialog-close, #html-site-dialog .flow-dialog-close {
+  width:31px;height:31px;border:0;border-radius:10px;color:#a1a1aa;
+}
+#share-dialog .flow-dialog-close:hover, #html-site-dialog .flow-dialog-close:hover {
+  background:#27272a;color:#f4f4f5;
+}
+#share-dialog .flow-dialog-body, #html-site-dialog .flow-dialog-body {
+  padding:2px 22px 20px;
+}
+#share-dialog .flow-dialog-file, #html-site-dialog .flow-dialog-file {
+  min-height:60px; padding:10px 12px; gap:12px; margin-bottom:17px;
+  background:#1d1d20; border:0; border-radius:12px;
+}
+#share-dialog .flow-dialog-file-icon, #html-site-dialog .flow-dialog-file-icon {
+  width:36px;height:36px;flex-basis:36px;
+  background:#2b2b2f;border:0;border-radius:10px;color:#e4e4e7;
+}
+#share-dialog .flow-dialog-file-text strong, #html-site-dialog .flow-dialog-file-text strong {
+  color:#f4f4f5;font-size:12.5px;font-weight:600;
+}
+#share-dialog .flow-dialog-file-text small, #html-site-dialog .flow-dialog-file-text small {color:#a1a1aa;}
+#share-dialog .flow-dialog-readonly, #html-site-dialog .flow-dialog-readonly {
+  font-size:10px;color:#a1a1aa;
+}
+#share-dialog .flow-dialog-copy, #html-site-dialog .flow-dialog-copy {
+  color:#a1a1aa;font-size:12px;line-height:1.7;
+}
+#share-dialog .flow-dialog-consent {
+  margin-top:16px;padding:13px 12px;
+  background:#202023;border:0;border-radius:12px;gap:12px;
+}
+#share-dialog .flow-dialog-consent:hover {background:#262629;}
+#share-dialog .flow-dialog-consent input {
+  width:18px;height:18px;flex-basis:18px;
+  border:0;background:#38383e;border-radius:6px;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);
+}
+#share-dialog .flow-dialog-consent input:checked {
+  background:#f5f5f4;box-shadow:none;
+}
+#share-dialog .flow-dialog-consent strong {color:#f5f5f5;}
+#share-dialog .flow-dialog-consent small {color:#a1a1aa;}
+#share-dialog .flow-dialog-label, #html-site-dialog .flow-dialog-label {color:#b5b5bc;}
+#share-dialog .flow-dialog-link, #html-site-dialog .flow-dialog-link {
+  padding:4px;gap:5px;background:#222225;border-radius:12px;
+}
+#share-dialog .flow-dialog-link input, #html-site-dialog .flow-dialog-link input {
+  height:34px;background:transparent;border:0;border-radius:8px;
+  padding:0 10px;color:#f5f5f5;
+}
+#share-dialog .flow-dialog-footer, #html-site-dialog .flow-dialog-footer {
+  padding:14px 22px 19px;min-height:62px;background:transparent;border:0;
+}
+#share-dialog .flow-dialog-button, #html-site-dialog .flow-dialog-button {
+  border:0;border-radius:10px;min-height:36px;padding:0 15px;
+  transition:background .15s ease,transform .15s ease;
+}
+#share-dialog .flow-dialog-button:active:not(:disabled),
+#html-site-dialog .flow-dialog-button:active:not(:disabled) {transform:scale(.98);}
+#share-dialog .flow-dialog-neutral, #html-site-dialog .flow-dialog-neutral {
+  background:#29292d;color:#f5f5f5;
+}
+#share-dialog .flow-dialog-neutral:hover, #html-site-dialog .flow-dialog-neutral:hover {background:#35353a;}
+#share-dialog .flow-dialog-contrast, #html-site-dialog .flow-dialog-contrast {
+  background:#f5f5f4;color:#161616;
+}
+#share-dialog .flow-dialog-contrast:hover, #html-site-dialog .flow-dialog-contrast:hover {background:#fff;}
+#share-dialog .flow-dialog-danger, #html-site-dialog .flow-dialog-danger {
+  background:transparent;color:#f19b9d;padding-inline:9px;
+}
+#share-dialog .flow-dialog-danger:hover, #html-site-dialog .flow-dialog-danger:hover {
+  background:#302124;color:#ffafb2;
+}
+#share-dialog .flow-dialog-hint, #html-site-dialog .flow-dialog-hint {color:#94949c;}
+#share-dialog :is(button,input):focus-visible, #html-site-dialog :is(button,input):focus-visible {
+  outline:2px solid #a1a1aa;outline-offset:2px;
+}
+@media(max-width:480px) {
+  #share-dialog.flow-dialog, #html-site-dialog.flow-dialog {border-radius:16px;}
+  #share-dialog .flow-dialog-body, #html-site-dialog .flow-dialog-body {padding:2px 16px 17px;}
+  #share-dialog .flow-dialog-header, #html-site-dialog .flow-dialog-header {padding:0 13px 0 16px;}
+  #share-dialog .flow-dialog-footer, #html-site-dialog .flow-dialog-footer {padding:12px 16px 16px;}
+}
