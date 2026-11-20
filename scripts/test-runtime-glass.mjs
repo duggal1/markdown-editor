@@ -204,7 +204,7 @@ assert.match(prePhoneCss,
   /\.html-play-page\[data-preview-device='phone'\] \.html-iphone-content \{[\s\S]*?background: #f5f5f5;/,
   'iPhone clipped screen backing must use neutral-100.');
 assert.doesNotMatch(prePhoneCss,
-  /\.html-play-page\[data-glass='light'\] \{\s*[\s\S]*?background: #fafafa;/,
+  /\.html-play-page\[data-glass='light'\] \{[^}]*background: #fafafa;/,
   'Do not change the desktop background based on light HTML.');
 assert.match(runtime, /const spring = \{ type: 'spring'/,
   'Restore original FPS panel and control Motion config.');
