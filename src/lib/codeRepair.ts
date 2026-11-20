@@ -46,7 +46,8 @@ function repairPython(source: string): string {
   let first = 0;
   // A copied page may begin with a URL, code label or language fence.
   while (first < Math.min(lines.length, 8) && isWrapperLine(lines[first])) first++;
-  const lastMeaningful = lines.findLastIndex(line => line.trim().length > 0);
+  let lastMeaningful = lines.length - 1;
+  while (lastMeaningful >= 0 && !lines[lastMeaningful].trim()) lastMeaningful--;
   if (first > 0 && first < lines.length && looksPython(lines[first])) {
     const wrapped = lines.slice(0, first).some(line => FENCE.test(line.trim()));
     const closing = lastMeaningful > first && /^`{3,}$/.test(lines[lastMeaningful].trim());
