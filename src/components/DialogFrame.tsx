@@ -33,7 +33,7 @@ export default function DialogFrame({
   }, []);
 
   return createPortal(
-    <dialog ref={ref} className="flow-dialog"
+    <dialog id={id} ref={ref} className="flow-dialog"
       aria-labelledby={id + '-title'} aria-describedby={describedBy}
       onCancel={event => {
         event.preventDefault();
