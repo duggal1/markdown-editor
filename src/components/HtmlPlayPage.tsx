@@ -183,7 +183,7 @@ export default function HtmlPlayPage() {
     : { width: '100%', height: '100%' };
 
   function sendSettings() {
-    iframe.current?.contentWindow?.postMessage({ type: 'flow-runtime-settings', fps: fpsLimit }, '*');
+    iframe.current?.contentWindow?.postMessage({ type: 'flow-runtime-settings', fps: fpsLimit, phone }, '*');
   }
   function startDrag(event: PointerEvent<HTMLButtonElement>) {
     if (event.button !== 0) return;
