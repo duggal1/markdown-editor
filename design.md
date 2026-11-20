@@ -74,3 +74,12 @@ The embedded iframe has an actual **306px layout viewport** and a visible 623px 
 - Keep the HTML publishing and Markdown sharing dialogs visually simple: Geist regular/normal-weight type, no bold title or controls, no visible decorative border. Use near-black (`#080809`) for the modal, `#111113` for its file card and `#161619` for the link field.
 - Copy and Done are at least 35–36px tall with balanced horizontal padding around 20–21px, without bloated descriptions or saturated decorations.
 - Do not touch the player's upper-left runtime panel, FPS toggle, device switch, or iPhone frame while changing share-dialog styling.
+
+## Code documents: repair and line-number system
+
+- Use **Auto HTML Fix** or **Auto Python Fix** when the file's declared type or recognizable source identifies that language. Do not run prose Auto Markdown on code.
+- Repairs are deterministic, fully local and undoable. Remove verified pasted wrappers only: copied page URL before an HTML doctype, Markdown quote/fence/`code` labels, and uniform Python REPL input prompts. Preserve valid HTML/Python byte-for-byte. Do not guess missing closing tags, semicolons, program statements, indentation or fix arbitrary errors.
+- For unsupported source languages, show Code Fix as unavailable rather than silently applying Markdown transformations.
+- Use a **single native CodeMirror lineNumbers gutter** for code. No separate scrolling overlay, no duplicate counters, no fake absolute positions. Logical line numbers must remain attached to their lines even when long code wraps or the document is virtualized.
+- Code mode has its own compact left alignment: 44px gutter on desktop (38px mobile), 12px gap to syntax-highlighted text, no Markdown-centered 880px column or oversized left inset. Gutter, scroller and text share the same surface, no visible border.
+- Markdown documents retain the existing centered writing measure, without source line numbers. Theme and fullscreen HTML runtime styling remain unchanged.

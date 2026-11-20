@@ -10,6 +10,7 @@ import { tags } from '@lezer/highlight';
 import { detectRawCode, type CodeLanguage } from '../lib/code';
 import { formatPlainTextAsMarkdown, shouldAutoFormatPaste } from '../lib/autoMarkdown';
 import { listEnterIntent } from '../lib/listEditing';
+import { repairLanguage } from '../lib/codeRepair';
 
 
 const flowHighlight = HighlightStyle.define([
@@ -116,10 +117,11 @@ function enterExplicitMarkdownList(view: EditorView): boolean {
 }
 
 function MarkdownEditor({
-  documentId, initialText, viewRef, onChange, onPosition, focusOnMount = false,
+  documentId, initialText, fileLanguage, viewRef, onChange, onPosition, focusOnMount = false,
 }: {
   documentId: string;
   initialText: string;
+  fileLanguage?: string | null;
   viewRef: RefObject<EditorView | null>;
   onChange: (value: string, documentId: string) => void;
   onPosition?: (line: number, kind: 'scroll' | 'cursor', total: number) => void;
@@ -175,7 +177,10 @@ function MarkdownEditor({
       });
     };
     const setLanguage = (source: string) => {
-      const language = detectRawCode(source);
+      // A damaged HTML/Python paste still needs a code gutter and highlighting
+      // before the user clicks Auto Fix. Other languages use existing detection.
+      const language = fileLanguage === 'html' || fileLanguage === 'python'
+        ? fileLanguage : detectRawCode(source) || repairLanguage(source);
       view.dom.classList.toggle('raw-code', Boolean(language));
       if (language === activeLanguage) return;
       activeLanguage = language;
@@ -218,7 +223,8 @@ function MarkdownEditor({
           EditorView.domEventHandlers({
             paste(event, target) {
               const text = event.clipboardData?.getData('text/plain');
-              if (!text || !shouldAutoFormatPaste(text)) return false;
+              // Never run prose-to-Markdown conversion over copied code.
+              if (!text || repairLanguage(text, fileLanguage) || !shouldAutoFormatPaste(text)) return false;
               const empty = target.state.doc.length === 0;
               const atStart = empty && target.state.selection.main.from === 0;
               const formatted = formatPlainTextAsMarkdown(text, { atDocumentStart: atStart });

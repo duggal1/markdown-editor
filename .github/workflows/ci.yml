@@ -14,6 +14,7 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run test:format
       - run: npm run test:lists
+      - run: npm run test:code-repair
       - run: npm run test:icons
       - run: npm run test:workspace-ui
       - run: npm run test:cloud

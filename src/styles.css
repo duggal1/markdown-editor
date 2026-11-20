@@ -2018,3 +2018,78 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   #html-site-dialog .flow-dialog-footer,
   #share-dialog .flow-dialog-footer {padding-inline:16px;}
 }
+
+/* Native CodeMirror code gutter, rebuilt as one aligned code-only layout.
+   No overlay counters or duplicate synchronized scroll containers. CodeMirror
+   owns logical-line positions, including line wraps and virtualized documents. */
+.cm-editor.raw-code .cm-scroller {
+  padding-top: 25px;
+  background: var(--surface) !important;
+}
+.cm-editor.raw-code .cm-sizer {
+  min-width: 0;
+  flex: 1 1 0%;
+  width: auto;
+}
+.cm-editor.raw-code .cm-gutters {
+  flex: 0 0 44px;
+  width: 44px;
+  min-width: 44px;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  margin: 0;
+  padding: 0;
+  border: 0 !important;
+  background: var(--surface) !important;
+  color: var(--muted);
+}
+.cm-editor.raw-code .cm-lineNumbers {
+  width: 44px;
+  min-width: 44px;
+  background: transparent !important;
+}
+.cm-editor.raw-code .cm-lineNumbers .cm-gutterElement {
+  box-sizing: border-box;
+  width: 44px;
+  min-width: 44px;
+  padding: 0 10px 0 3px;
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  line-height: 25.48px;
+  color: var(--muted);
+  background: transparent !important;
+  border: 0;
+}
+.cm-editor.raw-code .cm-content {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0 28px 80px 12px !important;
+  font-variant-ligatures: none;
+}
+.cm-editor.raw-code .cm-line {
+  padding: 0;
+  line-height: 1.82;
+  overflow-wrap: anywhere;
+  font-variant-ligatures: none;
+}
+.cm-editor.raw-code .cm-gutterElement.cm-activeLineGutter {
+  color: var(--text);
+  background: transparent !important;
+}
+@media(max-width:800px) {
+  .cm-editor.raw-code .cm-scroller { padding-top: 20px; }
+  .cm-editor.raw-code .cm-gutters,
+  .cm-editor.raw-code .cm-lineNumbers { width: 38px; min-width: 38px; flex-basis: 38px; }
+  .cm-editor.raw-code .cm-lineNumbers .cm-gutterElement {
+    width: 38px; min-width: 38px; padding: 0 7px 0 2px;
+    font-size: 10px;
+  }
+  .cm-editor.raw-code .cm-content { padding: 0 14px 58px 9px !important; }
+}
