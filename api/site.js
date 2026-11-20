@@ -9,6 +9,7 @@ const ID = /^(?:[A-Za-z0-9_-]{12}|html-[a-z0-9]{5})$/;
 const SECRET = /^[A-Za-z0-9_-]{43}$/;
 const VERSION = /^[A-Za-z0-9_-]{8,48}$/;
 const MAX_SITE_BYTES = 10 * 1024 * 1024;
+const FAST_PUBLISH_BYTES = 256 * 1024;
 const MAX_CHUNK_BYTES = 950_000;
 const MAX_CHUNKS = 80;
 const metaPath = id => 'html-sites/' + id + '/meta.json';
@@ -153,22 +154,46 @@ export default async function handler(req, res) {
       return respond(res, 400, { error: 'Invalid JSON request' });
     }
     if (req.method === 'POST') {
-      // Five base-36 characters keep URLs compact without relying on an
-      // unsafe global sequential counter. Blob create is no-overwrite, and
-      // collisions are retried rather than taking over another user's site.
+      // Small pages publish in a single HTTP round trip instead of
+      // create -> chunk -> commit -> readiness polling. For large HTML the
+      // existing chunked PUT pipeline remains available up to 10 MiB.
+      const inline = Object.hasOwn(body, 'html');
+      if (inline && (typeof body.html !== 'string' ||
+          !body.html.length || Buffer.byteLength(body.html, 'utf8') > FAST_PUBLISH_BYTES)) {
+        return respond(res, 413, { error: 'Inline HTML must be between 1 byte and 256 KiB' });
+      }
       for (let attempt = 0; attempt < 5; attempt++) {
         const id = 'html-' + (randomBytes(4).readUInt32BE(0) % 60_466_176).toString(36).padStart(5, '0');
         const secret = randomBytes(32).toString('base64url');
+        const metadata = {
+          ownerHash: createHash('sha256').update(secret).digest('hex'),
+          createdAt: Date.now(),
+        };
         try {
-          await writeMeta(id, {
-            ownerHash: createHash('sha256').update(secret).digest('hex'),
-            createdAt: Date.now(),
-          });
-          return respond(res, 201, { id, secret });
+          await writeMeta(id, metadata);
         } catch (error) {
           const code = String(error?.code || error?.message || '');
-          if (!/already.exists|already_exists|conflict|409/i.test(code)) throw error;
+          if (/already.exists|already_exists|conflict|409/i.test(code)) continue;
+          throw error;
         }
+        if (inline) {
+          const version = randomBytes(16).toString('hex');
+          try {
+            await put(chunkPath(id, version, 0), body.html, {
+              access: 'private', addRandomSuffix: false, allowOverwrite: false,
+              contentType: 'text/plain; charset=utf-8', cacheControlMaxAge: 60,
+            });
+            await writeMeta(id, { ...metadata, version, chunks: 1,
+              size: Buffer.byteLength(body.html, 'utf8'), updatedAt: Date.now() }, true);
+            return respond(res, 201, { id, secret, published: true, version });
+          } catch (error) {
+            // A partial inline publish must never leave a stale, copyable URL.
+            await del(metaPath(id)).catch(() => {});
+            await del(chunkPath(id, version, 0)).catch(() => {});
+            throw error;
+          }
+        }
+        return respond(res, 201, { id, secret });
       }
       return respond(res, 503, { error: 'Could not allocate a unique site URL. Retry.' });
     }
