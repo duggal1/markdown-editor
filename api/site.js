@@ -82,7 +82,7 @@ function injectBootstrap(html, id) {
   if (/<!doctype[^>]*>/i.test(html)) return html.replace(/<!doctype[^>]*>/i, match => match + bootstrap);
   return bootstrap + html;
 }
-async function streamSite(res, id, metadata) {
+async function streamSite(res, id, metadata, raw = false) {
   if (!metadata?.version || !VERSION.test(metadata.version) ||
       !Number.isInteger(metadata.chunks) || metadata.chunks < 1 || metadata.chunks > MAX_CHUNKS) {
     return respond(res, 404, { error: 'Site not yet published' });
@@ -107,7 +107,7 @@ async function streamSite(res, id, metadata) {
       throw new Error('Published site missing chunk ' + index);
     }
     let part = await new Response(blob.stream).text();
-    if (index === 0) part = injectBootstrap(part, id);
+    if (index === 0 && !raw) part = injectBootstrap(part, id);
     if (!res.write(part)) await once(res, 'drain');
   }
   res.end();
@@ -129,7 +129,7 @@ export default async function handler(req, res) {
       if (typeof id !== 'string' || !ID.test(id)) return respond(res, 404, { error: 'Site not found' });
       const meta = await readMeta(id);
       if (!meta) return respond(res, 404, { error: 'Site not found' });
-      return await streamSite(res, id, meta);
+      return await streamSite(res, id, meta, req.query?.raw === '1');
     }
     const origin = req.headers.origin;
     const host = req.headers['x-forwarded-host'] || req.headers.host;
