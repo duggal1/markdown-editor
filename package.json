@@ -16,7 +16,8 @@
     "test:titles": "node scripts/test-page-titles.mjs",
     "test:long-scroll": "node scripts/test-long-scroll.mjs",
     "test:search": "node scripts/test-search.mjs",
-    "test:pdf": "node --import tsx scripts/test-pdf-export.mjs"
+    "test:pdf": "node --import tsx scripts/test-pdf-export.mjs",
+    "test:html": "node scripts/test-html-runtime.mjs"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.5.2",
