@@ -60,7 +60,7 @@ function mockRequest(method, body = {}, query = {}) {
 const created = await mockRequest('POST');
 assert.equal(created.status, 201);
 const { id, secret } = created.body;
-assert.match(id, /^html-[a-z0-9]{8}$/, 'Public sites should have a short human-readable HTML slug.');
+assert.match(id, /^html-[a-z0-9]{5}$/, 'Public sites should have a short human-readable HTML slug.');
 assert.equal((await mockRequest('GET', {}, { id, status: '1' })).status, 404,
   'Unpublished metadata must not be exposed as a valid public link.');
 const source = '<!doctype html><html><head><title>Game</title></head><body><a href="/engine">Engine</a>';
