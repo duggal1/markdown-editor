@@ -20,6 +20,8 @@ import { svgPreviewDocument } from './lib/svgPreview';
 import { readTextImport } from './lib/textImport';
 import { formatPlainTextAsMarkdown, MAX_MANUAL_FORMAT_CHARS } from './lib/autoMarkdown';
 import { formatMarkdownAction } from './lib/autoMarkdownAction';
+import { repairLanguage } from './lib/codeRepair';
+import { repairCodeAction } from './lib/codeRepairAction';
 import { inferTitle, isUntitledTitle } from './lib/title';
 import type { SearchHit } from './lib/searchIndex';
 import {
@@ -888,6 +890,15 @@ export default function App() {
     }
   }
 
+  const activeFileLanguage = active?.language || languageForFile(active?.fileName || '');
+  const activeRepairLanguage = active && !active.asset
+    ? repairLanguage(active.markdown.slice(0, 8192), activeFileLanguage) : null;
+  const activeCodeLanguage = activeFileLanguage || detectRawCode(active?.markdown.slice(0, 12000) || '');
+  const formatActionLabel = activeRepairLanguage === 'html' ? 'Auto HTML Fix'
+    : activeRepairLanguage === 'python' ? 'Auto Python Fix'
+      : activeCodeLanguage ? 'Code Fix' : 'Auto Markdown';
+  const codeRepairUnsupported = Boolean(activeCodeLanguage && !activeRepairLanguage);
+
   async function autoFormatDocument() {
     if (autoFormatInFlight.current) return;
     const view = editorRef.current;
@@ -914,11 +925,21 @@ export default function App() {
       return;
     }
 
+    const currentLanguage = repairLanguage(
+      originalDocument.sliceString(0, 8192),
+      current.language || languageForFile(current.fileName || ''),
+    );
+    if (!currentLanguage && codeRepairUnsupported) {
+      setNotice('Deterministic code repair currently supports HTML and Python.');
+      return;
+    }
     autoFormatInFlight.current = true;
     setAutoFormatting(true);
-    setNotice('Formatting Markdown…');
+    setNotice(currentLanguage ? 'Checking ' + currentLanguage.toUpperCase() + ' source…' : 'Formatting Markdown…');
     try {
-      const formatted = await formatMarkdownAction(source, { atDocumentStart: !selected && from === 0, selection: selected });
+      const formatted = currentLanguage
+        ? await repairCodeAction(source, currentLanguage)
+        : await formatMarkdownAction(source, { atDocumentStart: !selected && from === 0, selection: selected });
       // The user can type or change pages while a large worker is running.
       // Never overwrite a newer CodeMirror document with stale formatting.
       if (editorRef.current !== view || activeIdRef.current !== current.id ||
@@ -927,7 +948,8 @@ export default function App() {
         return;
       }
       if (formatted === source) {
-        setNotice('Already formatted. No changes needed.');
+        setNotice(currentLanguage ? 'No recognizable paste artifacts. Source unchanged.' :
+          'Already formatted. No changes needed.');
         return;
       }
       // One replacement transaction ensures Cmd/Ctrl+Z reverts the entire action.
@@ -939,11 +961,13 @@ export default function App() {
           : { anchor: from, head: from + formatted.length },
       });
       if (modeRef.current !== 'preview') view.focus();
-      setNotice(range.empty ? 'Markdown formatted · Undo to revert' :
-        'Selection formatted · Undo to revert');
+      setNotice(currentLanguage
+        ? currentLanguage.toUpperCase() + ' paste artifacts removed · Undo to revert'
+        : range.empty ? 'Markdown formatted · Undo to revert'
+          : 'Selection formatted · Undo to revert');
     } catch (error) {
-      console.error('Auto Markdown failed', error);
-      setNotice('Could not format Markdown. Your text was not changed.');
+      console.error('Source formatting failed', error);
+      setNotice('Could not process source. Your text was not changed.');
     } finally {
       autoFormatInFlight.current = false;
       setAutoFormatting(false);
@@ -1415,13 +1439,16 @@ export default function App() {
           </motion.button>)}
           <span className="format-divider" />
           <motion.button type="button" {...pressMotion} className="auto-markdown-button"
-            title="Auto Markdown · format selected text or this page"
-            aria-label="Auto Markdown" aria-busy={autoFormatting}
-            disabled={Boolean(active?.asset) || autoFormatting}
+            title={codeRepairUnsupported
+              ? 'Deterministic fixes are available for HTML and Python'
+              : activeRepairLanguage ? 'Remove recognizable paste artifacts without generating code'
+                : 'Auto Markdown · format selected text or this page'}
+            aria-label={formatActionLabel} aria-busy={autoFormatting}
+            disabled={Boolean(active?.asset) || autoFormatting || codeRepairUnsupported}
             onMouseDown={event => event.preventDefault()}
             onClick={() => { void autoFormatDocument(); }}>
             {autoFormatting ? <TerminalLoader loading /> : <Icon name="format" size={16} />}
-            <span>{autoFormatting ? 'Formatting…' : 'Auto Markdown'}</span>
+            <span>{autoFormatting ? (activeRepairLanguage ? 'Checking…' : 'Formatting…') : formatActionLabel}</span>
           </motion.button>
           <motion.button type="button" {...pressMotion} className="copy-all-button"
             title="Copy the entire page" aria-label="Copy all" disabled={!active || Boolean(active.asset)}
@@ -1439,7 +1466,7 @@ export default function App() {
         onAnimationComplete={() => editorRef.current?.requestMeasure()}>
         <section className="editor-pane" aria-label="Write Markdown">
           {active?.asset ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} theme={theme} /> : active && <MarkdownEditor key={active.id} documentId={active.id} initialText={active.markdown}
-            viewRef={editorRef} onChange={onEditorChange} onPosition={onEditorPosition} />}
+            fileLanguage={activeFileLanguage} viewRef={editorRef} onChange={onEditorChange} onPosition={onEditorPosition} />}
         </section>
         <section className="preview-pane" data-glass={activeHtml ? htmlSurfaceTone : undefined}
           aria-label="Markdown preview">
