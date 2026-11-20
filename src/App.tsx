@@ -890,15 +890,6 @@ export default function App() {
     }
   }
 
-  const activeFileLanguage = active?.language || languageForFile(active?.fileName || '');
-  const activeRepairLanguage = active && !active.asset
-    ? repairLanguage(active.markdown.slice(0, 8192), activeFileLanguage) : null;
-  const activeCodeLanguage = activeFileLanguage || detectRawCode(active?.markdown.slice(0, 12000) || '');
-  const formatActionLabel = activeRepairLanguage === 'html' ? 'Auto HTML Fix'
-    : activeRepairLanguage === 'python' ? 'Auto Python Fix'
-      : activeCodeLanguage ? 'Code Fix' : 'Auto Markdown';
-  const codeRepairUnsupported = Boolean(activeCodeLanguage && !activeRepairLanguage);
-
   async function autoFormatDocument() {
     if (autoFormatInFlight.current) return;
     const view = editorRef.current;
@@ -1074,6 +1065,14 @@ export default function App() {
     void importFiles(Array.from(event.dataTransfer.files));
   }
   const active = live.current.get(activeId) || docs.find(doc => doc.id === activeId);
+  const activeFileLanguage = active?.language || languageForFile(active?.fileName || '');
+  const activeRepairLanguage = active && !active.asset
+    ? repairLanguage(active.markdown.slice(0, 8192), activeFileLanguage) : null;
+  const activeCodeLanguage = activeFileLanguage || detectRawCode(active?.markdown.slice(0, 12000) || '');
+  const formatActionLabel = activeRepairLanguage === 'html' ? 'Auto HTML Fix'
+    : activeRepairLanguage === 'python' ? 'Auto Python Fix'
+      : activeCodeLanguage ? 'Code Fix' : 'Auto Markdown';
+  const codeRepairUnsupported = Boolean(activeCodeLanguage && !activeRepairLanguage);
   const activeHtml = isHtmlPage(active);
   useEffect(() => { setHtmlSurfaceTone('dark'); }, [activeId]);
   // HTML previews are automatically hosted; Markdown stays local unless shared.
