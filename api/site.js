@@ -26,7 +26,7 @@ function authorized(secret, hash) {
   return timingSafeEqual(createHash('sha256').update(secret).digest(), Buffer.from(hash, 'hex'));
 }
 async function readMeta(id) {
-  const blob = await get(metaPath(id), { access: 'private' });
+  const blob = await get(metaPath(id), { access: 'private', useCache: false });
   return blob?.statusCode === 200 && blob.stream
     ? new Response(blob.stream).json() : null;
 }
@@ -101,7 +101,7 @@ async function streamSite(res, id, metadata, raw = false) {
   // Stream chunks rather than buffering a 10 MB response in a serverless
   // function, preserving both peak memory and hosted response-size limits.
   for (let index = 0; index < metadata.chunks; index++) {
-    const blob = await get(chunkPath(id, metadata.version, index), { access: 'private' });
+    const blob = await get(chunkPath(id, metadata.version, index), { access: 'private', useCache: false });
     if (!blob?.stream || blob.statusCode !== 200) {
       if (!res.headersSent) return respond(res, 503, { error: 'Site content unavailable' });
       throw new Error('Published site missing chunk ' + index);
