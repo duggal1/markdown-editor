@@ -15,7 +15,7 @@ const SharedPage = React.lazy(() => import('./components/SharedPage'));
 const HtmlPlayPage = React.lazy(() => import('./components/HtmlPlayPage'));
 const route = window.location.pathname.replace(/\/+$/, '') || '/';
 const Page = route === '/draw' ? DrawPage : route.startsWith('/s/') ? SharedPage
-  : route.startsWith('/slug/') || route.startsWith('/play/local/') ? HtmlPlayPage : App;
+  : route.startsWith('/slug/') || route.startsWith('/play/') ? HtmlPlayPage : App;
 
 // A rendering exception in Draw must never leave an unexplained white screen.
 class DrawErrorBoundary extends React.Component<
