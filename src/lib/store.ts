@@ -174,11 +174,16 @@ export async function loadWorkspace(): Promise<{ workspaces: Workspace[]; folder
   let workspaces: Workspace[] = [];
   let folders: Folder[] = [];
   let documents: FlowDocument[] = [];
+  let readError: unknown = null;
   try {
     [workspaces, folders, documents] = await Promise.all([
       getAll<Workspace>('workspaces'), getAll<Folder>('folders'), getAll<FlowDocument>('documents'),
     ]);
-  } catch { /* Continue with emergency local fallback. */ }
+  } catch (error) {
+    // Never interpret an unreadable IndexedDB as an empty workspace: it may
+    // contain every document the user has ever created.
+    readError = error;
+  }
 
   try {
     for (let index = 0; index < localStorage.length; index++) {
@@ -199,8 +204,32 @@ export async function loadWorkspace(): Promise<{ workspaces: Workspace[]; folder
     else if (recovered.updatedAt > documents[existing].updatedAt) documents[existing] = recovered;
   }
 
+  // A missing workspace row must not hide documents whose workspaceId still
+  // exists in the document store. Restore the original ID, not a replacement.
+  const knownWorkspaces = new Set(workspaces.map(ws => ws.id));
+  const missingWorkspaces = new Map<string, number>();
+  for (const item of [...documents, ...folders]) {
+    if (!item.workspaceId || knownWorkspaces.has(item.workspaceId)) continue;
+    const createdAt = Number.isFinite(item.createdAt) ? item.createdAt : Date.now();
+    missingWorkspaces.set(item.workspaceId,
+      Math.min(missingWorkspaces.get(item.workspaceId) ?? createdAt, createdAt));
+  }
+  for (const [id, createdAt] of missingWorkspaces) {
+    const recovered: Workspace = { id, name: 'Recovered workspace', createdAt };
+    workspaces.push(recovered);
+    knownWorkspaces.add(id);
+    if (!readError) {
+      try { await saveWorkspace(recovered); } catch { /* Keep the files visible. */ }
+    }
+  }
+
+  // If IndexedDB failed and no recovery snapshot exists, do not fabricate a
+  // blank document. Nothing is deleted, and a later reload can still recover.
+  if (readError && !documents.length) {
+    throw new Error('Document database could not be read. Existing data was not changed.');
+  }
   if (!workspaces.length) {
-    const ws = { id: uid(), name: 'My workspace', createdAt: Date.now() };
+    const ws: Workspace = { id: uid(), name: 'My workspace', createdAt: Date.now() };
     workspaces = [ws];
     try { await saveWorkspace(ws); } catch { /* Still usable in memory. */ }
   }
