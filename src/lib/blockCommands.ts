@@ -82,6 +82,7 @@ class BlockUI {
   hover: Span | null = null;
   drag: { span: Span; doc: Text } | null = null;
   frame = 0;
+  menuFrame = 0;
   constructor(readonly view: EditorView) {
     this.menu.className = 'flow-slash-menu';
     this.menu.setAttribute('role', 'listbox');
@@ -114,8 +115,8 @@ class BlockUI {
     });
     this.grip.addEventListener('dragend', () => { this.drag = null; });
     view.dom.addEventListener('pointermove', this.onMove);
-    view.dom.addEventListener('dragover', this.onDragOver);
-    view.dom.addEventListener('drop', this.onDrop);
+    view.dom.addEventListener('dragover', this.onDragOver, true);
+    view.dom.addEventListener('drop', this.onDrop, true);
     view.scrollDOM.addEventListener('scroll', this.onScroll, { passive: true });
     document.addEventListener('pointerdown', this.onOutside);
     window.addEventListener('resize', this.onScroll);
@@ -134,12 +135,12 @@ class BlockUI {
       const content = this.view.contentDOM.getBoundingClientRect();
       if (x > content.right || x < content.left - 60 || y < content.top || y > content.bottom) { this.handle.hidden = true; return; }
       const pos = this.view.posAtCoords({ x: Math.max(content.left + 2, x), y }, false);
-      if (pos === null || codeContext(this.view, pos)) { this.handle.hidden = true; return; }
+      if (pos === null || this.view.dom.classList.contains('raw-code')) { this.handle.hidden = true; return; }
       const span = blockAt(this.view, pos);
       const rect = this.view.coordsAtPos(span.from);
       if (!rect) { this.handle.hidden = true; return; }
       this.hover = span;
-      this.handle.style.left = Math.max(4, content.left - 50) + 'px';
+      this.handle.style.left = Math.max(4, rect.left - 50) + 'px';
       this.handle.style.top = rect.top + 'px';
       this.handle.hidden = false;
     });
@@ -161,12 +162,20 @@ class BlockUI {
     const { from, to } = drag.span;
     if (target.from <= to && target.to >= from) return;
     const text = drag.doc.sliceString(from, to);
-    const removeTo = to < drag.doc.length ? to + 1 : to;
-    const removeFrom = removeTo === to && from > 0 ? from - 1 : from;
     const at = before ? target.from : target.to;
-    const insert = before ? text + '\n' : '\n' + text;
-    this.view.dispatch({ changes: [{ from: removeFrom, to: removeTo }, { from: at, insert }].sort((a,b) => a.from-b.from),
-      userEvent: 'move.drop' });
+    // Rotate the range between source and destination, retaining the exact
+    // line-break separator at the source. No whole-document copy is needed.
+    if (at < from) {
+      const between = drag.doc.sliceString(at, from);
+      const separator = between.match(/\n+$/)?.[0] || '\n';
+      const rest = between.endsWith(separator) ? between.slice(0, -separator.length) : between;
+      this.view.dispatch({ changes: { from: at, to, insert: text + separator + rest }, userEvent: 'move.drop' });
+    } else if (at > to) {
+      const between = drag.doc.sliceString(to, at);
+      const separator = between.match(/^\n+/)?.[0] || '\n';
+      const rest = between.startsWith(separator) ? between.slice(separator.length) : between;
+      this.view.dispatch({ changes: { from, to: at, insert: rest + separator + text }, userEvent: 'move.drop' });
+    }
     this.handle.hidden = true; this.view.focus();
   };
   update(update: ViewUpdate) {
@@ -181,7 +190,10 @@ class BlockUI {
     this.trigger = { from: line.from + prefix.indexOf('/'), to: range.head };
     const q = match[1].toLowerCase().trim();
     this.matches = commands.filter(c => (c.name + ' ' + c.keywords).toLowerCase().includes(q));
-    this.selected = 0; this.render(); this.position();
+    this.selected = 0; this.render();
+    // Layout reads must happen after CodeMirror finishes the update cycle.
+    cancelAnimationFrame(this.menuFrame);
+    this.menuFrame = requestAnimationFrame(() => { this.menuFrame = 0; this.position(); });
   }
   position() {
     if (!this.trigger) return;
@@ -242,12 +254,12 @@ class BlockUI {
     if (!this.trigger) return false;
     this.dismissed = this.view.state.selection.main.head; this.close(); return true;
   }
-  close() { this.trigger = null; this.menu.hidden = true; }
+  close() { this.trigger = null; this.menu.hidden = true; cancelAnimationFrame(this.menuFrame); }
   destroy() {
-    cancelAnimationFrame(this.frame); this.menu.remove(); this.handle.remove();
+    cancelAnimationFrame(this.frame); cancelAnimationFrame(this.menuFrame); this.menu.remove(); this.handle.remove();
     this.view.dom.removeEventListener('pointermove', this.onMove);
-    this.view.dom.removeEventListener('dragover', this.onDragOver);
-    this.view.dom.removeEventListener('drop', this.onDrop);
+    this.view.dom.removeEventListener('dragover', this.onDragOver, true);
+    this.view.dom.removeEventListener('drop', this.onDrop, true);
     this.view.scrollDOM.removeEventListener('scroll', this.onScroll);
     document.removeEventListener('pointerdown', this.onOutside);
     window.removeEventListener('resize', this.onScroll);
