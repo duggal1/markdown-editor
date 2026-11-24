@@ -18,6 +18,7 @@ jobs:
       - run: npm run test:icons
       - run: npm run test:workspace-ui
       - run: npm run test:cloud
+      - run: node scripts/test-backup.mjs
       - run: npm run test:preview
       - run: npm run test:html
       - run: npm run test:publish-workflow
