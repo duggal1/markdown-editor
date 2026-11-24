@@ -107,6 +107,22 @@ export default async function handler(req, res) {
     const path = prefix + 'records/' + kind + '/' + id + '.json';
     const aliasId = createHash('sha256').update('flow-link:' + token + ':' + id).digest('base64url').slice(0, 16);
     const alias = 'shares/' + aliasId + '.json';
+    // Publishing is read-only with respect to the private manifest: no HEAD,
+    // checksum, upload ticket or part verification is needed for committed data.
+    if (req.method === 'DELETE' && body.action === 'unpublish' && kind === 'documents') {
+      await del(alias);
+      return reply(res, 200, { revoked: true });
+    }
+    if (req.method === 'POST' && body.action === 'publish' && kind === 'documents') {
+      const committed = await read(path);
+      if (!committed || committed.deleted || committed.meta.assetType !== undefined)
+        return reply(res, 404, { error: 'Text backup not ready' });
+      if (body.updatedAt !== undefined && (!Number.isFinite(body.updatedAt) ||
+          committed.meta.updatedAt !== body.updatedAt))
+        return reply(res, 409, { error: 'Backup revision not ready' });
+      await write(alias, { backupPath: path, backupRoot: root }, { allowOverwrite: true });
+      return reply(res, 200, { id: aliasId });
+    }
     // Read the ETag before the value. An intervening write makes the CAS fail, never overwrite it.
     const etag = await head(path).then(item => item?.etag).catch(() => undefined);
     const current = await read(path);
@@ -116,17 +132,6 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       if (!current || current.deleted) return reply(res, 404, { error: 'Backup not found' });
       return reply(res, 200, { ...current, urls: await urls(partPaths(root, current.version, current.bytes), 'get') });
-    }
-    if (req.method === 'DELETE' && body.action === 'unpublish' && kind === 'documents') {
-      await del(alias);
-      return reply(res, 200, { revoked: true });
-    }
-    if (req.method === 'POST' && body.action === 'publish' && kind === 'documents') {
-      if (!current || current.deleted || current.meta.assetType !== undefined)
-        return reply(res, 404, { error: 'Text backup not ready' });
-      // The alias contains no content and only exists after an explicit Share action.
-      await write(alias, { backupPath: path, backupRoot: root }, { allowOverwrite: true });
-      return reply(res, 200, { id: aliasId });
     }
     if (req.method === 'DELETE' && body.action === 'delete') {
       if (kind === 'documents') await del(alias);

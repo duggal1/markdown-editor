@@ -17,6 +17,7 @@ const FORCE_RESTORE = 'flow.backup.restore.v1';
 const synced = new Map<string, Value>();
 const pending = new Map<string, Job>();
 const running = new Map<string, Promise<void>>();
+const runningValues = new Map<string, Value | null>();
 let timer: number | undefined;
 let draining = false;
 let state: BackupState = 'off';
@@ -137,10 +138,13 @@ async function sync(job: Job) {
 }
 function run(job: Job): Promise<void> {
   const id = key(job);
-  const previous = running.get(id) || Promise.resolve();
+  const active = running.get(id);
+  if (active && runningValues.get(id) === job.value) return active;
+  const previous = active || Promise.resolve();
   const next = previous.catch(() => {}).then(() => sync(job));
   running.set(id, next);
-  void next.finally(() => { if (running.get(id) === next) running.delete(id); }).catch(() => {});
+  runningValues.set(id, job.value);
+  void next.finally(() => { if (running.get(id) === next) { running.delete(id); runningValues.delete(id); } }).catch(() => {});
   return next;
 }
 function schedule(delay = 250) {
@@ -242,15 +246,29 @@ export async function restoreBackup(): Promise<Restored> {
   try { sessionStorage.removeItem(FORCE_RESTORE); } catch { /* Restore already succeeded. */ }
   return result;
 }
-export async function publishBackup(doc: FlowDocument): Promise<string> {
+export async function publishBackup(doc: FlowDocument, onProgress?: (percent: number) => void): Promise<string> {
   if (doc.asset) throw new Error('Only text pages can be shared');
   const job: Job = { kind: 'documents', id: doc.id, value: doc };
   const id = key(job);
+  if (readEntries(TOMBSTONES).some(entry => key(entry) === id))
+    throw new Error('This page has been deleted.');
+  const publish = () => request('POST', 'publish', job, { updatedAt: doc.updatedAt });
+  // Most shares are already backed up, including after a browser reload.
+  // A revision check on the server is authoritative; never expose stale data.
+  if (synced.has(id) || running.has(id) || readEntries(INDEX).some(entry => key(entry) === id)) {
+    const response = await publish();
+    if (response.ok) {
+      onProgress?.(100);
+      return (await json<{ id: string }>(response)).id;
+    }
+    if (response.status !== 404 && response.status !== 409) await json(response);
+  }
   const queued = pending.get(id);
   if (queued?.value && (queued.value as FlowDocument).updatedAt <= doc.updatedAt) pending.delete(id);
   try { await run(job); }
   catch (error) { if (!pending.has(id)) pending.set(id, job); schedule(30000); throw error; }
-  const result = await json<{ id: string }>(await request('POST', 'publish', job));
+  const result = await json<{ id: string }>(await publish());
+  onProgress?.(100);
   return result.id;
 }
 export async function unpublishBackup(documentId: string) {

@@ -12,7 +12,7 @@ export type FlowDocument = {
   fileName?: string; fileType?: 'text' | 'image' | 'binary'; language?: string; asset?: Blob;
 };
 export type Preferences = {
-  theme: Theme; accentTheme?: AccentTheme; mode: Mode; sidebarOpen: boolean;
+  theme: Theme; accentTheme?: AccentTheme; background?: 'neutral' | 'blue'; mode: Mode; sidebarOpen: boolean;
   activeWorkspaceId: string; activeDocumentId: string; recentIds: string[];
   expandedWorkspaceIds?: string[];
   splitPercent?: number;

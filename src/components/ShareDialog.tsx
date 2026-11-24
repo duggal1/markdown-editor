@@ -6,48 +6,44 @@ import DialogFrame from './DialogFrame';
 import { Icon } from './Icons';
 
 export default function ShareDialog({ documentId, title, getCurrent, onClose }: {
-  documentId: string;
-  title: string;
-  getCurrent: () => FlowDocument | null;
-  onClose: () => void;
+  documentId: string; title: string; getCurrent: () => FlowDocument | null; onClose: () => void;
 }) {
   const [record, setRecord] = useState<ShareRecord | null>(() => readShareRecord(documentId));
   const [consent, setConsent] = useState(false);
   const backedUp = backupEnabled();
   const attempted = useRef(false);
-  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+  const [operation, setOperation] = useState<'create' | 'revoke' | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [status, setStatus] = useState<ShareStatus>('synced');
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<number | undefined>(undefined);
+  const busy = operation !== null;
+  const link = record ? shareUrl(record.id) : '';
 
   useEffect(() => {
     const onStatus = (event: Event) => {
       const detail = (event as CustomEvent<{ documentId: string; status: ShareStatus; progress?: number }>).detail;
-      if (detail?.documentId === documentId) {
-        setStatus(detail.status);
-        setProgress(typeof detail.progress === 'number' ? detail.progress : null);
-        if (detail.status === 'synced') setRecord(readShareRecord(documentId));
-      }
+      if (detail?.documentId !== documentId) return;
+      setStatus(detail.status);
+      setProgress(typeof detail.progress === 'number' ? detail.progress : null);
+      if (detail.status === 'synced') setRecord(readShareRecord(documentId));
     };
     window.addEventListener('flow-share-sync', onStatus);
-    return () => window.removeEventListener('flow-share-sync', onStatus);
+    return () => {
+      window.removeEventListener('flow-share-sync', onStatus);
+      if (copyTimer.current !== undefined) window.clearTimeout(copyTimer.current);
+    };
   }, [documentId]);
 
-  const link = record ? shareUrl(record.id) : '';
-  useEffect(() => {
-    if (backedUp && !record && !attempted.current) {
-      attempted.current = true;
-      void enable();
-    }
-  }, [backedUp, record]);
-
   async function enable() {
-    if ((!consent && !backedUp) || busy) return;
+    if ((!consent && !backedUp) || inFlight.current) return;
     const doc = getCurrent();
-    if (!doc || doc.asset) { setError('This page cannot be shared as Markdown.'); return; }
-    setBusy(true);
-    setProgress(0);
+    if (!doc || doc.asset) { setError('Only text pages can be shared.'); return; }
+    inFlight.current = true;
+    setOperation('create');
+    setProgress(null);
     setError('');
     try {
       const created = await createCloudShare(doc, setProgress);
@@ -55,21 +51,29 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
       setStatus('synced');
       queueSharedSync(getCurrent() || doc);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Cloud upload failed');
-    } finally { setBusy(false); }
+      setError(cause instanceof Error ? cause.message : 'Could not create link. Try again.');
+    } finally { inFlight.current = false; setOperation(null); }
   }
+  useEffect(() => {
+    if (backedUp && !record && !attempted.current) {
+      attempted.current = true;
+      void enable();
+    }
+  }, [backedUp, record]);
 
   async function copyLink() {
     try {
       await navigator.clipboard.writeText(link);
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
+      if (copyTimer.current !== undefined) window.clearTimeout(copyTimer.current);
+      copyTimer.current = window.setTimeout(() => setCopied(false), 1800);
     } catch { setError('Could not copy link. Select and copy it manually.'); }
   }
 
   async function revoke() {
-    if (!record || busy) return;
-    setBusy(true);
+    if (!record || inFlight.current) return;
+    inFlight.current = true;
+    setOperation('revoke');
     setError('');
     try {
       await revokeCloudShare(documentId, record);
@@ -78,63 +82,51 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
       setCopied(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not stop sharing');
-    } finally { setBusy(false); }
+    } finally { inFlight.current = false; setOperation(null); }
   }
 
   return <DialogFrame id="share-dialog" title="Share page" icon="link"
-    describedBy="share-dialog-description" busy={busy} onClose={onClose}
-    footer={!record ? <>
-      <button type="button" className="flow-dialog-button flow-dialog-neutral"
-        onClick={onClose} disabled={busy}>Cancel</button>
-      <button type="button" className="flow-dialog-button flow-dialog-contrast"
-        disabled={(!consent && !backedUp) || busy} onClick={() => { void enable(); }}>
-        {busy ? backedUp ? 'Preparing link…' : 'Uploading ' + (progress ?? 0) + '%…' : 'Create link'}
-      </button>
-    </> : <>
-      <button type="button" className="flow-dialog-button flow-dialog-danger"
-        disabled={busy} onClick={() => { void revoke(); }}>
-        {busy ? 'Stopping sharing…' : 'Stop sharing'}
-      </button>
+    describedBy="share-dialog-description" busy={operation === 'revoke'} onClose={onClose}
+    footer={<>
+      {record && <button className="share-revoke" type="button" disabled={busy} onClick={() => { void revoke(); }}>
+        {operation === 'revoke' ? 'Stopping…' : 'Stop sharing'}
+      </button>}
       <span className="flow-dialog-footer-spacer" />
-      <button type="button" className="flow-dialog-button flow-dialog-done"
-        disabled={busy} onClick={onClose}>Done</button>
+      <button type="button" className="share-done" onClick={onClose} disabled={operation === 'revoke'}>Done</button>
     </>}>
-    <div className="flow-dialog-document">
-      <Icon name="file" size={16} />
-      <span title={title || 'Untitled'}>{title || 'Untitled'}</span>
+    <div className="share-access">
+      <Icon name="globe" size={20} />
+      <div className="share-access-text">
+        <strong>{record ? 'Anyone with the link' : 'Share a read-only link'}</strong>
+        <p id="share-dialog-description">{record ? 'Can view · Cannot edit' : 'Only this page will be visible to link holders.'}</p>
+      </div>
     </div>
-
-    {!record ? <>
-      <p id="share-dialog-description" className="flow-dialog-copy">
-        {backedUp ? 'Anyone with the link can read this page.' : 'Anyone with the link can read this page, but cannot edit it.'}
-      </p>
-      {!backedUp && <label className="flow-dialog-consent">
-        <input type="checkbox" checked={consent}
-          onChange={event => setConsent(event.target.checked)}
-          disabled={busy} data-dialog-initial-focus />
-        <span>
-          <strong>Upload to cloud</strong>
-          <small>Only this page is uploaded. Up to 100 MB of UTF-8 text.</small>
-        </span>
-      </label>}
-    </> : <>
-      <p id="share-dialog-description" className="flow-dialog-status"
-        data-status={status} role="status" aria-live="polite">
-        
-        {status === 'syncing' ? 'Syncing changes…' + (progress === null ? '' : ' ' + progress + '%') : status === 'error'
-          ? 'Sync failed. Your local page is safe.' : 'Anyone with the link can view'}
-      </p>
-      <div className="flow-dialog-link">
-        <input id="share-link-input" aria-label="Share link" value={link} readOnly
-          onFocus={event => event.currentTarget.select()} />
-        <button type="button" className="flow-dialog-button flow-dialog-contrast"
-          onClick={() => { void copyLink(); }}>
-          <Icon name={copied ? 'check' : 'copy'} size={14} />
-          {copied ? 'Copied' : 'Copy'}
+    {record ? <>
+      <div className="share-url-row">
+        <Icon name="link" size={15} />
+        <input aria-label="Share link" value={link} readOnly onFocus={event => event.currentTarget.select()} />
+        <button type="button" className="share-copy" onClick={() => { void copyLink(); }} disabled={busy}>
+          <Icon name="link" size={14} /><span>{copied ? 'Copied' : 'Copy link'}</span>
         </button>
       </div>
-      <p className="flow-dialog-hint">Changes sync while this editor is open.</p>
+      <p className="share-status" role="status" aria-live="polite">
+        {status === 'syncing' ? 'Syncing changes' + (progress === null ? '…' : ' · ' + progress + '%') : status === 'error'
+          ? 'Sync failed. Your local page is safe.' : 'Changes sync while Flow is open.'}
+      </p>
+    </> : <>
+      {!backedUp && <label className="share-consent">
+        <input type="checkbox" checked={consent} onChange={event => setConsent(event.target.checked)} disabled={busy} data-dialog-initial-focus />
+        <span>Upload to cloud</span>
+      </label>}
+      <button type="button" className="share-create" disabled={busy || (!backedUp && !consent)} onClick={() => { void enable(); }}>
+        {operation === 'create' ? <span className="share-spinner" aria-hidden="true" /> : <Icon name="link" size={15} />}
+        {operation === 'create' ? 'Creating link…' : error ? 'Retry' : 'Create link'}
+      </button>
+      {operation === 'create' && <p className="share-status" role="status">
+        {progress !== null && progress < 100 ? 'Uploading · ' + progress + '%' : 'Checking cloud copy…'} You can close this window.
+      </p>}
     </>}
-    {error && <p className="flow-dialog-error" role="alert">{error}</p>}
+    {error && <p className="share-error" role="alert">{error}</p>}
+    <span className="settings-sr-only">{title}</span>
   </DialogFrame>;
 }

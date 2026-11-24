@@ -10,6 +10,7 @@ const ID = /^[A-Za-z0-9_-]{16}$/;
 const KEY = /^[A-Za-z0-9_-]{43}$/;
 const PART_BYTES = 5 * 1024 * 1024;
 const PARALLEL_UPLOADS = 6;
+const creating = new Map<string, Promise<ShareRecord>>();
 const jobs = new Map<string, {
   latest: FlowDocument;
   timer: number | null;
@@ -49,7 +50,7 @@ async function send(method: 'POST' | 'PUT' | 'DELETE', body: object): Promise<un
   try {
     response = await fetch('/api/share', {
       method, headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body), cache: 'no-store',
+      body: JSON.stringify(body), cache: 'no-store', signal: AbortSignal.timeout(30_000),
     });
   } catch {
     throw new Error('Network unavailable. Your local document is safe.');
@@ -80,7 +81,7 @@ async function uploadChunk(url: string, body: Blob, index: number): Promise<void
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
       const response = await fetch(url, { method: 'PUT', body,
-        headers: { 'Content-Type': 'application/octet-stream' } });
+        headers: { 'Content-Type': 'application/octet-stream' }, signal: AbortSignal.timeout(90_000) });
       if (response.ok || response.status === 409) return;
       // A retry can receive 409 if the first attempt completed but its
       // response was lost. Immutable parts are never overwritten.
@@ -147,11 +148,18 @@ async function uploadVersion(
 export async function createCloudShare(
   doc: FlowDocument, onProgress?: (percent: number) => void,
 ): Promise<ShareRecord> {
-  const record: ShareRecord = backupEnabled()
-    ? { id: await publishBackup(doc), backup: true, syncedVersion: doc.updatedAt }
-    : await uploadVersion(doc, null, onProgress);
-  saveShareRecord(doc.id, record);
-  return record;
+  const existing = creating.get(doc.id);
+  if (existing) return existing;
+  const task = (async () => {
+    const record: ShareRecord = backupEnabled()
+      ? { id: await publishBackup(doc, onProgress), backup: true, syncedVersion: doc.updatedAt }
+      : await uploadVersion(doc, null, onProgress);
+    saveShareRecord(doc.id, record);
+    return record;
+  })();
+  creating.set(doc.id, task);
+  try { return await task; }
+  finally { if (creating.get(doc.id) === task) creating.delete(doc.id); }
 }
 export function queueSharedSync(doc: FlowDocument) {
   const existing = readShareRecord(doc.id);

@@ -87,7 +87,9 @@ assert.equal(recovered.headers['Set-Cookie'][0].split(';')[0], owner.split(';')[
 const aliasId = createHash('sha256').update('flow-link:' + recovery + ':' + doc.id).digest('base64url').slice(0, 16);
 const publicRead = () => request(share, 'GET', {}, '', { id: aliasId });
 assert.equal((await publicRead()).status, 404, 'Private backup must not create public access');
-const published = await req('POST', { ...doc, action: 'publish' }, owner);
+assert.equal((await req('POST', { ...doc, action: 'publish', updatedAt: 3 }, owner)).status, 409);
+assert.equal((await publicRead()).status, 404, 'A stale revision must not be published');
+const published = await req('POST', { ...doc, action: 'publish', updatedAt: 2 }, owner);
 assert.equal(published.data.id, aliasId);
 assert.equal((await publicRead()).data.bytes, max);
 const next = (await begin(0, { ...meta, updatedAt: 3 })).data;

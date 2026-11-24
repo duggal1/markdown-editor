@@ -83,6 +83,7 @@ export default function App() {
   const activeIdRef = useRef('');
   const [workspaceId, setWorkspaceId] = useState('');
   const [theme, setTheme] = useState<Theme>('dark');
+  const [background, setBackground] = useState<'neutral' | 'blue'>(() => readPrefs().background === 'blue' ? 'blue' : 'neutral');
   const [accentTheme, setAccentTheme] = useState<AccentTheme>(() => parseAccentTheme(readPrefs().accentTheme));
   const [mode, setMode] = useState<Mode>('write');
   const [splitPercent, setSplitPercent] = useState(50);
@@ -262,9 +263,10 @@ export default function App() {
   }, []);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
+    document.documentElement.dataset.background = theme === 'dark' ? background : 'neutral';
     const color = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-    if (color) color.content = theme === 'dark' ? '#0A0A0A' : '#F4F4F4';
-  }, [theme]);
+    if (color) color.content = theme === 'dark' ? background === 'blue' ? '#080e1b' : '#050505' : '#F4F4F4';
+  }, [theme, background]);
   useEffect(() => { applyAccentTheme(accentTheme); }, [accentTheme]);
   useEffect(() => {
     const doc = live.current.get(activeId);
@@ -314,10 +316,10 @@ export default function App() {
   }, [compact]);
   useEffect(() => {
     if (!loaded) return;
-    savePrefs({ theme, accentTheme, mode, sidebarOpen, activeDocumentId: activeId,
+    savePrefs({ theme, accentTheme, mode, background, sidebarOpen, activeDocumentId: activeId,
       activeWorkspaceId: workspaceId, recentIds,
       splitPercent: storedSplitPercent });
-  }, [loaded, theme, accentTheme, mode, sidebarOpen, activeId, workspaceId, recentIds, storedSplitPercent]);
+  }, [loaded, theme, accentTheme, mode, background, sidebarOpen, activeId, workspaceId, recentIds, storedSplitPercent]);
 
   const flush = useCallback((id: string) => {
     const timer = saveTimers.current.get(id);
@@ -1584,14 +1586,16 @@ async function eraseDocument(doc: FlowDocument) {
         <section className="flow-settings-section">
           <h3>Appearance</h3>
           <div className="flow-appearance" role="group" aria-label="Appearance">
-            {(['dark', 'light'] as const).map(option => <button key={option} type="button"
-              data-dialog-initial-focus={theme === option ? '' : undefined} aria-pressed={theme === option}
-              onClick={() => setTheme(option)}>
-              {theme === option && <motion.span layoutId="settings-appearance" className="flow-appearance-highlight"
-                transition={{ duration: motionOff ? 0 : .18, ease: [0.22, 1, 0.36, 1] }} />}
-              <Icon name={option === 'dark' ? 'moon' : 'sun'} size={16} />
-              <span>{option === 'dark' ? 'Dark' : 'Light'}</span>
-            </button>)}
+            {(['dark', 'blue', 'light'] as const).map(option => {
+              const selected = option === 'light' ? theme === 'light' : theme === 'dark' && background === (option === 'blue' ? 'blue' : 'neutral');
+              return <button key={option} type="button" data-dialog-initial-focus={selected ? '' : undefined}
+                aria-pressed={selected} onClick={() => { setTheme(option === 'light' ? 'light' : 'dark'); setBackground(option === 'blue' ? 'blue' : 'neutral'); }}>
+                {selected && <motion.span layoutId="settings-appearance" className="flow-appearance-highlight"
+                  transition={{ duration: motionOff ? 0 : .18, ease: [0.22, 1, 0.36, 1] }} />}
+                <span className={'flow-appearance-chip tone-' + option} aria-hidden="true" />
+                <span>{option === 'blue' ? 'Dark blue' : option === 'dark' ? 'Dark' : 'Light'}</span>
+              </button>;
+            })}
           </div>
         </section>
         <section className="flow-settings-section">
@@ -1599,9 +1603,7 @@ async function eraseDocument(doc: FlowDocument) {
           <div className="flow-accent-palette" role="group" aria-label="Accent color">
             {ACCENT_THEMES.map(option => <button key={option.id} type="button" title={option.label}
               aria-label={option.label} aria-pressed={option.id === accentTheme} onClick={() => setAccentTheme(option.id)}>
-              <span className="flow-settings-swatch" style={{ backgroundColor: `var(--palette-${option.id}-600)` }}>
-                {option.id === accentTheme && <Icon name="check" size={15} />}
-              </span>
+              <span className="flow-settings-swatch" style={{ backgroundColor: `var(--palette-${option.id}-600)` }} />
             </button>)}
           </div>
         </section>
