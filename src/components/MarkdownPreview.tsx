@@ -59,17 +59,19 @@ function locatePreview(scroll: HTMLDivElement, line: number, kind: 'scroll' | 'c
   // The virtual preview can have hundreds of anchors. Only examine the
   // requested mounted section instead of querying every visible chunk.
   const anchored = (section || scroll).querySelectorAll<HTMLElement>('[data-source-line]');
+  if (line <= 1) { scroll.scrollTop = 0; return; }
   if (!anchored.length) {
     if (line <= 1) scroll.scrollTop = 0;
     return;
   }
-  let current = anchored[0];
-  let next: HTMLElement | null = null;
-  for (let i = 0; i < anchored.length; i++) {
-    const at = Number(anchored[i].dataset.sourceLine || 1);
-    if (at > line) { next = anchored[i]; break; }
-    current = anchored[i];
+  let lo = 0, hi = anchored.length - 1;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (Number(anchored[mid].dataset.sourceLine || 1) <= line) lo = mid;
+    else hi = mid - 1;
   }
+  const current = anchored[lo];
+  const next = anchored[lo + 1] || null;
   const start = Number(current.dataset.sourceLine || 1);
   const scrollTop = scroll.scrollTop;
   const scrollY = scroll.getBoundingClientRect().top;
@@ -377,6 +379,7 @@ function VirtualMarkdown({ markdown, scrollRef }: {
       }
     }
     scroll.addEventListener('flow-preview-position', onPosition);
+    scroll.dispatchEvent(new Event('flow-preview-ready'));
     return () => {
       scroll.removeEventListener('flow-preview-position', onPosition);
       if (pending !== null) cancelAnimationFrame(pending);
@@ -439,6 +442,7 @@ function MarkdownPreview({ markdown, sourceLanguage, scrollRef, theme, onToggleT
       locatePreview(scroll, line, kind);
     };
     scroll.addEventListener('flow-preview-position', onPosition);
+    scroll.dispatchEvent(new Event('flow-preview-ready'));
     return () => scroll.removeEventListener('flow-preview-position', onPosition);
   }, [detected, scrollRef, virtual, html, value]);
   const body = !value.trim()

@@ -23,6 +23,7 @@ import { formatPlainTextAsMarkdown, MAX_MANUAL_FORMAT_CHARS } from './lib/autoMa
 import { repairLanguage } from './lib/codeRepair';
 import { repairCodeAction } from './lib/codeRepairAction';
 import { inferTitle, isUntitledTitle } from './lib/title';
+import { editorPosition, previewPosition, restoreEditorPosition } from './lib/scrollPosition';
 import type { SearchHit } from './lib/searchIndex';
 import {
   clearRecovery, loadWorkspace, readPrefs, removeDoc, removeFolder, removeWorkspaceTree,
@@ -138,6 +139,8 @@ export default function App() {
   const splitFrame = useRef<number | null>(null);
   const splitNext = useRef<number>(50);
   const lastSyncLine = useRef(-1);
+  const scrollOwner = useRef<'editor' | 'preview' | 'transition'>('editor');
+  const modeRestore = useRef<{ id: string; line: number; total: number } | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const searchRequest = useRef(0);
   const saveTimers = useRef(new Map<string, number>());
@@ -492,6 +495,9 @@ export default function App() {
     setActiveId(id);
     targetLine.current = null;
     lastSyncLine.current = -1;
+    scrollOwner.current = 'editor';
+    modeRestore.current = null;
+    if (previewScrollRef.current) previewScrollRef.current.scrollTop = 0;
     setWorkspaceId(doc.workspaceId);
     setDocs(current => current.map(item => live.current.get(item.id) || item));
     setRecentIds(current => [id, ...current.filter(item => item !== id)].slice(0, 30));
@@ -1126,12 +1132,7 @@ export default function App() {
         window.requestAnimationFrame(() => { searchRef.current?.focus(); searchRef.current?.select(); });
       } else if (key === 'p' && event.shiftKey) {
         event.preventDefault();
-        setMode(current => {
-          const next = current === 'preview' ? 'write' : 'preview';
-          modeRef.current = next;
-          if (next !== 'write') setPreviewText(live.current.get(activeIdRef.current)?.markdown || '');
-          return next;
-        });
+        changeMode(modeRef.current === 'preview' ? 'write' : 'preview');
       } else if ('biek'.includes(key) && key !== 'k' || key === 'k' && event.shiftKey) {
         const format = key === 'b' ? 'bold' : key === 'i' ? 'italic' : key === 'e' ? 'code' : 'link';
         event.preventDefault(); formatEditor(editorRef.current, format);
@@ -1139,7 +1140,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [flush]);
+  });
 
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
@@ -1165,11 +1166,12 @@ export default function App() {
     }));
   }, []);
   const onEditorPosition = useCallback((line: number, kind: 'scroll' | 'cursor', total: number) => {
-    if (modeRef.current === 'write') return;
+    if (scrollOwner.current !== 'editor' || modeRef.current === 'preview') return;
     // Ignore sub-pixel movement, not entire wrapped logical lines.
     if (kind === 'scroll' && Math.abs(line - lastSyncLine.current) < 0.015) return;
     lastSyncLine.current = line;
     targetLine.current = { line, total, kind, id: activeIdRef.current };
+    if (modeRef.current === 'write') return;
     if (kind === 'scroll') {
       // MarkdownEditor already throttles scrolling to one animation frame.
       // An additional frame here made the preview visibly trail long documents.
@@ -1182,17 +1184,76 @@ export default function App() {
       syncFrame.current = requestAnimationFrame(dispatchPreviewPosition);
     }
   }, [dispatchPreviewPosition]);
+  const restoreModePosition = useCallback(() => {
+    const target = modeRestore.current;
+    if (!target || target.id !== activeIdRef.current) return;
+    const view = editorRef.current;
+    if (view && modeRef.current !== 'preview') restoreEditorPosition(view, target.line);
+    if (modeRef.current !== 'write') {
+      targetLine.current = { ...target, kind: 'scroll' };
+      dispatchPreviewPosition();
+    }
+  }, [dispatchPreviewPosition]);
+
   useEffect(() => {
-    if (mode === 'write') return;
+    const preview = previewScrollRef.current;
+    if (!preview) return;
+    let frame: number | null = null;
+    let readyFrame: number | null = null;
+    const onReady = () => {
+      if (modeRef.current === 'write') return;
+      if (readyFrame !== null) cancelAnimationFrame(readyFrame);
+      readyFrame = requestAnimationFrame(() => {
+        readyFrame = null;
+        if (modeRestore.current) restoreModePosition();
+        else if (scrollOwner.current === 'editor') dispatchPreviewPosition();
+      });
+    };
+    const claim = () => {
+      if (modeRef.current !== 'write') {
+        scrollOwner.current = 'preview';
+        modeRestore.current = null;
+      }
+    };
+    const onScroll = (event: Event) => {
+      if (event.target !== preview && !(event.target instanceof HTMLElement && event.target.matches('.preview-is-code .virtual-code-scroll'))) return;
+      if (scrollOwner.current !== 'preview' || frame !== null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        const view = editorRef.current;
+        if (!view || scrollOwner.current !== 'preview' || modeRef.current === 'write') return;
+        const total = view.state.doc.lines;
+        const line = previewPosition(preview, total);
+        targetLine.current = { id: activeIdRef.current, line, total, kind: 'scroll' };
+        lastSyncLine.current = line;
+        if (modeRef.current === 'split') restoreEditorPosition(view, line);
+      });
+    };
+    preview.addEventListener('flow-preview-ready', onReady);
+    preview.addEventListener('wheel', claim, { passive: true });
+    preview.addEventListener('touchstart', claim, { passive: true });
+    preview.addEventListener('pointerdown', claim, { passive: true });
+    preview.addEventListener('keydown', claim);
+    preview.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    return () => {
+      preview.removeEventListener('flow-preview-ready', onReady);
+      preview.removeEventListener('wheel', claim);
+      preview.removeEventListener('touchstart', claim);
+      preview.removeEventListener('pointerdown', claim);
+      preview.removeEventListener('keydown', claim);
+      preview.removeEventListener('scroll', onScroll, true);
+      if (frame !== null) cancelAnimationFrame(frame);
+      if (readyFrame !== null) cancelAnimationFrame(readyFrame);
+    };
+  }, [loaded, restoreModePosition, dispatchPreviewPosition]);
+
+  useEffect(() => {
     const frame = requestAnimationFrame(() => {
-      const view = editorRef.current;
-      if (!view || !activeId) return;
-      const target = targetLine.current;
-      const line = target?.id === activeId ? target.line : view.state.doc.lineAt(view.state.selection.main.head).number;
-      onEditorPosition(line, target?.kind || 'cursor', view.state.doc.lines);
+      if (modeRestore.current) restoreModePosition();
+      else if (mode !== 'write' && scrollOwner.current === 'editor') dispatchPreviewPosition();
     });
     return () => cancelAnimationFrame(frame);
-  }, [previewText, mode, activeId, onEditorPosition]);
+  }, [mode, activeId, previewText, restoreModePosition, dispatchPreviewPosition]);
   function startSplitDrag(event: PointerEvent<HTMLDivElement>) {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     event.preventDefault();
@@ -1221,11 +1282,26 @@ export default function App() {
     editorRef.current?.requestMeasure();
   }
   function changeMode(next: Mode) {
+    const previous = modeRef.current;
+    if (previous === next) return;
+    const view = editorRef.current;
+    const preview = previewScrollRef.current;
+    if (view) {
+      const total = view.state.doc.lines;
+      const line = scrollOwner.current === 'transition' && modeRestore.current
+        ? modeRestore.current.line
+        : previous === 'preview' || (previous === 'split' && scrollOwner.current === 'preview')
+          ? (preview ? previewPosition(preview, total) : targetLine.current?.line || 1)
+          : editorPosition(view);
+      const target = { id: activeIdRef.current, line, total };
+      modeRestore.current = target;
+      targetLine.current = { ...target, kind: 'scroll' };
+      scrollOwner.current = 'transition';
+    }
     modeRef.current = next;
-    if (next !== 'write') setPreviewText(live.current.get(activeIdRef.current)?.markdown || '');
+    if (next !== 'write') setPreviewText(view?.state.doc.toString() ?? live.current.get(activeIdRef.current)?.markdown ?? '');
     setMode(next);
-    if (compact && next === 'preview') editorRef.current?.contentDOM.blur();
-    if (!compact && next !== 'preview') window.requestAnimationFrame(() => editorRef.current?.focus());
+    if (next === 'preview') view?.contentDOM.blur();
   }
   // A phone's Split mode shows two vertically stacked, independently scrolling panes.
   const presentationMode: Mode = mode;
@@ -1340,7 +1416,7 @@ export default function App() {
           </motion.button>
           <motion.button {...pressMotion} type="button" className="square-button theme-toggle settings-trigger"
             title="Settings" aria-label="Settings" aria-haspopup="dialog" aria-expanded={settingsOpen}
-            onClick={() => setSettingsOpen(true)}><Icon name="settings" size={18} /></motion.button>
+            onClick={() => setSettingsOpen(true)}><Icon name="sliders" size={17} /></motion.button>
           <input ref={fileRef} type="file" hidden multiple onChange={onFileSelected} aria-label="Import files" />
         </div>
       </header>
@@ -1380,8 +1456,12 @@ export default function App() {
         initial={false} animate={{ gridTemplateColumns: compact ? 'minmax(0, 1fr)' : gridColumns,
           gridTemplateRows: compact ? mobileGridRows : 'minmax(0, 1fr)' }}
         transition={motionOff || resizingSplit ? { duration: 0 } : { duration: 0.29, ease: [0.22, 1, 0.36, 1] }}
-        onAnimationComplete={() => editorRef.current?.requestMeasure()}>
-        <section className="editor-pane" aria-label="Write Markdown">
+        onAnimationComplete={() => { editorRef.current?.requestMeasure(); restoreModePosition(); }}>
+        <section className="editor-pane" aria-label="Write Markdown"
+          onPointerDownCapture={() => { scrollOwner.current = 'editor'; modeRestore.current = null; }}
+          onWheelCapture={() => { scrollOwner.current = 'editor'; modeRestore.current = null; }}
+          onTouchStartCapture={() => { scrollOwner.current = 'editor'; modeRestore.current = null; }}
+          onKeyDownCapture={() => { scrollOwner.current = 'editor'; modeRestore.current = null; }}>
           {active?.asset ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} theme={theme} /> : active && <MarkdownEditor key={active.id} documentId={active.id} initialText={active.markdown}
             fileLanguage={activeFileLanguage} viewRef={editorRef} onChange={onEditorChange} onPosition={onEditorPosition} />}
         </section>
@@ -1450,7 +1530,7 @@ export default function App() {
             getCurrent={() => live.current.get(activeIdRef.current) || null}
             onClose={() => setShareOpen(false)} />)}
       {settingsOpen && <DialogFrame id="settings-dialog" title="Settings" icon="settings"
-        describedBy="settings-description" onClose={() => setSettingsOpen(false)} footer={null}>
+        describedBy="settings-description" onClose={() => setSettingsOpen(false)} footer={<button type="button" className="flow-dialog-button flow-dialog-done" onClick={() => setSettingsOpen(false)}>Done</button>}>
         <p id="settings-description" className="flow-dialog-copy settings-sr-only">Appearance is saved automatically on this device.</p>
         <section className="flow-settings-section">
           <h3>Appearance</h3>

@@ -1,3 +1,4 @@
+import slidersGlyph from '@phosphor-icons/core/assets/regular/sliders-horizontal.svg?raw';
 import desktopGlyph from '@phosphor-icons/core/assets/regular/desktop.svg?raw';
 import phoneGlyph from '@phosphor-icons/core/assets/regular/device-mobile.svg?raw';
 import caretDownGlyph from '@phosphor-icons/core/assets/regular/caret-down.svg?raw';
@@ -57,6 +58,7 @@ import gripGlyph from '@phosphor-icons/core/assets/regular/dots-six-vertical.svg
 
 // All markup is imported at build time from Phosphor; never interpolate user text.
 const glyphs = {
+  sliders: slidersGlyph,
   desktop: desktopGlyph,
   phone: phoneGlyph,
   caretDown: caretDownGlyph,
