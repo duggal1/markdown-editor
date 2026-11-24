@@ -69,8 +69,14 @@ export default async function handler(req, res) {
         Buffer.byteLength(JSON.stringify(body)) > 200000) return reply(res, 400, { error: 'Invalid request' });
 
     let token = cookie(req, 'flow_backup_key');
-    if (req.method === 'POST' && body.action === 'session') {
-      if (!KEY.test(token || '')) token = randomBytes(32).toString('base64url');
+    if (req.method === 'POST' && ['session', 'recover'].includes(body.action)) {
+      if (body.action === 'recover') {
+        if (typeof body.key !== 'string' || !KEY.test(body.key))
+          return reply(res, 400, { error: 'Invalid recovery key' });
+        const page = await list({ prefix: 'backups/' + digest(body.key) + '/records/', limit: 1 });
+        if (!page.blobs.length) return reply(res, 404, { error: 'No backup found for that key' });
+        token = body.key;
+      } else if (!KEY.test(token || '')) token = randomBytes(32).toString('base64url');
       res.setHeader('Set-Cookie', [
         'flow_backup_key=' + token + '; Path=/; Max-Age=34560000; Secure; HttpOnly; SameSite=Strict',
         'flow_backup=1; Path=/; Max-Age=34560000; Secure; SameSite=Strict',
@@ -79,6 +85,7 @@ export default async function handler(req, res) {
     }
     if (!KEY.test(token || '')) return reply(res, 401, { error: 'Backup session missing' });
     const prefix = 'backups/' + digest(token) + '/';
+    if (req.method === 'POST' && body.action === 'recovery-key') return reply(res, 200, { key: token });
     if (req.method === 'GET' && body.action === 'list') {
       const entries = [];
       let cursor;
