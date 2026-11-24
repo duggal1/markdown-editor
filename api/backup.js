@@ -151,18 +151,13 @@ export default async function handler(req, res) {
         return reply(res, 200, { committed: true, unchanged: true });
       const version = randomBytes(12).toString('base64url');
       const paths = partPaths(root, version, bytes);
-      // Same manifest and private paths as multipart uploads. A failed CAS
-      // deletes only this new immutable part, never the currently published one.
+      // Same manifest and private paths as multipart uploads. Keep the part
+      // on an ambiguous commit failure: a lost response may hide a successful write.
       if (paths.length) await put(paths[0], markdown, {
         access: 'private', addRandomSuffix: false, allowOverwrite: false,
         contentType: 'application/octet-stream', cacheControlMaxAge: 60,
       });
-      try {
-        await write(path, { meta, bytes, checksum, version }, cas);
-      } catch (error) {
-        if (paths.length) await del(paths).catch(() => {});
-        throw error;
-      }
+      await write(path, { meta, bytes, checksum, version }, cas);
       await retire(root, current);
       return reply(res, 200, { committed: true });
     }
