@@ -14,6 +14,7 @@ type Props = {
   onNewFolder: (workspaceId: string) => void;
   onRenameFolder: (id: string, name: string) => void;
   onRenameDocument: (id: string, name: string) => void;
+  onDuplicateDocument: (id: string) => void;
   onMovePage: (id: string, parentId?: string, folderId?: string) => void;
   onDeleteFolder: (id: string) => void;
   onDeleteDocument: (id: string) => void;
@@ -38,7 +39,7 @@ function Rename({ title, onSave, onCancel }: { title: string; onSave: (s: string
 }
 export default function WorkspaceTree({
   workspaces, folders, documents, activeId, activeWorkspaceId, search, searchHits, searchPending, newFolderId,
-  onOpen, onNewDocument, onNewFolder, onRenameFolder, onRenameDocument, onMovePage, onDeleteFolder, onDeleteDocument,
+  onOpen, onNewDocument, onNewFolder, onRenameFolder, onRenameDocument, onDuplicateDocument, onMovePage, onDeleteFolder, onDeleteDocument,
 }: Props) {
   const [closed, setClosed] = useState<Set<string>>(new Set());
   const [menu, setMenu] = useState<Menu | null>(null);
@@ -188,6 +189,7 @@ export default function WorkspaceTree({
         const page = byId.get(menu.id); if (page && !page.asset) { expand(page.id); onNewDocument(page.workspaceId, page.folderId, page.id); } setMenu(null);
       }}><Icon name="plus" size={15}/> Add subpage</button>}
       <button type="button" role="menuitem" onClick={() => { setEditing(menu.id); setMenu(null); }}><Icon name="edit" size={15}/> Rename</button>
+      {menu.kind === 'page' && !byId.get(menu.id)?.asset && <button type="button" role="menuitem" onClick={() => { onDuplicateDocument(menu.id); setMenu(null); }}><Icon name="copy" size={15}/> Duplicate</button>}
       {menu.kind === 'page' && <button type="button" role="menuitem" onClick={() => { onMovePage(menu.id); setMenu(null); }}><Icon name="folder" size={15}/> Move to root</button>}
       <button type="button" role="menuitem" className="filetree-delete" onClick={() => { if (menu.kind === 'page') onDeleteDocument(menu.id); else onDeleteFolder(menu.id); setMenu(null); }}><Icon name="trash" size={15}/> Delete</button>
     </div>, document.body)}

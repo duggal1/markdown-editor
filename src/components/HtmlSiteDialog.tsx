@@ -136,7 +136,7 @@ export default function HtmlSiteDialog({ documentId, title, getCurrent, onClose 
       {record && <motion.button {...press} type="button" className="flow-dialog-button flow-dialog-danger"
         disabled={busy} onClick={() => { void revoke(); }}>Stop hosting</motion.button>}
       <span className="flow-dialog-footer-spacer" />
-      <motion.button {...press} type="button" className="flow-dialog-button flow-dialog-neutral"
+      <motion.button {...press} type="button" className="flow-dialog-button flow-dialog-done"
         disabled={busy} onClick={onClose}>Done</motion.button>
       {(!published || status === 'error') && <motion.button {...press} type="button"
         className="flow-dialog-button flow-dialog-contrast" disabled={busy}

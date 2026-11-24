@@ -164,6 +164,7 @@ function HtmlCanvas({ source, embedded = false, scrollRef }: {
       }, '*');
     };
     parent.addEventListener('flow-preview-position', onPosition);
+    parent.dispatchEvent(new Event('flow-preview-ready'));
     return () => parent.removeEventListener('flow-preview-position', onPosition);
   }, [scrollRef]);
   if (!documentHtml) return embedded ? null

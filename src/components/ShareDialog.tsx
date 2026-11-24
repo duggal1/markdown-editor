@@ -96,7 +96,7 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
         {busy ? 'Stopping sharing…' : 'Stop sharing'}
       </button>
       <span className="flow-dialog-footer-spacer" />
-      <button type="button" className="flow-dialog-button flow-dialog-neutral"
+      <button type="button" className="flow-dialog-button flow-dialog-done"
         disabled={busy} onClick={onClose}>Done</button>
     </>}>
     <div className="flow-dialog-document">

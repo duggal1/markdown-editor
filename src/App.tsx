@@ -527,6 +527,20 @@ export default function App() {
     window.requestAnimationFrame(() => editorRef.current?.focus());
   }, [selectDocument, workspaceId, workspaces]);
 
+  function duplicateDocument(id: string) {
+    const original = live.current.get(id);
+    if (!original || original.asset) return;
+    const stamp = Date.now();
+    const source = id === activeIdRef.current ? editorRef.current?.state.doc.toString() ?? original.markdown : original.markdown;
+    const doc: FlowDocument = { ...original, id: uid(), markdown: source, title: original.title + ' (copy)',
+      titleAuto: false, fileName: undefined, createdAt: stamp, updatedAt: stamp };
+    live.current.set(doc.id, doc);
+    setDocs(items => [doc, ...items]);
+    setQuery('');
+    selectDocument(doc.id);
+    void saveDoc(doc).catch(() => { setSaveState('error'); setNotice('Could not save duplicate.'); });
+  }
+
   async function eraseDocument(doc: FlowDocument) {
     // Remove the row instantly. Cloud revocation and IndexedDB writes are
     // asynchronous; restore the original page if any required operation fails.
@@ -1353,7 +1367,7 @@ export default function App() {
           activeId={activeId} activeWorkspaceId={workspaceId}
           search={query} searchHits={searchResults} searchPending={searchPending}
           onOpen={selectDocument} onNewFolder={createFolder} onNewDocument={makeDocument}
-          onRenameFolder={renameFolder} onRenameDocument={renameDocument}
+          onRenameFolder={renameFolder} onRenameDocument={renameDocument} onDuplicateDocument={duplicateDocument}
           onMovePage={movePage} onDeleteFolder={id => { void eraseFolder(id); }}
           onDeleteDocument={id => {
             const doc = live.current.get(id);
@@ -1431,9 +1445,9 @@ export default function App() {
           <motion.button type="button" {...pressMotion} className="copy-all-button"
             title="Copy the entire page" aria-label="Copy all" disabled={!active || Boolean(active.asset)}
             onClick={() => { void copyAll(); }}>
-            <Icon name="copy" size={16} /> <span>Copy all</span>
+            <Icon name="copy" size={15} /> <span>Copy all</span>
           </motion.button>
-          <motion.button {...pressMotion} title="Import files" aria-label="Import files" onClick={() => fileRef.current?.click()}><Icon name="upload" size={16} /></motion.button>
+          <motion.button {...pressMotion} className="import-action" title="Import files" aria-label="Import files" onClick={() => fileRef.current?.click()}><Icon name="upload" size={15} /><span>Upload</span></motion.button>
         </div>
         <motion.span className="save-indicator" data-save-state={saveState}
             initial={false} aria-hidden={saveState === 'idle'}
@@ -1455,7 +1469,7 @@ export default function App() {
       <motion.main ref={editorAreaRef} className={'editor-area mode-' + mode + (compact ? ' compact' : '') + (resizingSplit ? ' is-resizing' : '')} aria-label="Flow Markdown workspace"
         initial={false} animate={{ gridTemplateColumns: compact ? 'minmax(0, 1fr)' : gridColumns,
           gridTemplateRows: compact ? mobileGridRows : 'minmax(0, 1fr)' }}
-        transition={motionOff || resizingSplit ? { duration: 0 } : { duration: 0.29, ease: [0.22, 1, 0.36, 1] }}
+        transition={motionOff || resizingSplit || compact || previewText.length > 80_000 ? { duration: 0 } : { duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
         onAnimationComplete={() => { editorRef.current?.requestMeasure(); restoreModePosition(); }}>
         <section className="editor-pane" aria-label="Write Markdown"
           onPointerDownCapture={() => { scrollOwner.current = 'editor'; modeRestore.current = null; }}
@@ -1471,7 +1485,7 @@ export default function App() {
             <button type="button" className="html-preview-popout"
               aria-label="Open full HTML in a new tab" title="Open full HTML in a new tab"
               onClick={openFullHtml}><Icon name="arrowUpRight" size={15} /> <span>Full HTML</span></button>}
-          <motion.div ref={previewScrollRef} className="preview-scroll" initial={false}
+          <motion.div ref={previewScrollRef} className="preview-scroll" tabIndex={presentationMode === 'write' ? -1 : 0} aria-label="Scrollable preview" initial={false}
             animate={{ opacity: presentationMode === 'write' ? 0 : 1 }}
             transition={motionOff ? { duration: 0 } : { duration: 0.2, delay: presentationMode === 'write' ? 0 : 0.035 }}>
             <Suspense fallback={<div className="preview-loading">Rendering…</div>}>

@@ -2301,7 +2301,7 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   --flow-dialog-text:#222222; --flow-dialog-muted:#666666;
   --flow-dialog-hover:#e4e4e4; --flow-dialog-primary:#272727; --flow-dialog-primary-text:#ffffff;
 }
-.private-workspace .brand-mark,.draw-logo {
+.private-workspace .brand-mark {
   clip-path:none; background:transparent; color:var(--flow-accent); padding:0;
   border:0; border-radius:0; box-shadow:none;
 }
@@ -2415,4 +2415,75 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   .private-workspace .private-page-toolbar .save-indicator { flex:0 0 112px; width:112px; min-width:112px; font-size:10px; }
   .private-workspace .private-page-toolbar .save-duration { display:inline-flex; }
   .private-workspace .editor-area .cm-editor:not(.raw-code) .cm-scroller,.private-workspace .editor-area .preview-scroll { padding-top:8px; }
+}
+
+
+/* Compact Flow controls. Draw owns its own UI; only its SVG mark is shared. */
+:root:not([data-theme='light']) {
+  --background:#030303; --surface:#050505; --sidebar-bg:#080808;
+  --preview-bg:#020202; --neutral-100:#101010; --neutral-200:#181818;
+  --hover:#131313; --active:#1d1d1d; --line:#141414;
+  --flow-overlay:#0a0a0a; --flow-overlay-edge:#141414; --flow-scroll-thumb:#333333;
+  --flow-dialog-surface:#090909; --flow-dialog-field:#121212;
+  --flow-dialog-hover:#1e1e1e; --flow-dialog-primary:#222222; --flow-dialog-primary-text:#f3f3f3;
+}
+.draw-page .draw-logo { clip-path:none; background:transparent; color:var(--draw-accent); }
+.private-workspace .topbar { min-height:38px; padding-inline:10px; gap:6px; }
+.private-workspace .header-actions { gap:3px; }
+.private-workspace .mode-switch { border:0; border-radius:999px; background:var(--neutral-100); padding:2px; gap:1px; }
+.private-workspace .mode-switch button { height:24px; min-width:0; padding:0 7px; border-radius:999px; font-size:11px; }
+.private-workspace .mode-highlight { border:0; border-radius:999px; background:var(--neutral-200); }
+.private-workspace .topbar .share-button,.private-workspace .topbar .export-button {
+  height:26px; padding:0 6px; gap:4px; border:0; border-radius:7px; font-size:12px; background:transparent;
+}
+.private-workspace .topbar .square-button { width:28px; height:28px; padding:0; border-radius:7px; border:0; }
+.private-workspace .private-page-toolbar { justify-content:flex-start; min-height:28px; padding:0 10px; gap:8px; }
+.private-workspace .private-page-toolbar .formatting-actions { margin-right:auto; gap:2px; }
+.private-workspace .private-page-toolbar .formatting-actions button {
+  display:inline-flex; align-items:center; justify-content:center; height:25px; min-width:25px; padding:0 5px;
+  border:0; border-radius:7px; gap:4px; font-size:11px; font-weight:450; background:transparent;
+}
+.private-workspace .private-page-toolbar .formatting-actions button:hover:not(:disabled) { background:var(--hover); color:var(--strong); }
+.private-workspace .private-page-toolbar .word-stat { flex:none; margin-left:0; }
+.private-workspace .sidebar-bottom-action,.private-workspace .draw-sidebar-entry,.private-workspace .private-new-page { border-radius:7px; }
+.private-workspace .editor-area .cm-editor:not(.raw-code) .cm-scroller,.private-workspace .editor-area .preview-scroll { padding-top:8px; }
+.private-workspace .editor-area .preview-scroll { overscroll-behavior:contain; }
+.private-workspace .editor-area .cm-scroller { overscroll-behavior:contain; }
+.private-workspace .editor-area.mode-split .cm-editor:not(.raw-code) .cm-content { padding-inline:36px 18px !important; }
+.private-workspace .editor-area.mode-split .preview-scroll { padding-inline:20px; }
+#settings-dialog.flow-dialog,#share-dialog.flow-dialog,#html-site-dialog.flow-dialog {
+  border:0; border-radius:12px; box-shadow:0 8px 32px #0004;
+}
+#settings-dialog .flow-dialog-header,#share-dialog .flow-dialog-header,#html-site-dialog .flow-dialog-header { height:38px; min-height:38px; padding:0 10px 0 12px; }
+#settings-dialog .flow-dialog-body,#share-dialog .flow-dialog-body,#html-site-dialog .flow-dialog-body { padding:4px 12px 10px; }
+#settings-dialog .flow-dialog-footer,#share-dialog .flow-dialog-footer,#html-site-dialog .flow-dialog-footer { padding:0 12px 12px; gap:6px; background:transparent; }
+#settings-dialog .flow-dialog-button,#share-dialog .flow-dialog-button,#html-site-dialog .flow-dialog-button {
+  height:26px; min-height:26px; padding:0 8px; border:0; border-radius:7px; font-size:11px; gap:4px;
+}
+#settings-dialog .flow-dialog-done,#share-dialog .flow-dialog-done,#html-site-dialog .flow-dialog-done {
+  background:var(--flow-dialog-field); color:var(--flow-dialog-text);
+}
+#settings-dialog .flow-dialog-done:hover,#share-dialog .flow-dialog-done:hover,#html-site-dialog .flow-dialog-done:hover { background:var(--flow-dialog-hover); }
+#share-dialog .flow-dialog-link,#html-site-dialog .flow-dialog-link { min-height:30px; padding:2px 2px 2px 7px; border:0; border-radius:8px; }
+#share-dialog .flow-dialog-link .flow-dialog-button,#html-site-dialog .flow-dialog-link .flow-dialog-button {
+  height:26px; min-height:26px; padding:0 6px; gap:4px; border-radius:6px; background:var(--flow-dialog-primary); color:var(--flow-dialog-primary-text);
+}
+#share-dialog .flow-dialog-link .flow-dialog-button:hover,#html-site-dialog .flow-dialog-link .flow-dialog-button:hover { background:var(--flow-dialog-hover); opacity:1; }
+.flow-appearance { border-radius:999px; padding:2px; }
+.flow-appearance button,.flow-appearance-highlight { border-radius:999px; }
+.flow-appearance button { height:26px; gap:4px; }
+.flow-settings-section + .flow-settings-section { margin-top:14px; }
+.flow-accent-palette button { height:30px; padding:3px; border-radius:7px; }
+.flow-accent-palette .flow-settings-swatch { max-width:22px; border-radius:6px; }
+.flow-settings-section h3 { margin-bottom:6px; }
+@media (max-width:800px) {
+  .private-workspace .topbar { padding-inline:6px; }
+  .private-workspace .private-page-toolbar { padding-inline:6px; gap:4px; }
+  .private-workspace .private-page-toolbar .formatting-actions button { min-width:34px; height:34px; padding:0 5px; }
+  .private-workspace .private-page-toolbar .import-action > span:not(.phosphor-icon) { display:none; }
+  .private-workspace .private-page-toolbar .save-indicator { flex:0 0 110px; width:110px; min-width:110px; }
+  .private-workspace .mode-switch button { min-height:32px; padding-inline:8px; }
+  .private-workspace .topbar .square-button,.private-workspace .topbar .share-button,.private-workspace .topbar .export-button { min-height:34px; }
+  .private-workspace .editor-area.mode-split .cm-editor:not(.raw-code) .cm-content { padding-inline:16px !important; }
+  .private-workspace .editor-area.mode-split .preview-scroll { padding-inline:16px; }
 }

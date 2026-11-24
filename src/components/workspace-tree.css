@@ -148,3 +148,6 @@
 .private-menu-label { padding:5px 8px; }
 
 .filetree-menu.private-page-menu { border:0; box-shadow:0 6px 20px #0003; }
+
+.private-page-row,.private-root-drop button { border-radius:7px; }
+.filetree-menu.private-page-menu { border-radius:9px; }
