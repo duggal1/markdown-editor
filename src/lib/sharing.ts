@@ -1,6 +1,8 @@
 import type { FlowDocument } from './store';
+import { backupEnabled, publishBackup, unpublishBackup } from './backup';
 
-export type ShareRecord = { id: string; secret: string; syncedVersion: number };
+export type ShareRecord = { id: string; syncedVersion: number } &
+  ({ secret: string; backup?: false } | { backup: true; secret?: never });
 export type ShareStatus = 'syncing' | 'synced' | 'error';
 export const MAX_CLOUD_BYTES = 100 * 1024 * 1024;
 const PREFIX = 'flow.cloud-share.v1.';
@@ -28,7 +30,7 @@ export function readShareRecord(documentId: string): ShareRecord | null {
     if (!item || typeof item !== 'object') return null;
     const value = item as Partial<ShareRecord>;
     if (typeof value.id !== 'string' || !ID.test(value.id) ||
-        typeof value.secret !== 'string' || !KEY.test(value.secret) ||
+        (value.backup !== true && (typeof value.secret !== 'string' || !KEY.test(value.secret))) ||
         typeof value.syncedVersion !== 'number') return null;
     return value as ShareRecord;
   } catch { return null; }
@@ -132,12 +134,15 @@ async function uploadVersion(
 export async function createCloudShare(
   doc: FlowDocument, onProgress?: (percent: number) => void,
 ): Promise<ShareRecord> {
-  const record = await uploadVersion(doc, null, onProgress);
+  const record: ShareRecord = backupEnabled()
+    ? { id: await publishBackup(doc), backup: true, syncedVersion: doc.updatedAt }
+    : await uploadVersion(doc, null, onProgress);
   saveShareRecord(doc.id, record);
   return record;
 }
 export function queueSharedSync(doc: FlowDocument) {
-  if (doc.asset || !readShareRecord(doc.id)) return;
+  const existing = readShareRecord(doc.id);
+  if (doc.asset || !existing || existing.backup) return;
   let job = jobs.get(doc.id);
   if (!job) {
     job = { latest: doc, timer: null, work: Promise.resolve(), retries: 0 };
@@ -150,7 +155,7 @@ export function queueSharedSync(doc: FlowDocument) {
     currentJob.timer = null;
     currentJob.work = currentJob.work.catch(() => {}).then(async () => {
       const record = readShareRecord(doc.id);
-      if (!record || record.syncedVersion === currentJob.latest.updatedAt) return;
+      if (!record || record.backup || record.syncedVersion === currentJob.latest.updatedAt) return;
       const snapshot = currentJob.latest;
       announce(doc.id, 'syncing', 0);
       try {
@@ -187,7 +192,8 @@ export async function revokeCloudShare(documentId: string, record: ShareRecord) 
     job.timer = null;
     await job.work.catch(() => {});
   }
-  await send('DELETE', { id: record.id, secret: record.secret });
+  if (record.backup) await unpublishBackup(documentId);
+  else await send('DELETE', { id: record.id, secret: record.secret });
   clearShareRecord(documentId);
   jobs.delete(documentId);
 }

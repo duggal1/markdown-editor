@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createCloudShare, queueSharedSync, readShareRecord, revokeCloudShare, shareUrl, type ShareRecord, type ShareStatus } from '../lib/sharing';
+import { backupEnabled } from '../lib/backup';
 import type { FlowDocument } from '../lib/store';
 import DialogFrame from './DialogFrame';
 import { Icon } from './Icons';
@@ -12,6 +13,8 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
 }) {
   const [record, setRecord] = useState<ShareRecord | null>(() => readShareRecord(documentId));
   const [consent, setConsent] = useState(false);
+  const backedUp = backupEnabled();
+  const attempted = useRef(false);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
   const [status, setStatus] = useState<ShareStatus>('synced');
@@ -32,9 +35,15 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
   }, [documentId]);
 
   const link = record ? shareUrl(record.id) : '';
+  useEffect(() => {
+    if (backedUp && !record && !attempted.current) {
+      attempted.current = true;
+      void enable();
+    }
+  }, [backedUp, record]);
 
   async function enable() {
-    if (!consent || busy) return;
+    if ((!consent && !backedUp) || busy) return;
     const doc = getCurrent();
     if (!doc || doc.asset) { setError('This page cannot be shared as Markdown.'); return; }
     setBusy(true);
@@ -78,8 +87,8 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
       <button type="button" className="flow-dialog-button flow-dialog-neutral"
         onClick={onClose} disabled={busy}>Cancel</button>
       <button type="button" className="flow-dialog-button flow-dialog-contrast"
-        disabled={!consent || busy} onClick={() => { void enable(); }}>
-        {busy ? 'Uploading ' + (progress ?? 0) + '%…' : 'Create link'}
+        disabled={(!consent && !backedUp) || busy} onClick={() => { void enable(); }}>
+        {busy ? backedUp ? 'Preparing link…' : 'Uploading ' + (progress ?? 0) + '%…' : 'Create link'}
       </button>
     </> : <>
       <button type="button" className="flow-dialog-button flow-dialog-danger"
@@ -101,10 +110,9 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
 
     {!record ? <>
       <p id="share-dialog-description" className="flow-dialog-copy">
-        Create a private link to this page. Anyone with the link can read and copy
-        its contents, but cannot edit it.
+        {backedUp ? 'Preparing a read-only link from your private cloud backup. Anyone with the link can read the page.' : 'Create a read-only link to this page. Anyone with the link can read and copy its contents, but cannot edit it.'}
       </p>
-      <label className="flow-dialog-consent">
+      {!backedUp && <label className="flow-dialog-consent">
         <input type="checkbox" checked={consent}
           onChange={event => setConsent(event.target.checked)}
           disabled={busy} data-dialog-initial-focus />
@@ -112,7 +120,7 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
           <strong>Upload to cloud</strong>
           <small>Only this page is uploaded. Up to 100 MB of UTF-8 text.</small>
         </span>
-      </label>
+      </label>}
     </> : <>
       <p id="share-dialog-description" className="flow-dialog-status"
         data-status={status} role="status" aria-live="polite">

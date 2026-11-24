@@ -34,7 +34,7 @@ The technology is important, but it is not the differentiator. **Product judgmen
 
 **Draw.** A separate surface at `/draw` for annotating screenshots with arrows and text. Inspect with zoom and pan, edit annotations, and export a single image or a batch as JPEG/WebP and ZIP. It shares the visual language of Flow without turning the writing editor into an image-editing framework.
 
-**Stay local.** Documents, workspaces, and folders are stored in the browser. There is no account to create and no document-sync backend.
+**Stay local.** Documents, workspaces and folders are saved in the browser first. Enable private cloud backup once to automatically back up all workspaces, folders and files (up to 100 MiB per file). No account is required. Copy and keep your recovery key privately if you want to restore after clearing all browser data.
 
 ## Architecture
 
@@ -112,9 +112,9 @@ Flow keeps CodeMirror in charge of text input, coalesces preview work, uses sour
 
 ### 03. Local-first is a product boundary
 
-Keeping documents in IndexedDB removes login and backend availability from the writing path. Preferences and a size-limited recovery snapshot use localStorage. Imported binary assets stay as browser data rather than being silently uploaded.
+Keeping documents in IndexedDB removes login and backend availability from the writing path. Preferences and a size-limited recovery snapshot use localStorage. Imported binary assets stay local unless private cloud backup is enabled.
 
-There is an important tradeoff: **local-first is not the same as backed up**. Clearing browser data, changing browser profiles, or losing the device can lose documents. Export work you cannot afford to lose.
+There is an important tradeoff: **local-first is not the same as backed up**. Clearing browser data, changing browser profiles, or losing the device can lose documents. Enable private cloud backup and keep its recovery key outside the browser, or export work you cannot afford to lose.
 
 ### 04. Preview is a security boundary
 
@@ -130,7 +130,7 @@ Draw's annotations use image-relative coordinates so zoom and screen size do not
 
 ## What we deliberately avoid
 
-- **No mandatory account, cloud database, or sync service.** There is no reason to put a server between a person and a local Markdown file.
+- **No mandatory account or sync service.** There is no reason to put a server between a person and a local Markdown file.
 - **No custom rich-text document format.** Markdown and imported source files remain portable.
 - **No invented editor engine.** CodeMirror handles the hard, well-understood text-editing problems.
 - **No global state framework by default.** React state, refs, and focused modules are enough for this application's current boundaries.
@@ -162,7 +162,7 @@ GitHub Actions runs the TypeScript and Vite production build on pushes to `main`
 
 ## Current boundaries
 
-Flow is a browser application, not a desktop filesystem editor or a synchronized collaboration service. Browser persistence is not a guaranteed backup. Draw operates on an in-memory annotation session, so export images before navigating away. Very large or unusually complex previews can still be constrained by browser memory and rendering performance.
+Flow is a browser application, not a desktop filesystem editor or a synchronized collaboration service. Browser persistence alone is not a guaranteed backup. Optional private backups are independent of public sharing; opening Share creates a read-only link for the selected backed-up text page. Backup runs while the editor is open, and only committed uploads are recoverable. A browser cookie or a saved recovery key is required to restore. Draw operates on an in-memory annotation session, so export images before navigating away. Very large or unusually complex previews can still be constrained by browser memory and rendering performance.
 
 ---
 

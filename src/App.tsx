@@ -12,6 +12,7 @@ import { downloadMarkdown } from './lib/document';
 import ShareDialog from './components/ShareDialog';
 import HtmlSiteDialog from './components/HtmlSiteDialog';
 import DialogFrame from './components/DialogFrame';
+import { backupStatus, enableBackup, getRecoveryKey, recoverWithKey, resumeBackup } from './lib/backup';
 import { queueSharedSync, readShareRecord, revokeCloudShare } from './lib/sharing';
 import { isHtmlPage, localHtmlUrl, publishHtml, queueSiteSync, readSiteRecord, revokeHtml,
   siteUrl, verifyHostedHtml } from './lib/siteHosting';
@@ -98,6 +99,12 @@ export default function App() {
   const [saveDuration, setSaveDuration] = useState(0);
   const saveStarted = useRef(new Map<string, number>());
   const [notice, setNotice] = useState('');
+  const [cloudState, setCloudState] = useState(backupStatus);
+  useEffect(() => {
+    const listener = () => setCloudState(backupStatus());
+    window.addEventListener('flow-backup-status', listener);
+    return () => window.removeEventListener('flow-backup-status', listener);
+  }, []);
   const [exportMenu, setExportMenu] = useState<{ top: number; right: number } | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [htmlSurfaceTone, setHtmlSurfaceTone] = useState<'dark' | 'light'>('dark');
@@ -237,7 +244,7 @@ export default function App() {
       worker?.postMessage({ type: 'index', documents: restored.map(({ id, workspaceId, title, markdown, updatedAt }) => ({ id, workspaceId, title, markdown, updatedAt })) });
       if (first.markdown.length >= 25000) worker?.postMessage({ type: 'metrics', document: { id: first.id, markdown: first.markdown, updatedAt: first.updatedAt } });
       setLoaded(true);
-    }).catch(() => { if (alive) { setSaveState('error'); setNotice('Local storage could not be opened.'); } });
+    }).catch(() => { if (alive) { setSaveState('error'); setNotice('Workspace could not be recovered. Existing data was not changed. Reload to retry.'); } });
     return () => {
       alive = false;
       worker?.terminate();
@@ -563,6 +570,27 @@ export default function App() {
       if (wasActive) selectDocument(doc.id);
       setNotice('Deletion could not finish. The page has been restored. Check its share links.');
     }
+  }
+  async function turnOnBackup() {
+    try {
+      await enableBackup();
+      resumeBackup({ workspaces, folders, documents: [...live.current.values()] });
+      setCloudState(backupStatus());
+    } catch { setNotice('Cloud backup could not be enabled. Local files are unchanged.'); }
+  }
+  async function copyRecoveryKey() {
+    try {
+      await navigator.clipboard.writeText(await getRecoveryKey());
+      setNotice('Recovery key copied. Save it privately; it grants access to your backups.');
+    } catch { setNotice('Could not copy the recovery key.'); }
+  }
+  async function recoverCloudWorkspace() {
+    const key = window.prompt('Enter your private Flow backup recovery key.');
+    if (!key?.trim()) return;
+    try {
+      await recoverWithKey(key);
+      window.location.reload();
+    } catch { setNotice('Could not recover the backup. Check your key and connection.'); }
   }
   function createFolder(targetWorkspace: string) {
     if (!workspaces.some(ws => ws.id === targetWorkspace)) return;
@@ -1322,6 +1350,19 @@ export default function App() {
         />
         <div className="sidebar-bottom">
           <a className="draw-sidebar-entry" href="/draw"><Icon name="edit" size={16} /> Draw screenshots</a>
+          {cloudState === 'off' ? <button className="sidebar-bottom-action" disabled={!loaded}
+            title="Privately back up every workspace and page to cloud storage. No public links are created."
+            onClick={() => { void turnOnBackup(); }}><Icon name="download" size={16} /> Enable cloud backup</button>
+            : <div className="sidebar-bottom-action" role="status" title="Private cloud backup; public sharing is separate">
+              <Icon name={cloudState === 'synced' ? 'check' : 'history'} size={16} />
+              {cloudState === 'synced' ? 'Cloud backup synced' : cloudState === 'error' ? 'Backup failed · retrying' : 'Backing up…'}
+            </div>}
+          {cloudState === 'off'
+            ? <button className="sidebar-bottom-action" onClick={() => { void recoverCloudWorkspace(); }}>
+                <Icon name="history" size={16} /> Restore cloud backup</button>
+            : <button className="sidebar-bottom-action" onClick={() => { void copyRecoveryKey(); }}
+                title="Keep this private key outside your browser to restore after clearing site data">
+                <Icon name="copy" size={16} /> Copy recovery key</button>}
           <button className="sidebar-bottom-action" onClick={() => { if (recentIds[1]) selectDocument(recentIds[1]); }} disabled={!recentIds[1]}><Icon name="history" size={16} /> Previous page</button>
         </div>
       </motion.div>
