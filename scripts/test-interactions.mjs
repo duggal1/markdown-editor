@@ -19,7 +19,7 @@ assert.match(app, /filter: motionOff \|\| compact/, 'iOS sidebar must not run an
 assert.match(app, /window\.requestAnimationFrame\(measure\)/, 'Viewport resize should be batched');
 assert.match(draw, /hoverCapable = window\.matchMedia\('\(hover: hover\) and \(pointer: fine\)'\)/);
 assert.match(draw, /<motion\.button \{\.\.\.hoverMotion\} type="button" className="draw-button"/);
-assert.match(tree, /<motion\.button \{\.\.\.interaction\} type="button" className="filetree-add-page"/);
+assert.match(tree, /className="private-add-child"/);
 assert.match(css, /\.save-prefix\s*\{[\s\S]*?border-radius:1px; background:var\(--flow-accent\);/);
 assert.match(css, /\.save-indicator\[data-save-state='saving'\] \.save-label/);
 assert.match(css, /@media \(max-width:800px\)\s*\{\s*\.sidebar-inner \{ will-change:opacity,transform;/);
