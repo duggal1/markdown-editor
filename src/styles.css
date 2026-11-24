@@ -2487,3 +2487,69 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   .private-workspace .editor-area.mode-split .cm-editor:not(.raw-code) .cm-content { padding-inline:16px !important; }
   .private-workspace .editor-area.mode-split .preview-scroll { padding-inline:16px; }
 }
+
+/* Compact, softly rounded markdown chrome. Draw geometry is not affected. */
+:root:not([data-theme='light']) {
+  --flow-dialog-surface:#080808; --flow-dialog-field:#111111;
+  --flow-dialog-hover:#1c1c1c; --flow-dialog-muted:#979797;
+  --flow-overlay:#090909; --flow-overlay-edge:#171717;
+  --sidebar-bg:#080808; --preview-bg:#020202; --surface:#050505;
+}
+.private-workspace .private-page-toolbar { justify-content:flex-start; gap:8px; padding:0 12px; min-height:28px; }
+.private-workspace .private-page-toolbar .formatting-actions { margin-right:auto; gap:2px; }
+.private-workspace .private-page-toolbar .formatting-actions button { height:24px; min-width:24px; padding:0 5px; border-radius:8px; gap:4px; }
+.private-workspace .topbar { min-height:38px; }
+.private-workspace .header-actions { gap:3px; }
+.private-workspace .mode-switch { gap:1px; padding:2px; background:var(--surface); border-radius:11px; }
+.private-workspace .mode-switch button { min-width:0; height:24px; padding:0 7px; border-radius:9px; font-size:11px; }
+.private-workspace .mode-highlight { border:0; border-radius:9px; background:var(--active); }
+.private-workspace .topbar .share-button,.private-workspace .topbar .export-button { border:0; height:26px; min-height:26px; padding:0 6px; border-radius:8px; gap:4px; }
+.private-workspace .topbar .settings-trigger { width:26px; height:26px; padding:0; border:0; border-radius:8px; }
+.private-workspace .private-page-toolbar .save-indicator { flex-shrink:0; }
+.private-workspace .code-copy { border:0; background:transparent; padding:3px 6px; border-radius:7px; gap:4px; }
+.private-workspace .code-copy:hover { background:var(--hover); }
+.flow-export-menu { padding:3px; border-radius:9px; }
+.flow-export-menu button { padding:0 7px; height:27px; border-radius:7px; }
+#share-dialog.flow-dialog,#html-site-dialog.flow-dialog,#settings-dialog.flow-dialog,#outline-dialog.flow-dialog {
+  border:0; border-radius:12px; background:var(--flow-dialog-surface); color:var(--flow-dialog-text);
+}
+#share-dialog .flow-dialog-header,#html-site-dialog .flow-dialog-header,#settings-dialog .flow-dialog-header { height:40px; min-height:40px; padding:0 10px 0 12px; }
+#share-dialog .flow-dialog-body,#html-site-dialog .flow-dialog-body,#settings-dialog .flow-dialog-body { padding:3px 12px 10px; }
+#share-dialog .flow-dialog-footer,#html-site-dialog .flow-dialog-footer,#settings-dialog .flow-dialog-footer { min-height:0; padding:0 12px 12px; background:transparent; gap:4px; }
+#share-dialog .flow-dialog-button,#html-site-dialog .flow-dialog-button,#settings-dialog .flow-dialog-button {
+  border:0; min-height:25px; height:25px; padding:0 8px; border-radius:8px; font-size:11px; gap:4px;
+}
+#share-dialog .flow-dialog-link,#html-site-dialog .flow-dialog-link { min-height:30px; padding:2px 2px 2px 8px; border-radius:9px; }
+#share-dialog .flow-dialog-link .flow-dialog-button,#html-site-dialog .flow-dialog-link .flow-dialog-button { height:25px; min-height:25px; padding:0 7px; border-radius:7px; background:var(--flow-dialog-hover); color:var(--flow-dialog-text); }
+#share-dialog .flow-dialog-link .flow-dialog-button:hover,#html-site-dialog .flow-dialog-link .flow-dialog-button:hover { background:var(--active); opacity:1; }
+#share-dialog .flow-dialog-footer .flow-dialog-neutral,#html-site-dialog .flow-dialog-footer .flow-dialog-neutral,#settings-dialog .flow-dialog-done,#share-dialog .flow-dialog-done,#html-site-dialog .flow-dialog-done { padding:0 9px; background:var(--flow-dialog-hover); color:var(--flow-dialog-text); }
+#settings-dialog .flow-dialog-done:hover,#share-dialog .flow-dialog-footer .flow-dialog-neutral:hover,#html-site-dialog .flow-dialog-footer .flow-dialog-neutral:hover { background:var(--active); }
+.flow-settings-section + .flow-settings-section { margin-top:12px; }
+.flow-settings-section h3 { margin-bottom:6px; }
+.flow-appearance { padding:2px; border-radius:9px; }
+.flow-appearance button { height:26px; border-radius:7px; gap:4px; }
+.flow-appearance-highlight { border-radius:7px; }
+.flow-accent-palette { gap:2px; }
+.flow-accent-palette button { height:30px; padding:3px; border-radius:7px; }
+.flow-accent-palette .flow-settings-swatch { max-width:21px; border-radius:6px; }
+#outline-dialog.flow-dialog { width:min(340px,calc(100vw - 24px)); }
+#outline-dialog .flow-dialog-header { height:40px; border:0; background:transparent; padding:0 10px 0 12px; }
+#outline-dialog .flow-dialog-heading h2 { color:var(--flow-dialog-text); }
+#outline-dialog .flow-dialog-heading > .phosphor-icon { display:none; }
+#outline-dialog .flow-dialog-body { padding:4px 12px 12px; }
+.flow-outline-search { height:30px; width:100%; border:0; padding:0 8px; border-radius:7px; color:var(--flow-dialog-text); background:var(--flow-dialog-field); font:inherit; }
+.flow-outline-list { max-height:min(350px,55dvh); overflow:auto; margin-top:6px; }
+.flow-outline-list button { display:flex; align-items:center; gap:8px; justify-content:space-between; text-align:left; width:100%; min-height:28px; padding:4px 6px; border:0; border-radius:7px; color:var(--flow-dialog-text); background:transparent; font:inherit; }
+.flow-outline-list button span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.flow-outline-list button small { color:var(--flow-dialog-muted); font-variant-numeric:tabular-nums; }
+.flow-outline-list button:hover { background:var(--flow-dialog-hover); }
+@media(max-width:800px) {
+  .private-workspace .topbar .share-button,.private-workspace .topbar .export-button,.private-workspace .topbar .settings-trigger { width:34px; height:34px; }
+  .private-workspace .mode-switch button { min-height:32px; }
+  .private-workspace .private-page-toolbar .formatting-actions button { min-width:32px; height:32px; }
+  .private-workspace .private-page-toolbar { padding:0 8px; gap:4px; }
+  .private-workspace .word-stat { font-size:10px; }
+  #share-dialog .flow-dialog-button,#html-site-dialog .flow-dialog-button,#settings-dialog .flow-dialog-button { min-height:34px; }
+  .flow-accent-palette button { min-height:36px; }
+  .flow-outline-list button { min-height:38px; }
+}
