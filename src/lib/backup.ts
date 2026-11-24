@@ -10,6 +10,8 @@ const PART = 5 * 1024 * 1024;
 const LIMIT = 100 * 1024 * 1024;
 const INDEX = 'flow.backup.index.v1';
 const TOMBSTONES = 'flow.backup.deletions.v1';
+const FORCE_RESTORE = 'flow.backup.restore.v1';
+const synced = new Map<string, Value>();
 const pending = new Map<string, Job>();
 const running = new Map<string, Promise<void>>();
 let timer: number | undefined;
@@ -19,7 +21,7 @@ const key = (entry: Entry) => entry.kind + '/' + entry.id;
 const pause = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
 
 export function backupEnabled() {
-  return document.cookie.split(';').some(item => item.trim() === 'flow_backup=1');
+  return typeof document !== 'undefined' && document.cookie.split(';').some(item => item.trim() === 'flow_backup=1');
 }
 export function backupStatus(): BackupState { return backupEnabled() ? (state === 'off' ? 'pending' : state) : 'off'; }
 function announce(next: BackupState) {
@@ -60,6 +62,13 @@ export async function enableBackup() {
   if (!backupEnabled()) throw new Error('Browser blocked the backup cookie');
   announce('pending');
 }
+export async function getRecoveryKey(): Promise<string> {
+  return (await json<{ key: string }>(await request('POST', 'recovery-key'))).key;
+}
+export async function recoverWithKey(recoveryKey: string) {
+  await json(await request('POST', 'recover', undefined, { key: recoveryKey.trim() }));
+  sessionStorage.setItem(FORCE_RESTORE, '1');
+}
 async function checksum(blob: Blob) {
   return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer())),
     byte => byte.toString(16).padStart(2, '0')).join('');
@@ -77,11 +86,13 @@ async function uploadPart(url: string, blob: Blob) {
 }
 async function sync(job: Job) {
   if (!job.value) {
+    synced.delete(key(job));
     await json(await request('DELETE', 'delete', job));
     updateEntries(INDEX, job, false);
     updateEntries(TOMBSTONES, job, false);
     return;
   }
+  if (synced.get(key(job)) === job.value) return;
   let meta: object = job.value;
   let blob = new Blob();
   if (job.kind === 'documents') {
@@ -107,6 +118,7 @@ async function sync(job: Job) {
     await json(await request('PUT', 'commit', job, { version: ticket.version }));
   }
   updateEntries(INDEX, job, true);
+  synced.set(key(job), job.value);
 }
 function run(job: Job): Promise<void> {
   const id = key(job);
@@ -166,6 +178,7 @@ export function resumeBackup(data: Restored) {
 export function needsBackupRecovery(data: Restored) {
   if (!backupEnabled()) return false;
   if (!data.documents.length || !data.workspaces.length) return true;
+  try { if (sessionStorage.getItem(FORCE_RESTORE)) return true; } catch { /* Ignore blocked session storage. */ }
   const local = new Set(['workspaces', 'folders', 'documents'].flatMap(kind =>
     data[kind as BackupKind].map(item => kind + '/' + item.id)));
   return readEntries(INDEX).some(entry => !local.has(key(entry)));
@@ -207,6 +220,7 @@ export async function restoreBackup(): Promise<Restored> {
       updateEntries(INDEX, entry, true);
     }
   }));
+  try { sessionStorage.removeItem(FORCE_RESTORE); } catch { /* Restore already succeeded. */ }
   return result;
 }
 export async function publishBackup(doc: FlowDocument): Promise<string> {
