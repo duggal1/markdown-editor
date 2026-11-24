@@ -15,14 +15,14 @@ const PATH = window.location.pathname.split('/').filter(Boolean);
 const LOCAL = PATH[0] === 'play' && PATH[1] === 'local';
 const ID = LOCAL ? PATH[2] || '' : PATH[1] || '';
 const PUBLIC_PREFIX = PATH[0] === 'slug' ? '/slug/' : '/play/';
-const FIRST_ROUTE = '/' + PATH.slice(LOCAL ? 3 : 2).join('/');
+const FIRST_ROUTE = '/' + PATH.slice(LOCAL ? 3 : 2).join('/') + window.location.search + window.location.hash;
 
 function currentRoute(): string {
   const parts = window.location.pathname.split('/').filter(Boolean);
-  return '/' + parts.slice(LOCAL ? 3 : 2).join('/');
+  return '/' + parts.slice(LOCAL ? 3 : 2).join('/') + window.location.search + window.location.hash;
 }
-function safeRoute(value: string): string | null {
-  if (!value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return null;
+function safeRoute(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > 2048 || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return null;
   try {
     const parsed = new URL(value, window.location.origin);
     if (parsed.origin !== window.location.origin || parsed.pathname.startsWith('/api/')) return null;
@@ -121,7 +121,7 @@ export default function HtmlPlayPage() {
             document.title = (doc.title || 'HTML preview') + ' · Flow';
           }
         } else {
-          const response = await fetch('/api/site?id=' + encodeURIComponent(ID) + '&raw=1', {
+          const response = await fetch('/api/site?id=' + encodeURIComponent(ID) + '&raw=1&route=' + encodeURIComponent(FIRST_ROUTE), {
             signal: controller.signal, cache: 'no-cache',
           });
           if (!response.ok) throw new Error(response.status === 404
@@ -170,17 +170,18 @@ export default function HtmlPlayPage() {
         const route = safeRoute(event.data.path);
         if (!route) return;
         const prefix = LOCAL ? '/play/local/' + ID : PUBLIC_PREFIX + ID;
-        const next = prefix + (route === '/' ? '/' : route);
-        if (next === window.location.pathname + window.location.search + window.location.hash) return;
-        window.history.pushState(null, '', next);
+        const next = prefix + (route === '/' ? '' : route);
+        if (next !== window.location.pathname + window.location.search + window.location.hash) {
+          if (event.data.mode === 'replace') window.history.replaceState(null, '', next);
+          else window.history.pushState(null, '', next);
+        }
         setRoutePath(route);
-        if (!event.data.soft) setFrameRoute(route);
       }
     };
     const onPopState = () => {
       const route = currentRoute();
       setRoutePath(route);
-      setFrameRoute(route);
+      iframe.current?.contentWindow?.postMessage({ type: 'flow-runtime-popstate', path: route }, '*');
     };
     const onKey = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'h') {
@@ -323,7 +324,7 @@ export default function HtmlPlayPage() {
             onChange={setFpsLimit} />
           <div className="html-play-panel-actions">
             <motion.button type="button"
-              onClick={() => { setObservedFps(null); setReload(value => value + 1); }}
+              onClick={() => { setObservedFps(null); setFrameRoute(currentRoute()); setReload(value => value + 1); }}
               whileTap={reduce ? undefined : { scale: .95 }}
               whileHover={reduce ? undefined : { y: -1 }} transition={spring}>
               <Icon name="refresh" size={15} /> Reload

@@ -139,6 +139,13 @@ export default async function handler(req, res) {
           ? respond(res, 200, { published: true, version: meta.version })
           : respond(res, 404, { error: 'Site not yet published' });
       }
+      // Hosted subroutes resolve to the same immutable SPA document. Validate
+      // route metadata; it must never be used to address arbitrary Blob paths.
+      const route = req.query?.route;
+      if (route !== undefined && (typeof route !== 'string' || route.length > 2048 ||
+          !route.startsWith('/') || route.startsWith('//') || /[\\\\\u0000-\u001f]/.test(route))) {
+        return respond(res, 400, { error: 'Invalid preview route' });
+      }
       return await streamSite(res, id, meta, req.query?.raw === '1');
     }
     const origin = req.headers.origin;

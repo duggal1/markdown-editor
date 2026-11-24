@@ -103,6 +103,8 @@ assert.equal(readiness.headers.get('cache-control'), 'no-store, max-age=0');
 const shared = await mockRequest('GET', {}, { id, raw: '1' });
 assert.equal(shared.status, 200);
 assert.equal(shared.html, source + extra, 'Raw loads must not rewrite source');
+assert.equal((await mockRequest('GET', {}, { id, raw: '1', route: '/history?filter=all' })).html, source + extra);
+assert.equal((await mockRequest('GET', {}, { id, raw: '1', route: '//other.test' })).status, 400);
 assert.match(shared.headers.get('content-security-policy'), /sandbox/);
 const hosted = await mockRequest('GET', {}, { id });
 assert.match(hosted.html, /__FLOW_SITE_BASE__/, 'Hosted route bootstrap is installed');
@@ -149,6 +151,12 @@ assert.match(transformed.slice(0, 8000), /flow-runtime-route/);
 assert.ok(transformed.endsWith('x'.repeat(10_000_000) + '</body></html>'),
   'Heavy HTML should preserve source bytes without DOM parsing');
 assert.equal(htmlPreviewDocument('## markdown'), null);
+const routed = htmlPreviewDocument('<html><head></head><body><section data-flow-route="/history">History</section></body></html>', { route: '/history?q=one#two' });
+assert.match(routed, /flow:route/);
+assert.match(routed, /data-flow-route/);
+assert.match(routed, /flow-runtime-popstate/);
+assert.match(routed, /"replace"/);
+assert.ok(!htmlPreviewDocument('<html></html>', { route: '/</script><script>bad()' }).includes('</script><script>bad()'), 'Initial route cannot terminate the bridge script.');
 
 const player = readFileSync(new URL('../src/components/HtmlPlayPage.tsx', import.meta.url), 'utf8');
 const phone = readFileSync(new URL('../src/components/IPhoneFrame.tsx', import.meta.url), 'utf8');

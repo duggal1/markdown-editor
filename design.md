@@ -104,3 +104,7 @@ Markdown controls use a 24–26px desktop height, 5–8px horizontal insets and 
 
 ## Appearance correction
 Appearance is strictly Dark or Light. Blue is a ninth accent (600 in dark, 500 in light), never a background theme. The previous background preference is discarded on save. The toolbar uses the Phosphor regular gear-six settings glyph. The heading outline has a #0d0d0d dark surface, borderless search with a subtle focus fill, and no search control for pages without headings.
+
+
+## HTML runtime routing
+The isolated player maintains app-relative routes without reloading the iframe or granting same-origin privileges. Relative and root-relative links, history push/replace, back/forward and hash notifications share a route bridge. Single-file HTML can declare route panels with data-flow-route, or handle the flow:route event and read window.__FLOW_SITE_ROUTE__. The hosted API serves the same committed source on validated SPA subroutes. Missing screens and arbitrary server endpoints must be supplied by the HTML author, not fabricated by the player.
