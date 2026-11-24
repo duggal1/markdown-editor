@@ -10,6 +10,7 @@ const PART = 5 * 1024 * 1024;
 const LIMIT = 100 * 1024 * 1024;
 const RECORD_CONCURRENCY = 6;
 const PART_CONCURRENCY = 6;
+const INLINE_BYTES = 128 * 1024;
 const INDEX = 'flow.backup.index.v1';
 const TOMBSTONES = 'flow.backup.deletions.v1';
 const FORCE_RESTORE = 'flow.backup.restore.v1';
@@ -104,6 +105,18 @@ async function sync(job: Job) {
   }
   if (blob.size > LIMIT) throw new Error('Backup files must be 100 MB or smaller');
   const hash = await checksum(blob);
+  // Short text and metadata avoid signing, a direct-upload request and a
+  // separate commit request. Large files keep the immutable multipart path.
+  if (blob.size <= INLINE_BYTES && (job.kind !== 'documents' || !(job.value as FlowDocument).asset)) {
+    const markdown = job.kind === 'documents' ? (job.value as FlowDocument).markdown : '';
+    const payload = { meta, markdown, bytes: blob.size, checksum: hash };
+    if (new Blob([JSON.stringify(payload)]).size <= 180_000) {
+      await json(await request('POST', 'inline', job, payload));
+      updateEntries(INDEX, job, true);
+      synced.set(key(job), job.value);
+      return;
+    }
+  }
   const ticket = await json<{ unchanged?: boolean; version?: string; urls?: string[] }>(
     await request('POST', 'begin', job, { meta, bytes: blob.size, checksum: hash }));
   if (!ticket.unchanged) {

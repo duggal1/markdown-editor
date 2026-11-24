@@ -83,3 +83,11 @@ The embedded iframe has an actual **306px layout viewport** and a visible 623px 
 - Use a **single native CodeMirror lineNumbers gutter** for code. No separate scrolling overlay, no duplicate counters, no fake absolute positions. Logical line numbers must remain attached to their lines even when long code wraps or the document is virtualized.
 - Code mode has its own compact left alignment: 44px gutter on desktop (38px mobile), 12px gap to syntax-highlighted text, no Markdown-centered 880px column or oversized left inset. Gutter, scroller and text share the same surface, no visible border.
 - Markdown documents retain the existing centered writing measure, without source line numbers. Theme and fullscreen HTML runtime styling remain unchanged.
+
+
+## Compact private workspace polish
+- Phosphor regular SVG assets are the source of truth for all UI glyphs (including slash commands and Draw). Preserve the original Flow mark.
+- Sidebar 232px, page rows 28px, desktop title top inset 18px. Split pane padding is reduced independently of the write-mode reading measure.
+- Dark overlay #101010, border #252525, 7px dropdown radius, 10px dialog radius, 5px control radius. Thin themed scrollbars; retain light appearance and reduced motion.
+- Appearance and accent settings are in the native Settings dialog. Page deletion executes the guarded deletion operation immediately with failure rollback and no confirmation modal. Subpages are preserved.
+- Backup drains six independent records concurrently, keeps same-record serialization, and uses six concurrent part uploads. Small text/metadata uses a verified inline commit, while large files retain the 100 MiB multipart protocol. Small initial public shares use the existing single-request endpoint.

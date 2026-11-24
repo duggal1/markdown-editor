@@ -3,6 +3,7 @@ import { del, get, head, issueSignedToken, list, presignUrl, put, setTtl } from 
 
 const LIMIT = 100 * 1024 * 1024;
 const PART = 5 * 1024 * 1024;
+const INLINE_BYTES = 128 * 1024;
 const KEY = /^[A-Za-z0-9_-]{43}$/;
 const ID = /^[A-Za-z0-9_-]{1,128}$/;
 const VERSION = /^[A-Za-z0-9_-]{16}$/;
@@ -136,6 +137,35 @@ export default async function handler(req, res) {
       return reply(res, 200, { deleted: true });
     }
     if (current?.deleted) return reply(res, 409, { error: 'Record was deleted' });
+    if (req.method === 'POST' && body.action === 'inline') {
+      const { meta, markdown, bytes, checksum } = body;
+      if (!validMeta(kind, id, meta) || typeof markdown !== 'string' ||
+          (kind !== 'documents' && markdown !== '') || meta.assetType !== undefined ||
+          !Number.isSafeInteger(bytes) || bytes < 0 || bytes > INLINE_BYTES ||
+          Buffer.byteLength(markdown, 'utf8') !== bytes || !HASH.test(checksum || '') ||
+          digest(markdown) !== checksum)
+        return reply(res, 400, { error: 'Invalid inline backup' });
+      if (kind === 'documents' && current?.meta.updatedAt > meta.updatedAt)
+        return reply(res, 409, { error: 'A newer backup exists' });
+      if (current && current.checksum === checksum && JSON.stringify(current.meta) === JSON.stringify(meta))
+        return reply(res, 200, { committed: true, unchanged: true });
+      const version = randomBytes(12).toString('base64url');
+      const paths = partPaths(root, version, bytes);
+      // Same manifest and private paths as multipart uploads. A failed CAS
+      // deletes only this new immutable part, never the currently published one.
+      if (paths.length) await put(paths[0], markdown, {
+        access: 'private', addRandomSuffix: false, allowOverwrite: false,
+        contentType: 'application/octet-stream', cacheControlMaxAge: 60,
+      });
+      try {
+        await write(path, { meta, bytes, checksum, version }, cas);
+      } catch (error) {
+        if (paths.length) await del(paths).catch(() => {});
+        throw error;
+      }
+      await retire(root, current);
+      return reply(res, 200, { committed: true });
+    }
     if (req.method === 'POST' && body.action === 'begin') {
       const { meta, bytes, checksum } = body;
       if (!validMeta(kind, id, meta) || !Number.isSafeInteger(bytes) || bytes < 0 || bytes > LIMIT ||
