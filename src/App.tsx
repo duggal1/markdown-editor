@@ -3,10 +3,10 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { createPortal } from 'react-dom';
 import NumberFlow from '@number-flow/react';
 import type { EditorView } from '@codemirror/view';
-import MarkdownEditor, { formatEditor, type Format } from './components/MarkdownEditor';
+import MarkdownEditor, { formatEditor } from './components/MarkdownEditor';
 import { setTaskChecked, taskMarkerEdit } from './lib/taskList';
 import WorkspaceTree from './components/WorkspaceTree';
-import { FlowMark, Icon, type IconName } from './components/Icons';
+import { FlowMark, Icon, SuppliedIcon } from './components/Icons';
 import { ACCENT_THEMES, applyAccentTheme, parseAccentTheme, type AccentTheme } from './lib/accentTheme';
 import { downloadMarkdown } from './lib/document';
 import ShareDialog from './components/ShareDialog';
@@ -19,14 +19,13 @@ import { detectRawCode, isMarkdownFile, languageForFile } from './lib/code';
 import { svgPreviewDocument } from './lib/svgPreview';
 import { readTextImport } from './lib/textImport';
 import { formatPlainTextAsMarkdown, MAX_MANUAL_FORMAT_CHARS } from './lib/autoMarkdown';
-import { formatMarkdownAction } from './lib/autoMarkdownAction';
 import { repairLanguage } from './lib/codeRepair';
 import { repairCodeAction } from './lib/codeRepairAction';
 import { inferTitle, isUntitledTitle } from './lib/title';
 import type { SearchHit } from './lib/searchIndex';
 import {
   clearRecovery, loadWorkspace, readPrefs, removeDoc, removeFolder, removeWorkspaceTree,
-  saveDoc, saveFolder, savePrefs, saveRecovery, saveWorkspace, uid, wordCount,
+  saveDoc, saveFolder, savePrefs, saveRecovery, uid, wordCount,
   type FlowDocument, type Folder, type Mode, type Theme, type Workspace,
 } from './lib/store';
 
@@ -37,16 +36,6 @@ const MarkdownPreview = lazy(() => import('./components/MarkdownPreview'));
 function warmPreviewModule() {
   void import('./components/MarkdownPreview');
 }
-const FORMATS: { name: Format; icon?: IconName; label: string; shortcut?: string }[] = [
-  { name: 'heading', label: 'Heading', shortcut: '#' },
-  { name: 'bold', icon: 'bold', label: 'Bold' },
-  { name: 'italic', icon: 'italic', label: 'Italic', shortcut: '⌘I' },
-  { name: 'link', icon: 'link', label: 'Link', shortcut: '⌘⇧K' },
-  { name: 'bullet', icon: 'list', label: 'List', shortcut: '-' },
-  { name: 'todo', icon: 'todo', label: 'Task', shortcut: '[ ]' },
-  { name: 'quote', icon: 'quote', label: 'Quote' },
-  { name: 'code', icon: 'code', label: 'Code', shortcut: '⌘E' },
-];
 
 function TerminalLoader({ loading }: { loading: boolean }) {
   return loading ? <span className="pixel-save-loader" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /></span> : null;
@@ -90,8 +79,6 @@ export default function App() {
   const [activeId, setActiveId] = useState('');
   const activeIdRef = useRef('');
   const [workspaceId, setWorkspaceId] = useState('');
-  const [expandedIds, setExpandedIds] = useState<string[]>([]);
-  const [newWorkspaceId, setNewWorkspaceId] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>('dark');
   const [accentTheme, setAccentTheme] = useState<AccentTheme>(() => parseAccentTheme(readPrefs().accentTheme));
   const [mode, setMode] = useState<Mode>('write');
@@ -234,7 +221,6 @@ export default function App() {
       setStoredSplitPercent(width);
       splitNext.current = width;
       // Never restore stale collapsed preferences on a new visit.
-      setExpandedIds(data.workspaces.map(ws => ws.id));
       activeIdRef.current = first.id;
       setActiveId(first.id);
       setWorkspaceId(chosenWorkspace.id);
@@ -502,7 +488,6 @@ export default function App() {
     setActiveId(id);
     targetLine.current = null;
     lastSyncLine.current = -1;
-    setExpandedIds(ids => ids.includes(doc.workspaceId) ? ids : [...ids, doc.workspaceId]);
     setWorkspaceId(doc.workspaceId);
     setDocs(current => current.map(item => live.current.get(item.id) || item));
     setRecentIds(current => [id, ...current.filter(item => item !== id)].slice(0, 30));
@@ -513,19 +498,18 @@ export default function App() {
     if (window.innerWidth < 800) setSidebarOpen(false);
   }, [flush]);
 
-  const makeDocument = useCallback((targetWorkspace?: string, targetFolder?: string) => {
+  const makeDocument = useCallback((targetWorkspace?: string, targetFolder?: string, parentId?: string) => {
     if (!workspaces.length) return;
     const target = targetWorkspace || workspaceId || workspaces[0].id;
     const stamp = Date.now();
     const doc: FlowDocument = {
-      id: uid(), workspaceId: target, folderId: targetFolder, title: 'Untitled', titleAuto: true,
+      id: uid(), workspaceId: target, folderId: targetFolder, parentId, title: 'Untitled', titleAuto: true,
       markdown: '', createdAt: stamp, updatedAt: stamp,
     };
     live.current.set(doc.id, doc);
     setDocs(current => [doc, ...current]);
     // A page created from a collapsed workspace must be visible in its tree.
     // Keep the existing folder assignment and show the containing workspace.
-    setExpandedIds(ids => ids.includes(target) ? ids : [...ids, target]);
     // Clear any filtered tree so the new page cannot be hidden by search.
     setQuery('');
     selectDocument(doc.id);
@@ -561,6 +545,13 @@ export default function App() {
         hosted ? revokeHtml(doc.id) : Promise.resolve(),
       ]);
       await removeDoc(doc.id);
+      // Deleting a page does not delete its subpages. Missing parents are also
+      // rendered as roots if a save is interrupted.
+      for (const child of live.current.values()) if (child.parentId === doc.id) {
+        const moved = { ...child, parentId: doc.parentId, updatedAt: Date.now() };
+        scheduleSave(moved);
+      }
+      setDocs([...live.current.values()]);
       if (wasActive && !remaining.length) makeDocument(doc.workspaceId);
     } catch {
       live.current.set(doc.id, doc);
@@ -573,22 +564,10 @@ export default function App() {
       setNotice('Deletion could not finish. The page has been restored. Check its share links.');
     }
   }
-  function toggleWorkspace(id: string) {
-    setExpandedIds(ids => ids.includes(id) ? ids.filter(item => item !== id) : [...ids, id]);
-  }
-  function createWorkspace() {
-    const ws: Workspace = { id: uid(), name: 'New workspace', createdAt: Date.now() };
-    setWorkspaces(items => [...items, ws]);
-    setWorkspaceId(ws.id);
-    setExpandedIds(ids => [...ids, ws.id]);
-    setNewWorkspaceId(ws.id);
-    void saveWorkspace(ws).catch(() => setNotice('Workspace could not be saved.'));
-  }
   function createFolder(targetWorkspace: string) {
     if (!workspaces.some(ws => ws.id === targetWorkspace)) return;
     const folder: Folder = { id: uid(), workspaceId: targetWorkspace, name: 'New folder', createdAt: Date.now() };
     setFolders(items => [...items, folder]);
-    setExpandedIds(ids => ids.includes(targetWorkspace) ? ids : [...ids, targetWorkspace]);
     setNewFolderId(folder.id);
     void saveFolder(folder).catch(() => setNotice('Folder could not be saved.'));
   }
@@ -622,13 +601,39 @@ export default function App() {
       setDocs(items => items.map(doc => live.current.get(doc.id) || doc));
     } catch { setNotice('Folder could not be removed. Your documents were kept.'); }
   }
-  function renameWorkspace(id: string, name: string) {
-    const old = workspaces.find(item => item.id === id);
-    if (!old || name === old.name) { setNewWorkspaceId(null); return; }
-    const next = { ...old, name };
-    setWorkspaces(items => items.map(item => item.id === id ? next : item));
-    setNewWorkspaceId(null);
-    void saveWorkspace(next).catch(() => setNotice('Workspace rename could not be saved.'));
+  function movePage(id: string, parentId?: string, folderId?: string) {
+    const original = live.current.get(id);
+    if (!original) return;
+    const parent = parentId ? live.current.get(parentId) : undefined;
+    if (parentId && (!parent || parent.asset)) return;
+    const visited = new Set([id]);
+    let ancestor = parent;
+    while (ancestor) {
+      if (visited.has(ancestor.id)) { setNotice('A page cannot contain itself or its ancestors.'); return; }
+      visited.add(ancestor.id);
+      ancestor = ancestor.parentId ? live.current.get(ancestor.parentId) : undefined;
+    }
+    const folder = folderId ? folders.find(item => item.id === folderId) : undefined;
+    if (folderId && !folder) return;
+    const targetWorkspace = parent?.workspaceId || folder?.workspaceId || original.workspaceId;
+    const targetFolder = parent ? parent.folderId : folder?.id;
+    if (original.parentId === parentId && original.folderId === targetFolder && original.workspaceId === targetWorkspace) return;
+    const descendants = [id];
+    const seen = new Set(descendants);
+    for (let index = 0; index < descendants.length; index++) {
+      for (const child of live.current.values()) if (child.parentId === descendants[index] && !seen.has(child.id)) {
+        seen.add(child.id); descendants.push(child.id);
+      }
+    }
+    for (const childId of descendants) {
+      const doc = live.current.get(childId);
+      if (!doc) continue;
+      const updated = { ...doc, workspaceId: targetWorkspace, folderId: targetFolder,
+        parentId: childId === id ? parentId : doc.parentId, updatedAt: Date.now() };
+      scheduleSave(updated);
+    }
+    if (seen.has(activeIdRef.current)) setWorkspaceId(targetWorkspace);
+    setDocs([...live.current.values()]);
   }
   function renameDocument(id: string, name: string) {
     const old = live.current.get(id);
@@ -669,7 +674,6 @@ export default function App() {
     // UI removal is immediate even for workspaces with hundreds of pages.
     setWorkspaces(remainingWorkspaces);
     setFolders(items => items.filter(folder => folder.workspaceId !== id));
-    setExpandedIds(ids => ids.filter(item => item !== id));
     setDocs(otherDocs);
     setRecentIds(ids => ids.filter(docId => live.current.has(docId)));
     if (previousActive && !live.current.has(previousActive)) {
@@ -920,17 +924,15 @@ export default function App() {
       originalDocument.sliceString(0, 8192),
       current.language || languageForFile(current.fileName || ''),
     );
-    if (!currentLanguage && codeRepairUnsupported) {
+    if (!currentLanguage) {
       setNotice('Deterministic code repair currently supports HTML and Python.');
       return;
     }
     autoFormatInFlight.current = true;
     setAutoFormatting(true);
-    setNotice(currentLanguage ? 'Checking ' + currentLanguage.toUpperCase() + ' source…' : 'Formatting Markdown…');
+    setNotice('Checking ' + currentLanguage.toUpperCase() + ' source…');
     try {
-      const formatted = currentLanguage
-        ? await repairCodeAction(source, currentLanguage)
-        : await formatMarkdownAction(source, { atDocumentStart: !selected && from === 0, selection: selected });
+      const formatted = await repairCodeAction(source, currentLanguage);
       // The user can type or change pages while a large worker is running.
       // Never overwrite a newer CodeMirror document with stale formatting.
       if (editorRef.current !== view || activeIdRef.current !== current.id ||
@@ -939,8 +941,7 @@ export default function App() {
         return;
       }
       if (formatted === source) {
-        setNotice(currentLanguage ? 'No recognizable paste artifacts. Source unchanged.' :
-          'Already formatted. No changes needed.');
+        setNotice('No recognizable paste artifacts. Source unchanged.');
         return;
       }
       // One replacement transaction ensures Cmd/Ctrl+Z reverts the entire action.
@@ -952,10 +953,7 @@ export default function App() {
           : { anchor: from, head: from + formatted.length },
       });
       if (modeRef.current !== 'preview') view.focus();
-      setNotice(currentLanguage
-        ? currentLanguage.toUpperCase() + ' paste artifacts removed · Undo to revert'
-        : range.empty ? 'Markdown formatted · Undo to revert'
-          : 'Selection formatted · Undo to revert');
+      setNotice(currentLanguage.toUpperCase() + ' paste artifacts removed · Undo to revert');
     } catch (error) {
       console.error('Source formatting failed', error);
       setNotice('Could not process source. Your text was not changed.');
@@ -1042,7 +1040,6 @@ export default function App() {
       if (imported.length) {
         setQuery('');
         selectDocument(imported[0].id);
-        setExpandedIds(ids => ids.includes(targetWorkspace) ? ids : [...ids, targetWorkspace]);
       }
       setSaveState(errors.length ? 'error' : 'saved');
     } finally {
@@ -1068,11 +1065,8 @@ export default function App() {
   const activeFileLanguage = active?.language || languageForFile(active?.fileName || '');
   const activeRepairLanguage = active && !active.asset
     ? repairLanguage(active.markdown.slice(0, 8192), activeFileLanguage) : null;
-  const activeCodeLanguage = activeFileLanguage || detectRawCode(active?.markdown.slice(0, 12000) || '');
   const formatActionLabel = activeRepairLanguage === 'html' ? 'Auto HTML Fix'
-    : activeRepairLanguage === 'python' ? 'Auto Python Fix'
-      : activeCodeLanguage ? 'Code Fix' : 'Auto Markdown';
-  const codeRepairUnsupported = Boolean(activeCodeLanguage && !activeRepairLanguage);
+    : 'Auto Python Fix';
   const activeHtml = isHtmlPage(active);
   useEffect(() => { setHtmlSurfaceTone('dark'); }, [activeId]);
   // HTML previews are automatically hosted; Markdown stays local unless shared.
@@ -1284,13 +1278,13 @@ export default function App() {
     whileTap: { scale: 0.985 },
     transition: { duration: 0.17, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
   };
-  if (!loaded) return <main className="boot"><FlowMark size={30} /><span>Opening workspace…</span></main>;
-  return <div className="flow-shell" onDragOver={event => event.preventDefault()} onDrop={onDrop}>
+  if (!loaded) return <main className="boot"><FlowMark size={30} /><span>{saveState === 'error' ? 'Workspace could not be opened. Reload to retry.' : 'Opening workspace…'}</span></main>;
+  return <div className="flow-shell private-workspace" onDragOver={event => event.preventDefault()} onDrop={onDrop}>
     <motion.aside className={'sidebar' + (sidebarOpen ? ' is-open' : '')}
       initial={false} animate={{ width: sidebarOpen ? 256 : 0 }}
       transition={motionOff ? { duration: 0 } : { duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
       aria-hidden={!sidebarOpen}
-      aria-label="Workspaces and pages">
+      aria-label="Private pages">
       <motion.div className="sidebar-inner" initial={false}
         animate={{ opacity: sidebarOpen ? 1 : 0, x: sidebarOpen ? 0 : -12,
           filter: motionOff || compact ? 'blur(0px)' : sidebarOpen ? 'blur(0px)' : 'blur(5px)' }}
@@ -1307,57 +1301,27 @@ export default function App() {
                 event.preventDefault(); selectDocument(matching[0].id); setQuery('');
               }
             }}
-            placeholder="Search all pages" aria-label="Search page names and content"
+            placeholder="Search" aria-label="Search page names and content"
             aria-keyshortcuts="Meta+K Control+K" />
           <kbd aria-hidden="true">{/Mac|iPhone|iPad/i.test(navigator.platform) ? '⌘K' : 'Ctrl K'}</kbd>
         </label>
+        <button type="button" className="private-new-page" onClick={() => makeDocument(workspaceId)}>
+          <Icon name="edit" size={17}/> New page <kbd>+</kbd>
+        </button>
         <WorkspaceTree
           workspaces={workspaces} documents={matching} folders={folders} newFolderId={newFolderId}
           activeId={activeId} activeWorkspaceId={workspaceId}
-          search={query} searchHits={searchResults} searchPending={searchPending} expandedIds={expandedIds}
-          newWorkspaceId={newWorkspaceId} reducedMotion={!!motionOff}
-          onToggle={toggleWorkspace}
-          onSelectWorkspace={setWorkspaceId}
-          onOpen={selectDocument}
-          onNewWorkspace={createWorkspace}
-          onNewFolder={createFolder}
-          onNewDocument={makeDocument}
-          onRenameFolder={renameFolder}
-          onRenameWorkspace={renameWorkspace}
-          onRenameDocument={renameDocument}
-          onMoveDocument={(id, targetWorkspace) => {
-            const original = live.current.get(id);
-            if (!original || (original.workspaceId === targetWorkspace && !original.folderId)) return;
-            const moved = { ...original, workspaceId: targetWorkspace, folderId: undefined, updatedAt: Date.now() };
-            scheduleSave(moved);
-            setDocs(items => items.map(doc => doc.id === id ? moved : doc));
-            setExpandedIds(ids => ids.includes(targetWorkspace) ? ids : [...ids, targetWorkspace]);
-            if (activeIdRef.current === id) setWorkspaceId(targetWorkspace);
-          }}
-          onMoveToFolder={(id, folderId) => {
-            const folder = folders.find(item => item.id === folderId);
-            const original = live.current.get(id);
-            if (!folder || !original) return;
-            if (original.workspaceId === folder.workspaceId && original.folderId === folder.id) return;
-            const moved = { ...original, workspaceId: folder.workspaceId, folderId: folder.id, updatedAt: Date.now() };
-            scheduleSave(moved);
-            setDocs(items => items.map(doc => doc.id === id ? moved : doc));
-            if (activeIdRef.current === id) setWorkspaceId(folder.workspaceId);
-          }}
-          onDeleteFolder={id => { void eraseFolder(id); }}
-          onDeleteWorkspace={id => {
-            const ws = workspaces.find(item => item.id === id);
-            if (ws) setPendingDelete({ kind: 'workspace', id, title: ws.name,
-              count: [...live.current.values()].filter(doc => doc.workspaceId === id).length });
-          }}
+          search={query} searchHits={searchResults} searchPending={searchPending}
+          onOpen={selectDocument} onNewFolder={createFolder} onNewDocument={makeDocument}
+          onRenameFolder={renameFolder} onRenameDocument={renameDocument}
+          onMovePage={movePage} onDeleteFolder={id => { void eraseFolder(id); }}
           onDeleteDocument={id => {
             const doc = live.current.get(id);
-            if (doc) void eraseDocument(doc);
+            if (doc) setPendingDelete({ kind: 'document', id, title: doc.title });
           }}
         />
         <div className="sidebar-bottom">
           <a className="draw-sidebar-entry" href="/draw"><Icon name="edit" size={16} /> Draw screenshots</a>
-          <button className="sidebar-bottom-action" onClick={() => makeDocument(workspaceId)}><Icon name="plus" size={16} /> Add page</button>
           <button className="sidebar-bottom-action" onClick={() => { if (recentIds[1]) selectDocument(recentIds[1]); }} disabled={!recentIds[1]}><Icon name="history" size={16} /> Previous page</button>
         </div>
       </motion.div>
@@ -1368,8 +1332,8 @@ export default function App() {
         <div className="document-meta">
           <motion.button {...pressMotion} className="square-button sidebar-toggle" title={sidebarOpen ? 'Hide sidebar' : 'Open sidebar'} aria-label={sidebarOpen ? 'Hide sidebar' : 'Open sidebar'}
             onClick={() => setSidebarOpen(current => !current)}><Icon name="sidebar" size={18} /></motion.button>
-          <input ref={titleRef} className="document-title" aria-label="Page title" spellCheck={false}
-            value={active?.title || ''} onChange={event => changeTitle(event.target.value)} placeholder="Untitled" />
+          <span className="private-breadcrumb"><Icon name="file" size={15}/><span>{active?.title || 'Untitled'}</span></span>
+          <span className="private-visibility"><SuppliedIcon kind="lock" size={14}/>{active && (readShareRecord(active.id) || readSiteRecord(active.id)) ? 'Shared' : 'Private'}</span>
           <motion.span className="save-indicator" data-save-state={saveState}
             initial={false} aria-hidden={saveState === 'idle'}
             animate={{ opacity: saveState === 'idle' ? 0 : 1, y: saveState === 'idle' ? -2 : 0 }}
@@ -1426,29 +1390,14 @@ export default function App() {
           <input ref={fileRef} type="file" hidden multiple onChange={onFileSelected} aria-label="Import files" />
         </div>
       </header>
-      <div className="subbar">
-        <div className="formatting-actions" role="toolbar" aria-label="Markdown formatting">
-          {FORMATS.map(format => <motion.button key={format.name} type="button" whileTap={motionOff ? undefined : { scale: 0.985 }}
-            whileHover={motionOff || compact ? undefined : { y: -1 }}
-            transition={motionOff ? { duration: 0 } : { duration: 0.17, ease: [0.22, 1, 0.36, 1] }}
-            title={format.label + (format.shortcut ? ' · ' + format.shortcut : '')} aria-label={format.label}
-            onClick={() => { if (mode === 'preview') changeMode('write'); window.requestAnimationFrame(() => formatEditor(editorRef.current, format.name)); }}>
-            {format.icon ? <Icon name={format.icon} size={16} /> : format.name === 'heading' ? <span className="format-heading">H<span>1</span></span>
-              : <span className={format.name === 'bold' ? 'format-bold' : 'format-italic'}>{format.name === 'bold' ? 'B' : 'I'}</span>}
-          </motion.button>)}
-          <span className="format-divider" />
-          <motion.button type="button" {...pressMotion} className="auto-markdown-button"
-            title={codeRepairUnsupported
-              ? 'Deterministic fixes are available for HTML and Python'
-              : activeRepairLanguage ? 'Remove recognizable paste artifacts without generating code'
-                : 'Auto Markdown · format selected text or this page'}
-            aria-label={formatActionLabel} aria-busy={autoFormatting}
-            disabled={Boolean(active?.asset) || autoFormatting || codeRepairUnsupported}
-            onMouseDown={event => event.preventDefault()}
-            onClick={() => { void autoFormatDocument(); }}>
-            {autoFormatting ? <TerminalLoader loading /> : <Icon name="format" size={16} />}
-            <span>{autoFormatting ? (activeRepairLanguage ? 'Checking…' : 'Formatting…') : formatActionLabel}</span>
-          </motion.button>
+      <div className="subbar private-page-toolbar">
+        <div className="formatting-actions" role="toolbar" aria-label="Page actions">
+          {activeRepairLanguage && <motion.button type="button" {...pressMotion} className="code-fix-action"
+            title={formatActionLabel} aria-label={formatActionLabel} aria-busy={autoFormatting} disabled={autoFormatting}
+            onMouseDown={event => event.preventDefault()} onClick={() => { void autoFormatDocument(); }}>
+            {autoFormatting ? <TerminalLoader loading /> : <Icon name="format" size={16}/>}
+            <span>{autoFormatting ? 'Checking…' : formatActionLabel}</span>
+          </motion.button>}
           <motion.button type="button" {...pressMotion} className="copy-all-button"
             title="Copy the entire page" aria-label="Copy all" disabled={!active || Boolean(active.asset)}
             onClick={() => { void copyAll(); }}>
@@ -1457,6 +1406,10 @@ export default function App() {
           <motion.button {...pressMotion} title="Import files" aria-label="Import files" onClick={() => fileRef.current?.click()}><Icon name="upload" size={16} /></motion.button>
         </div>
         <span className="word-stat">{active?.fileType === 'image' ? 'Image' : active?.fileType === 'binary' ? 'File' : `${words.toLocaleString()} words`}</span>
+      </div>
+      <div className="private-page-title-wrap">
+        <input ref={titleRef} className="private-page-title" aria-label="Page title" spellCheck={false}
+          value={active?.title || ''} onChange={event => changeTitle(event.target.value)} placeholder="Untitled"/>
       </div>
       <motion.main ref={editorAreaRef} className={'editor-area mode-' + mode + (compact ? ' compact' : '') + (resizingSplit ? ' is-resizing' : '')} aria-label="Flow Markdown workspace"
         initial={false} animate={{ gridTemplateColumns: compact ? 'minmax(0, 1fr)' : gridColumns,

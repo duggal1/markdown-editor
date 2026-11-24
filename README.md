@@ -26,9 +26,9 @@ The technology is important, but it is not the differentiator. **Product judgmen
 
 ## The product
 
-**Write.** A CodeMirror 6 editor with Markdown-aware editing, language support, formatting shortcuts, and viewport-based rendering. Write, Split, and Preview modes let the interface follow the task instead of forcing one layout.
+**Write.** A CodeMirror 6 editor with Markdown-aware editing, a contextual slash-command menu, draggable Markdown blocks, automatic paste formatting, language support, formatting shortcuts and viewport-based rendering. Write, Split, and Preview modes let the interface follow the task instead of forcing one layout.
 
-**Organize.** Multiple workspaces, folders, document movement, recent documents, and local search. Import Markdown, code, text, images, and other files; export the original content without a proprietary document format.
+**Organize.** A single Private page tree with nested subpages, optional folders, drag-to-nest, recent documents and local search. Existing workspace IDs are retained for compatibility, not exposed as a mandatory navigation layer. Import Markdown, code, text, images, and other files; export the original content without a proprietary document format.
 
 **Preview.** GitHub-flavored Markdown with tables, task lists, syntax-highlighted code, copy actions, and source-aware scroll alignment. Standalone HTML and SVG have purpose-built previews. Large Markdown documents and code blocks take a different, virtualized rendering path.
 

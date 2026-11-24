@@ -6,7 +6,7 @@ export type Mode = 'write' | 'split' | 'preview';
 export type Workspace = { id: string; name: string; createdAt: number };
 export type Folder = { id: string; workspaceId: string; name: string; createdAt: number };
 export type FlowDocument = {
-  id: string; workspaceId: string; folderId?: string; title: string; titleAuto: boolean;
+  id: string; workspaceId: string; folderId?: string; parentId?: string; title: string; titleAuto: boolean;
   markdown: string; createdAt: number; updatedAt: number;
   fileName?: string; fileType?: 'text' | 'image' | 'binary'; language?: string; asset?: Blob;
 };

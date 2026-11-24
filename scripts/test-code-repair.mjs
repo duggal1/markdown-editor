@@ -81,8 +81,7 @@ const worker = readFileSync(new URL('../src/workers/codeRepair.ts', import.meta.
 assert.match(app, /'Auto HTML Fix'/);
 assert.match(app, /'Auto Python Fix'/);
 assert.match(app, /await repairCodeAction\(source, currentLanguage\)/);
-assert.match(app, /await formatMarkdownAction\(source, \{ atDocumentStart: !selected && from === 0, selection: selected \}\)/,
-  'Markdown formatting must remain available for prose.');
+assert.doesNotMatch(app, /className="auto-markdown-button"/, 'Automatic paste formatting replaces the manual prose button.');
 assert.match(app, /view\.state\.doc !== originalDocument/,
   'Repairs must not overwrite a newer edit or another document.');
 assert.match(app, /Undo to revert/,
