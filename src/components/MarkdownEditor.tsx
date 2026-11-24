@@ -11,6 +11,7 @@ import { detectRawCode, type CodeLanguage } from '../lib/code';
 import { formatPlainTextAsMarkdown, shouldAutoFormatPaste } from '../lib/autoMarkdown';
 import { listEnterIntent } from '../lib/listEditing';
 import { repairLanguage } from '../lib/codeRepair';
+import { blockCommands } from '../lib/blockCommands';
 
 
 const flowHighlight = HighlightStyle.define([
@@ -214,6 +215,7 @@ function MarkdownEditor({
         doc: initialText,
         extensions: [
           minimalSetup,
+          blockCommands,
           gutterSlot.of([]),
           languageSlot.of(markdown({ codeLanguages: languages, addKeymap: false })),
           syntaxHighlighting(flowHighlight),
@@ -241,7 +243,7 @@ function MarkdownEditor({
             ...markdownKeymap.filter(binding => binding.key === 'Backspace'),
           ])),
           keymap.of([indentWithTab]),
-          placeholder('Start writing…'),
+          placeholder('Press / for commands, or start writing…'),
           EditorView.updateListener.of(update => {
             if (update.selectionSet || update.docChanged) {
               const line = update.state.doc.lineAt(update.state.selection.main.head).number;
