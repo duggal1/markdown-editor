@@ -83,7 +83,6 @@ export default function App() {
   const activeIdRef = useRef('');
   const [workspaceId, setWorkspaceId] = useState('');
   const [theme, setTheme] = useState<Theme>('dark');
-  const [background, setBackground] = useState<'neutral' | 'blue'>(() => readPrefs().background === 'blue' ? 'blue' : 'neutral');
   const [accentTheme, setAccentTheme] = useState<AccentTheme>(() => parseAccentTheme(readPrefs().accentTheme));
   const [mode, setMode] = useState<Mode>('write');
   const [splitPercent, setSplitPercent] = useState(50);
@@ -263,10 +262,10 @@ export default function App() {
   }, []);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    document.documentElement.dataset.background = theme === 'dark' ? background : 'neutral';
+    delete document.documentElement.dataset.background;
     const color = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-    if (color) color.content = theme === 'dark' ? background === 'blue' ? '#080e1b' : '#050505' : '#F4F4F4';
-  }, [theme, background]);
+    if (color) color.content = theme === 'dark' ? '#050505' : '#F4F4F4';
+  }, [theme]);
   useEffect(() => { applyAccentTheme(accentTheme); }, [accentTheme]);
   useEffect(() => {
     const doc = live.current.get(activeId);
@@ -316,10 +315,10 @@ export default function App() {
   }, [compact]);
   useEffect(() => {
     if (!loaded) return;
-    savePrefs({ theme, accentTheme, mode, background, sidebarOpen, activeDocumentId: activeId,
+    savePrefs({ theme, accentTheme, mode, sidebarOpen, activeDocumentId: activeId,
       activeWorkspaceId: workspaceId, recentIds,
       splitPercent: storedSplitPercent });
-  }, [loaded, theme, accentTheme, mode, background, sidebarOpen, activeId, workspaceId, recentIds, storedSplitPercent]);
+  }, [loaded, theme, accentTheme, mode, sidebarOpen, activeId, workspaceId, recentIds, storedSplitPercent]);
 
   const flush = useCallback((id: string) => {
     const timer = saveTimers.current.get(id);
@@ -1452,7 +1451,7 @@ async function eraseDocument(doc: FlowDocument) {
           </motion.button>
           <motion.button {...pressMotion} type="button" className="square-button theme-toggle settings-trigger"
             title="Settings" aria-label="Settings" aria-haspopup="dialog" aria-expanded={settingsOpen}
-            onClick={() => setSettingsOpen(true)}><Icon name="settings" size={16} /></motion.button>
+            onClick={() => setSettingsOpen(true)}><Icon name="settings" size={18} /></motion.button>
           <input ref={fileRef} type="file" hidden multiple onChange={onFileSelected} aria-label="Import files" />
         </div>
       </header>
@@ -1569,14 +1568,19 @@ async function eraseDocument(doc: FlowDocument) {
       {outline && <DialogFrame id="outline-dialog" title="Page outline" icon="list" describedBy="outline-description"
         onClose={() => setOutline(null)} footer={null}>
         <p id="outline-description" className="settings-sr-only">Jump to a heading in the current page.</p>
-        <input className="flow-outline-search" aria-label="Search headings" placeholder="Find a heading…" data-dialog-initial-focus
-          value={outlineQuery} onChange={event => setOutlineQuery(event.target.value)} />
+        {outline.length > 0 && <div className="flow-outline-field">
+          <Icon name="search" size={15} />
+          <input className="flow-outline-search" aria-label="Search headings" placeholder="Find a heading…" data-dialog-initial-focus
+            value={outlineQuery} onChange={event => setOutlineQuery(event.target.value)} />
+        </div>}
         <div className="flow-outline-list">
           {outline.filter(item => item.title.toLowerCase().includes(outlineQuery.toLowerCase())).slice(0, 300).map(item =>
             <button type="button" key={item.line} onClick={() => jumpToHeading(item.line)} style={{ paddingInlineStart: 8 + (item.level - 1) * 8 }}>
               <span>{item.title}</span><small>{item.line}</small>
             </button>)}
-          {outline.length === 0 && <p className="flow-dialog-copy">Add a Markdown heading to navigate this page.</p>}
+          {outline.length === 0 && <p className="flow-outline-empty">Add a Markdown heading to navigate this page.</p>}
+          {outline.length > 0 && !outline.some(item => item.title.toLowerCase().includes(outlineQuery.toLowerCase())) &&
+            <p className="flow-outline-empty">No matching headings.</p>}
           {outline.length > 300 && <p className="flow-dialog-copy">Search to find headings beyond the first 300.</p>}
         </div>
       </DialogFrame>}
@@ -1586,14 +1590,14 @@ async function eraseDocument(doc: FlowDocument) {
         <section className="flow-settings-section">
           <h3>Appearance</h3>
           <div className="flow-appearance" role="group" aria-label="Appearance">
-            {(['dark', 'blue', 'light'] as const).map(option => {
-              const selected = option === 'light' ? theme === 'light' : theme === 'dark' && background === (option === 'blue' ? 'blue' : 'neutral');
+            {(['dark', 'light'] as const).map(option => {
+              const selected = theme === option;
               return <button key={option} type="button" data-dialog-initial-focus={selected ? '' : undefined}
-                aria-pressed={selected} onClick={() => { setTheme(option === 'light' ? 'light' : 'dark'); setBackground(option === 'blue' ? 'blue' : 'neutral'); }}>
+                aria-pressed={selected} onClick={() => setTheme(option)}>
                 {selected && <motion.span layoutId="settings-appearance" className="flow-appearance-highlight"
                   transition={{ duration: motionOff ? 0 : .18, ease: [0.22, 1, 0.36, 1] }} />}
                 <span className={'flow-appearance-chip tone-' + option} aria-hidden="true" />
-                <span>{option === 'blue' ? 'Dark blue' : option === 'dark' ? 'Dark' : 'Light'}</span>
+                <span>{option === 'dark' ? 'Dark' : 'Light'}</span>
               </button>;
             })}
           </div>

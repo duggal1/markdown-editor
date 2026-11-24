@@ -42,7 +42,7 @@ import undoGlyph from '@phosphor-icons/core/assets/regular/arrow-u-up-left.svg?r
 import formatGlyph from '@phosphor-icons/core/assets/regular/magic-wand.svg?raw';
 import boldGlyph from '@phosphor-icons/core/assets/regular/text-b.svg?raw';
 import italicGlyph from '@phosphor-icons/core/assets/regular/text-italic.svg?raw';
-import settingsGlyph from '@phosphor-icons/core/assets/regular/gear.svg?raw';
+import settingsGlyph from '@phosphor-icons/core/assets/regular/gear-six.svg?raw';
 import lockGlyph from '@phosphor-icons/core/assets/regular/lock-simple.svg?raw';
 import globeGlyph from '@phosphor-icons/core/assets/regular/globe.svg?raw';
 import globeOffGlyph from '@phosphor-icons/core/assets/regular/warning-circle.svg?raw';

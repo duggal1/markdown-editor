@@ -3,6 +3,7 @@ export const ACCENT_THEMES = [
   { id: 'orange', label: 'Orange' },
   { id: 'green', label: 'Green' },
   { id: 'sky', label: 'Sky' },
+  { id: 'blue', label: 'Blue' },
   { id: 'purple', label: 'Purple' },
   { id: 'pink', label: 'Pink' },
   { id: 'teal', label: 'Teal' },
@@ -17,7 +18,7 @@ export function parseAccentTheme(input: unknown): AccentTheme {
 }
 
 const FAVICON_COLORS: Record<AccentTheme, string> = {
-  orange: '#ea580c', green: '#16a34a', sky: '#0284c7', purple: '#9810fa',
+  orange: '#ea580c', green: '#16a34a', sky: '#0284c7', blue: '#2563eb', purple: '#9810fa',
   pink: '#db2777', teal: '#0d9488', indigo: '#4f46e5', rose: '#e11d48',
 };
 

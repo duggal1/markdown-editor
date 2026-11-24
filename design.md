@@ -100,3 +100,7 @@ Settings has immediate appearance selection and a compact accent palette. Share 
 
 ## Dense workspace controls and reliable export
 Markdown controls use a 24–26px desktop height, 5–8px horizontal insets and soft 8–9px radii; mobile preserves larger targets. Copy and import are left aligned, save status right aligned. Settings uses an explicit Done control. Draw retains its layout; only the new SVG mark is unboxed. Heading outline is generated on demand. Scroll synchronization keeps a source-line anchor across modes and cancels stale virtual-window jumps on user input. Large pages avoid animated pane reflow. PDFMake's classic font script registers with its public API; the generated PDF, not a private VFS property, determines success. PDF styling is neutral A4 with selectable text, syntax colors and compact tables.
+
+
+## Appearance correction
+Appearance is strictly Dark or Light. Blue is a ninth accent (600 in dark, 500 in light), never a background theme. The previous background preference is discarded on save. The toolbar uses the Phosphor regular gear-six settings glyph. The heading outline has a #0d0d0d dark surface, borderless search with a subtle focus fill, and no search control for pages without headings.

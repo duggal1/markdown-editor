@@ -1229,6 +1229,8 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   --palette-green-500: oklch(72.3% 0.219 149.579);
   --palette-sky-600: oklch(58.8% 0.158 241.966);
   --palette-sky-500: oklch(68.5% 0.169 237.323);
+  --palette-blue-600: oklch(54.6% 0.245 262.881);
+  --palette-blue-500: oklch(62.3% 0.214 259.815);
   --palette-purple-600: oklch(55.8% 0.288 302.321);
   --palette-purple-500: oklch(62.7% 0.265 303.9);
   --palette-pink-600: oklch(59.2% 0.249 0.584);
@@ -1247,6 +1249,10 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 :root[data-accent='green'] {
   --accent-600:var(--palette-green-600);
   --accent-500:var(--palette-green-500);
+}
+:root[data-accent='blue'] {
+  --accent-600:var(--palette-blue-600);
+  --accent-500:var(--palette-blue-500);
 }
 :root[data-accent='sky'] {
   --accent-600:var(--palette-sky-600);
@@ -2563,19 +2569,11 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   --flow-dialog-text:#f5f5f5;
   --flow-dialog-muted:#a3a3a3;
 }
-:root[data-theme='dark'][data-background='blue'] {
-  --background:#080e1b; --surface:#0b1220; --sidebar-bg:#080e19;
-  --preview-bg:#080f1c; --neutral-100:#111b2c; --neutral-200:#1b293d;
-  --hover:#142035; --active:#20304a; --line:#142035; --split-line:#18263a;
-  --text:#e5eaf3; --strong:#f5f7fb; --muted:#9caac0; --quiet:#8796ac;
-  --code-bg:#101a2b; --code-ink:#e5eaf3; --flow-overlay:#101a2b; --flow-overlay-edge:#1b293d;
-  --flow-scroll-thumb:#33435b;
-}
-.flow-appearance { grid-template-columns:repeat(3,minmax(0,1fr)); }
+
+.flow-appearance { grid-template-columns:repeat(2,minmax(0,1fr)); }
 .flow-appearance button { min-width:0; font-size:11px; white-space:nowrap; }
 .flow-appearance-chip { flex:none; width:11px; height:11px; border-radius:3px; box-shadow:inset 0 0 0 1px #8885; }
 .flow-appearance-chip.tone-dark { background:#080808; }
-.flow-appearance-chip.tone-blue { background:#101f3c; }
 .flow-appearance-chip.tone-light { background:#fafafa; }
 .flow-accent-palette button { background:transparent; position:relative; }
 .flow-accent-palette button[aria-pressed='true'] { background:transparent; }
@@ -2610,3 +2608,33 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 @keyframes share-spin { to { transform:rotate(360deg); } }
 @media(prefers-reduced-motion:reduce) { .share-spinner { animation:none; } }
 @media(max-width:800px) { .share-copy,.share-done,.share-revoke { min-height:34px; } .share-create { min-height:36px; } }
+
+
+/* Nine accents, two appearances. Outline has its own quiet, dark surface. */
+.flow-accent-palette { grid-template-columns:repeat(9,minmax(0,1fr)); gap:2px; }
+.flow-accent-palette button { min-width:0; padding:3px; }
+.flow-accent-palette .flow-settings-swatch { width:100%; max-width:21px; }
+:root:not([data-theme='light']) #outline-dialog.flow-dialog {
+  --outline-surface:#0d0d0d; --outline-field:#161616; --outline-focused:#1c1c1c;
+  background:var(--outline-surface); box-shadow:0 12px 38px #0004;
+}
+:root[data-theme='light'] #outline-dialog.flow-dialog {
+  --outline-surface:#fdfdfd; --outline-field:#efefef; --outline-focused:#e7e7e7;
+  background:var(--outline-surface);
+}
+#outline-dialog.flow-dialog { border:0; width:min(340px,calc(100vw - 24px)); }
+#outline-dialog .flow-outline-field {
+  display:flex; align-items:center; gap:7px; height:30px; padding:0 8px;
+  background:var(--outline-field); border:0; border-radius:7px; color:var(--flow-dialog-muted);
+}
+#outline-dialog .flow-outline-field:focus-within { background:var(--outline-focused); }
+#outline-dialog .flow-outline-field > .phosphor-icon { flex:none; }
+#outline-dialog .flow-outline-search,#outline-dialog .flow-outline-search:focus,#outline-dialog .flow-outline-search:focus-visible {
+  min-width:0; flex:1; height:100%; padding:0; border:0; outline:none; box-shadow:none; background:transparent;
+  color:var(--flow-dialog-text); caret-color:var(--flow-accent); font-size:12px;
+}
+#outline-dialog .flow-outline-search::placeholder { color:var(--flow-dialog-muted); }
+#outline-dialog .flow-outline-list button:focus-visible { outline:1px solid var(--line); outline-offset:-1px; background:var(--outline-focused); }
+#outline-dialog .flow-outline-empty { margin:0; padding:4px 0 2px; color:var(--flow-dialog-muted); font-size:12px; line-height:1.5; }
+#outline-dialog .flow-outline-list:has(.flow-outline-empty:only-child) { margin-top:0; }
+@media(max-width:800px) { #outline-dialog .flow-outline-field { height:38px; } }

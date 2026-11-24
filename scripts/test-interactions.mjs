@@ -70,7 +70,13 @@ runInNewContext(ts.transpileModule(accentSource, {
   document: faviconDocument,
 });
 const { ACCENT_THEMES, DEFAULT_ACCENT, parseAccentTheme, applyAccentTheme } = accentModule.exports;
-assert.equal(ACCENT_THEMES.length, 8, 'Accent picker should expose eight curated options.');
+assert.equal(ACCENT_THEMES.length, 9, 'Accent picker includes true blue alongside sky and indigo.');
+assert.equal(parseAccentTheme('blue'), 'blue');
+assert.equal(applyAccentTheme('blue'), 'blue');
+assert.match(decodeURIComponent(faviconLink.href), /#2563eb/);
+assert.doesNotMatch(css, /data-background='blue'/);
+assert.match(app, /\(\['dark', 'light'\] as const\)\.map/);
+assert.match(css, /#outline-dialog \.flow-outline-search:focus-visible\s*\{[\s\S]*?outline:none;/);
 assert.equal(DEFAULT_ACCENT, 'purple', 'Purple is the default accent for new workspaces.');
 assert.equal(parseAccentTheme('sky'), 'sky');
 assert.equal(parseAccentTheme('purple'), 'purple');
