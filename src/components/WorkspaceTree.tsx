@@ -66,7 +66,7 @@ export default function WorkspaceTree({
     }
     return { children, roots };
   }, [documents, byId, folderIds]);
-  const defaultWorkspace = activeWorkspaceId || workspaces[0]?.id;
+  const defaultWorkspace = activeWorkspaceId || workspaces[0]?.id || '';
   const searching = !!search.trim();
   const toggle = (id: string) => setClosed(old => {
     const next = new Set(old); if (next.has(id)) next.delete(id); else next.add(id); return next;
@@ -125,7 +125,7 @@ export default function WorkspaceTree({
         onDragStart={e => { e.stopPropagation(); e.dataTransfer.setData(MIME, doc.id); e.dataTransfer.effectAllowed = 'move'; setMoving(doc.id); }}
         onDragEnd={() => { setDrop(null); setMoving(null); }}
         onDragOver={e => dragOver(e, doc.id)}
-        onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDrop(old => old === doc.id ? null : old); }}
+        onDragLeave={e => { if (!(e.relatedTarget instanceof Node) || !e.currentTarget.contains(e.relatedTarget)) setDrop(old => old === doc.id ? null : old); }}
         onDrop={e => dropped(e, doc.id)}>
         <button type="button" className={'private-page-icon' + (children.length && expanded ? ' is-open' : '')}
           aria-label={children.length ? (expanded ? 'Collapse ' : 'Expand ') + doc.title : 'Open ' + doc.title}
