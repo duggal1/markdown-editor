@@ -9,7 +9,7 @@ const PREFIX = 'flow.cloud-share.v1.';
 const ID = /^[A-Za-z0-9_-]{16}$/;
 const KEY = /^[A-Za-z0-9_-]{43}$/;
 const PART_BYTES = 5 * 1024 * 1024;
-const PARALLEL_UPLOADS = 4;
+const PARALLEL_UPLOADS = 6;
 const jobs = new Map<string, {
   latest: FlowDocument;
   timer: number | null;

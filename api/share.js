@@ -86,28 +86,20 @@ async function signedUrls(paths, operation) {
 async function startUpload(id, ownerHash, info, baseRevision) {
   const version = randomBytes(12).toString('base64url');
   const session = { ...info, baseRevision, version };
-  const urls = await signedUrls(partPaths(id, version, info.count), 'put');
-  await save(sessionFor(id, version), session, { ttlDays: 2 });
+  const [urls] = await Promise.all([
+    signedUrls(partPaths(id, version, info.count), 'put'),
+    save(sessionFor(id, version), session, { ttlDays: 2 }),
+  ]);
   return { id, version, urls, chunkBytes: PART_BYTES };
 }
 async function verifiedParts(id, version, bytes, count) {
   const paths = partPaths(id, version, count);
-  // Bound concurrent Blob metadata requests instead of spawning 20 at once.
-  for (let offset = 0; offset < paths.length; offset += 4) {
-    const batch = await Promise.all(paths.slice(offset, offset + 4).map(path =>
-      head(path).catch(() => null)));
-    for (let i = 0; i < batch.length; i++) {
-      const index = offset + i;
-      const expected = Math.min(PART_BYTES, Math.max(0, bytes - index * PART_BYTES));
-      if (!batch[i] || batch[i].size !== expected) return null;
-    }
-  }
+  const parts = await Promise.all(paths.map(path => head(path).catch(() => null)));
+  if (parts.some((part, index) => !part || part.size !== Math.min(PART_BYTES, Math.max(0, bytes - index * PART_BYTES)))) return null;
   return paths;
 }
 async function clearUploadTtl(paths) {
-  for (let offset = 0; offset < paths.length; offset += 4) {
-    await Promise.all(paths.slice(offset, offset + 4).map(path => setTtl(path, { ttlDays: null })));
-  }
+  await Promise.all(paths.map(path => setTtl(path, { ttlDays: null })));
 }
 async function retireVersion(id, version, count) {
   if (!ID_PATTERN.test(version) || !Number.isSafeInteger(count) || count < 1 || count > 20) return;
@@ -182,9 +174,11 @@ export default async function handler(req, res) {
       const id = randomBytes(12).toString('base64url');
       const secret = randomBytes(32).toString('base64url');
       const ownerHash = createHash('sha256').update(secret).digest('hex');
-      const session = await startUpload(id, ownerHash, info, null);
-      // Do not expose the share while its parts are incomplete.
-      await save(pathFor(id), { status: 'pending', ownerHash }, { ttlDays: 2 });
+      // Both writes must complete before a ticket is returned.
+      const [session] = await Promise.all([
+        startUpload(id, ownerHash, info, null),
+        save(pathFor(id), { status: 'pending', ownerHash }, { ttlDays: 2 }),
+      ]);
       return reply(res, 201, { ...session, secret });
     }
     if (req.method === 'POST') {

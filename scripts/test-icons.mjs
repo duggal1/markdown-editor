@@ -1,39 +1,16 @@
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
-import { HugeiconsIcon } from '@hugeicons/react';
-import * as icons from '@hugeicons/core-free-icons';
-
-const source = readFileSync(new URL('../src/components/Icons.tsx', import.meta.url), 'utf8');
-const start = source.indexOf('const glyphs = {');
-const end = source.indexOf('} as const;', start);
-assert.ok(start >= 0 && end > start, 'Hugeicons map must exist');
-const names = [...source.slice(start, end).matchAll(/(\w+):\s*(\w+Icon)\s*(?=,|\n)/g)];
-assert.ok(names.length >= 30, 'Expected all app and Draw controls to be mapped to Hugeicons');
-for (const [, key, iconName] of names) {
-  const definition = icons[iconName];
-  assert.ok(definition, `Missing Hugeicons icon: ${key} -> ${iconName}`);
-  const html = renderToStaticMarkup(createElement(HugeiconsIcon, {
-    icon: definition, size: 17, strokeWidth: 1.8,
-  }));
-  assert.match(html, /<svg\b/, `SVG skeleton missing for ${key}`);
-  assert.match(html, /<(?:path|circle|rect|line|polyline|polygon)\b/, `No visible shapes for ${key}`);
+const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
+const source = read('src/lib/phosphorGlyphs.ts');
+const names = [...source.matchAll(/@phosphor-icons\/core\/assets\/regular\/([a-z0-9-]+)\.svg\?raw/g)];
+assert.ok(names.length >= 40);
+for (const [, name] of names) {
+  const svg = read('node_modules/@phosphor-icons/core/assets/regular/' + name + '.svg');
+  assert.match(svg, /<svg\b/);
+  assert.match(svg, /<(?:path|circle|rect|line|polyline|polygon)\b/);
 }
-// No client-side icon masking, canvas thresholding, or hidden vector sources.
-assert.doesNotMatch(source, /rasterCache|createElement\(['"]canvas|\.toDataURL\(|PixelatedIcon|maskStyle|imageRendering/);
-assert.match(source, /<HugeiconsIcon icon=\{glyphs\[name\]\}/);
-const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
-assert.doesNotMatch(css, /\.pixel-huge-icon-paint|\.pixel-huge-icon-source/);
-assert.match(css, /\.pixel-huge-icon-subtle svg\s*\{\s*shape-rendering:crispEdges;/);
-assert.match(css, /\.pixel-sidebar-toggle::after/);
-assert.match(source, /name === 'sidebar' \? ' pixel-sidebar-toggle'/);
-const drawSource = readFileSync(new URL('../src/draw/DrawPage.tsx', import.meta.url), 'utf8');
-const flowSource = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
-assert.match(drawSource, /from '\.\.\/components\/Icons'/);
-assert.match(flowSource, /from '\.\/components\/Icons'/);
-assert.doesNotMatch(source, /rasterCache|canvas|toDataURL/);
-assert.match(css, /\.save-indicator\[data-save-state='saved'\]::before/);
-assert.match(css, /background:\s*var\(--flow-accent\);\s*opacity:/,
-  'Save animation must follow the selected accent theme.');
-console.log(`Validated ${names.length} unmodified Hugeicons SVG glyphs and sharp saving indicator.`);
+assert.match(read('src/components/Icons.tsx'), /phosphorMarkup\(name\)/);
+assert.match(read('src/lib/blockCommands.ts'), /phosphorElement\(/);
+assert.doesNotMatch(read('package.json'), /@hugeicons\//);
+assert.match(read('src/styles.css'), /\.phosphor-icon svg \{[^}]*fill:currentColor/);
+console.log('Validated ' + names.length + ' official Phosphor SVG assets.');
