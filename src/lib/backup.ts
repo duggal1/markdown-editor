@@ -1,0 +1,239 @@
+import type { FlowDocument, Folder, Workspace } from './store';
+
+export type BackupKind = 'documents' | 'workspaces' | 'folders';
+type Value = FlowDocument | Folder | Workspace;
+type Entry = { kind: BackupKind; id: string };
+type Job = Entry & { value: Value | null };
+type BackupState = 'off' | 'pending' | 'synced' | 'error';
+type Restored = { documents: FlowDocument[]; workspaces: Workspace[]; folders: Folder[] };
+const PART = 5 * 1024 * 1024;
+const LIMIT = 100 * 1024 * 1024;
+const INDEX = 'flow.backup.index.v1';
+const TOMBSTONES = 'flow.backup.deletions.v1';
+const pending = new Map<string, Job>();
+const running = new Map<string, Promise<void>>();
+let timer: number | undefined;
+let draining = false;
+let state: BackupState = 'off';
+const key = (entry: Entry) => entry.kind + '/' + entry.id;
+const pause = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
+
+export function backupEnabled() {
+  return document.cookie.split(';').some(item => item.trim() === 'flow_backup=1');
+}
+export function backupStatus(): BackupState { return backupEnabled() ? (state === 'off' ? 'pending' : state) : 'off'; }
+function announce(next: BackupState) {
+  state = next;
+  window.dispatchEvent(new CustomEvent('flow-backup-status', { detail: next }));
+}
+function readEntries(storageKey: string): Entry[] {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    return Array.isArray(value) ? value.filter((item): item is Entry =>
+      item && ['documents', 'folders', 'workspaces'].includes(item.kind) && typeof item.id === 'string') : [];
+  } catch { return []; }
+}
+function updateEntries(storageKey: string, entry: Entry, add: boolean) {
+  const entries = readEntries(storageKey).filter(item => key(item) !== key(entry));
+  if (add) entries.push({ kind: entry.kind, id: entry.id });
+  try { localStorage.setItem(storageKey, JSON.stringify(entries)); } catch { /* Cookie survives local database eviction. */ }
+}
+async function request(method: 'GET' | 'POST' | 'PUT' | 'DELETE', action: string,
+  entry?: Entry, extra: object = {}, signal?: AbortSignal): Promise<Response> {
+  const body = { action, ...(entry ? { kind: entry.kind, id: entry.id } : {}), ...extra };
+  const response = await fetch(method === 'GET' ? '/api/backup?' +
+    new URLSearchParams({ action, ...(entry ? { kind: entry.kind, id: entry.id } : {}) }) : '/api/backup', {
+    method, cache: 'no-store', credentials: 'same-origin', signal: signal || AbortSignal.timeout(30000),
+    ...(method === 'GET' ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+  });
+  return response;
+}
+async function json<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.error || 'Cloud backup failed (' + response.status + ')');
+  }
+  return response.json() as Promise<T>;
+}
+export async function enableBackup() {
+  await json(await request('POST', 'session'));
+  if (!backupEnabled()) throw new Error('Browser blocked the backup cookie');
+  announce('pending');
+}
+async function checksum(blob: Blob) {
+  return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer())),
+    byte => byte.toString(16).padStart(2, '0')).join('');
+}
+async function uploadPart(url: string, blob: Blob) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const response = await fetch(url, { method: 'PUT', body: blob,
+        headers: { 'Content-Type': 'application/octet-stream' }, signal: AbortSignal.timeout(120000) });
+      if (response.ok || response.status === 409) return;
+    } catch { /* Retry interrupted uploads. */ }
+    if (attempt < 3) await pause(350 * 2 ** attempt);
+  }
+  throw new Error('Backup part upload failed');
+}
+async function sync(job: Job) {
+  if (!job.value) {
+    await json(await request('DELETE', 'delete', job));
+    updateEntries(INDEX, job, false);
+    updateEntries(TOMBSTONES, job, false);
+    return;
+  }
+  let meta: object = job.value;
+  let blob = new Blob();
+  if (job.kind === 'documents') {
+    const { markdown, asset, ...fields } = job.value as FlowDocument;
+    meta = { ...fields, ...(asset ? { assetType: asset.type } : {}) };
+    blob = asset || new Blob([markdown]);
+  }
+  if (blob.size > LIMIT) throw new Error('Backup files must be 100 MB or smaller');
+  const hash = await checksum(blob);
+  const ticket = await json<{ unchanged?: boolean; version?: string; urls?: string[] }>(
+    await request('POST', 'begin', job, { meta, bytes: blob.size, checksum: hash }));
+  if (!ticket.unchanged) {
+    const urls = ticket.urls;
+    if (!ticket.version || !urls || urls.length !== Math.ceil(blob.size / PART) ||
+        !urls.every(url => typeof url === 'string' && url.startsWith('https://'))) throw new Error('Invalid backup upload session');
+    let cursor = 0;
+    await Promise.all(Array.from({ length: Math.min(4, urls.length) }, async () => {
+      while (cursor < urls.length) {
+        const i = cursor++;
+        await uploadPart(urls[i], blob.slice(i * PART, (i + 1) * PART));
+      }
+    }));
+    await json(await request('PUT', 'commit', job, { version: ticket.version }));
+  }
+  updateEntries(INDEX, job, true);
+}
+function run(job: Job): Promise<void> {
+  const id = key(job);
+  const previous = running.get(id) || Promise.resolve();
+  const next = previous.catch(() => {}).then(() => sync(job));
+  running.set(id, next);
+  void next.finally(() => { if (running.get(id) === next) running.delete(id); }).catch(() => {});
+  return next;
+}
+function schedule(delay = 1500) {
+  if (timer !== undefined || draining) return;
+  timer = window.setTimeout(() => { timer = undefined; void drain(); }, delay);
+}
+async function drain() {
+  if (draining || !backupEnabled()) return;
+  draining = true;
+  let failed = false;
+  // Take a bounded batch. Edits arriving during upload remain queued.
+  const batch = [...pending.values()];
+  for (const job of batch) {
+    const id = key(job);
+    if (pending.get(id) !== job) continue;
+    pending.delete(id);
+    try { await run(job); }
+    catch {
+      failed = true;
+      if (!pending.has(id)) pending.set(id, job);
+    }
+  }
+  draining = false;
+  announce(failed ? 'error' : pending.size || running.size ? 'pending' : 'synced');
+  if (pending.size) schedule(failed ? 30000 : 1500);
+}
+export function queueBackup(kind: BackupKind, value: Value) {
+  if (!backupEnabled()) return;
+  const job = { kind, id: value.id, value };
+  if (readEntries(TOMBSTONES).some(item => key(item) === key(job))) return;
+  pending.set(key(job), job);
+  announce('pending');
+  schedule();
+}
+export function queueBackupDeletion(kind: BackupKind, id: string) {
+  if (!backupEnabled()) return;
+  const job = { kind, id, value: null };
+  updateEntries(TOMBSTONES, job, true);
+  updateEntries(INDEX, job, false);
+  pending.set(key(job), job);
+  announce('pending');
+  schedule();
+}
+export function resumeBackup(data: Restored) {
+  if (!backupEnabled()) return;
+  for (const entry of readEntries(TOMBSTONES)) queueBackupDeletion(entry.kind, entry.id);
+  for (const kind of ['workspaces', 'folders', 'documents'] as const)
+    for (const value of data[kind]) queueBackup(kind, value);
+}
+export function needsBackupRecovery(data: Restored) {
+  if (!backupEnabled()) return false;
+  if (!data.documents.length || !data.workspaces.length) return true;
+  const local = new Set(['workspaces', 'folders', 'documents'].flatMap(kind =>
+    data[kind as BackupKind].map(item => kind + '/' + item.id)));
+  return readEntries(INDEX).some(entry => !local.has(key(entry)));
+}
+type CloudRecord = { meta: Omit<FlowDocument, 'markdown' | 'asset'> & { assetType?: string };
+  bytes: number; checksum: string; urls: string[] };
+export async function restoreBackup(): Promise<Restored> {
+  const signal = AbortSignal.timeout(120000);
+  const { entries } = await json<{ entries: Entry[] }>(await request('GET', 'list', undefined, {}, signal));
+  const result: Restored = { documents: [], workspaces: [], folders: [] };
+  const deleted = new Set(readEntries(TOMBSTONES).map(key));
+  let cursor = 0;
+  await Promise.all(Array.from({ length: Math.min(3, entries.length) }, async () => {
+    while (cursor < entries.length) {
+      const entry = entries[cursor++];
+      if (deleted.has(key(entry))) continue;
+      const response = await request('GET', 'read', entry, {}, signal);
+      if (response.status === 404) continue; // Committed tombstone.
+      const record = await json<CloudRecord>(response);
+      if (record.meta.id !== entry.id) throw new Error('Invalid backup record');
+      if (entry.kind === 'workspaces') result.workspaces.push(record.meta as unknown as Workspace);
+      else if (entry.kind === 'folders') result.folders.push(record.meta as unknown as Folder);
+      else {
+        if (!Number.isSafeInteger(record.bytes) || record.bytes < 0 || record.bytes > LIMIT ||
+            record.urls.length !== Math.ceil(record.bytes / PART) ||
+            !record.urls.every(url => url.startsWith('https://'))) throw new Error('Invalid backup manifest');
+        const parts = await Promise.all(record.urls.map(async url => {
+          const part = await fetch(url, { signal, cache: 'no-store' });
+          if (!part.ok) throw new Error('Backup download failed');
+          return part.blob();
+        }));
+        const { assetType, ...fields } = record.meta;
+        const blob = new Blob(parts, { type: assetType });
+        if (blob.size !== record.bytes || await checksum(blob) !== record.checksum)
+          throw new Error('Backup integrity check failed');
+        result.documents.push({ ...fields, markdown: assetType === undefined ? await blob.text() : '',
+          ...(assetType === undefined ? {} : { asset: blob }) });
+      }
+      updateEntries(INDEX, entry, true);
+    }
+  }));
+  return result;
+}
+export async function publishBackup(doc: FlowDocument): Promise<string> {
+  if (doc.asset) throw new Error('Only text pages can be shared');
+  const job: Job = { kind: 'documents', id: doc.id, value: doc };
+  const id = key(job);
+  const queued = pending.get(id);
+  if (queued?.value && (queued.value as FlowDocument).updatedAt <= doc.updatedAt) pending.delete(id);
+  try { await run(job); }
+  catch (error) { if (!pending.has(id)) pending.set(id, job); schedule(30000); throw error; }
+  const result = await json<{ id: string }>(await request('POST', 'publish', job));
+  return result.id;
+}
+export async function unpublishBackup(documentId: string) {
+  await json(await request('DELETE', 'unpublish', { kind: 'documents', id: documentId }));
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    if (timer !== undefined) window.clearTimeout(timer);
+    timer = undefined;
+    if (pending.size) schedule(0);
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && pending.size && !draining) {
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = undefined;
+      void drain();
+    }
+  });
+}
