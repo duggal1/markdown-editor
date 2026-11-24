@@ -111,4 +111,18 @@ for (const kind of ['workspaces', 'folders']) {
   assert.equal((await req('PUT', { ...entry, action: 'commit', version: result.data.version }, owner)).status, 200);
   assert.equal((await req('GET', {}, owner, { ...entry, action: 'read' })).data.meta.name, 'Original name');
 }
+const inlineDoc = { kind: 'documents', id: 'inline-doc' };
+const inlineMeta = { ...meta, id: inlineDoc.id };
+const markdown = '# Fast backup — Unicode';
+const inlineBody = { ...inlineDoc, action: 'inline', meta: inlineMeta, markdown,
+  bytes: Buffer.byteLength(markdown), checksum: createHash('sha256').update(markdown).digest('hex') };
+assert.equal((await req('POST', { ...inlineBody, checksum: hash }, owner)).status, 400);
+assert.equal((await req('POST', inlineBody, owner)).status, 200);
+assert.equal((await req('POST', inlineBody, owner)).data.unchanged, true);
+const inlineManifest = (await req('GET', {}, owner, { ...inlineDoc, action: 'read' })).data;
+assert.equal(inlineManifest.bytes, inlineBody.bytes);
+assert.equal(blobs.get(new URL(inlineManifest.urls[0]).pathname.slice(1)).body, markdown);
+assert.equal((await req('GET', {}, stranger, { ...inlineDoc, action: 'read' })).status, 404);
+assert.equal((await req('DELETE', { ...inlineDoc, action: 'delete' }, owner)).status, 200);
+assert.equal((await req('POST', inlineBody, owner)).status, 409);
 console.log('Private backup isolation, recovery, 100 MB uploads, stable share aliases, revocation and deletion passed.');

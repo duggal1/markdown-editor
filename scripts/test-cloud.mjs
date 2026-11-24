@@ -137,7 +137,7 @@ assert.match(source, /allowOverwrite: false, ttlDays: 30/,
   'Uploaded parts must be immutable after publication');
 assert.match(client, /response.status === 409/,
   'Retrying an already completed part should be accepted');
-assert.match(client, /PARALLEL_UPLOADS = 4/);
+assert.match(client, /PARALLEL_UPLOADS = 6/);
 assert.match(client, /attempt < 4/);
 assert.match(client, /action: 'commit'/);
 assert.match(reader, /Cloud document failed integrity verification/);

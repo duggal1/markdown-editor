@@ -42,14 +42,13 @@
     "rehype-raw": "^7.0.0",
     "rehype-sanitize": "^6.0.0",
     "@tanstack/react-virtual": "^3.13.12",
-    "@hugeicons/react": "^1.1.10",
-    "@hugeicons/core-free-icons": "^4.2.1",
     "@number-flow/react": "^0.6.2",
     "pdfmake": "^0.2.23",
     "remark-parse": "^11.0.0",
     "unified": "^11.0.5",
     "unpdf": "^1.4.0",
-    "@vercel/blob": "^2.0.0"
+    "@vercel/blob": "^2.0.0",
+    "@phosphor-icons/core": "^2.1.1"
   },
   "devDependencies": {
     "@types/react": "^19.2.0",

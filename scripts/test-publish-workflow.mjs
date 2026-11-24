@@ -10,9 +10,10 @@ const host = read('src/lib/siteHosting.ts');
 const htmlDialog = read('src/components/HtmlSiteDialog.tsx');
 const design = read('design.md');
 
-// Deletion must not block the modal while slow cloud revocation completes.
-assert.match(app, /setPendingDelete\(null\);\s*try \{\s*if \(target\.kind === 'workspace'\) await eraseWorkspace/,
-  'Confirm should dismiss before awaiting background storage/cloud work.');
+// Deleting a page directly uses the existing guarded removal path.
+assert.doesNotMatch(app, /<DialogFrame id="delete-dialog"/);
+assert.match(app, /void deleteTarget\(\{ kind: 'document', id \}\)/);
+assert.match(app, /deletionsInFlight\.current\.has\(operationKey\)/);
 assert.match(app, /setDocs\(remaining\);[\s\S]*?await Promise\.all\(\[[\s\S]*?revokeCloudShare/,
   'Page deletion should update the UI before cloud revocation.');
 assert.match(app, /setWorkspaces\(remainingWorkspaces\);[\s\S]*?await Promise\.all\(pendingWrites\)/,
@@ -52,8 +53,6 @@ assert.match(scoped, /#share-dialog \.flow-dialog-link \.flow-dialog-button,[\s\
 assert.match(scoped, /#share-dialog \.flow-dialog-footer \.flow-dialog-neutral,[\s\S]*?padding-inline:22px/);
 assert.doesNotMatch(scoped, /\.html-play-(?:panel|compact|chrome|page|toggle)/,
   'Delete/share styling must not modify the FPS controller.');
-assert.match(app, /className="flow-dialog-file flow-dialog-delete-file"/);
-assert.match(app, /Permanently delete \{pendingDelete\.kind/);
 
 // Cached client state is not evidence that the remote site actually exists.
 assert.match(host, /export async function verifyHostedHtml/);

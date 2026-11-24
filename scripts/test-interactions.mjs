@@ -87,14 +87,10 @@ assert.match(app, /setAccentTheme\(parseAccentTheme\(prefs\.accentTheme\)\)/,
   'The editor must restore the chosen accent.');
 assert.match(app, /savePrefs\(\{ theme, accentTheme, mode/,
   'The palette must survive reloads.');
-assert.match(app, /className="accent-theme-trigger"/,
-  'A theme picker belongs in the top navigation.');
-assert.match(app, /role="menuitemradio" aria-checked=\{option\.id === accentTheme\}/,
-  'Palette choices must expose the selected state to assistive technology.');
-assert.match(app, /onKeyDown=\{onAccentMenuKeyDown\}/,
-  'The theme menu must support arrow-key navigation.');
-assert.match(app, /setAccentTheme\(option\.id\)/,
-  'Selecting a palette must actually update app state.');
+assert.doesNotMatch(app, /className="accent-theme-trigger"/);
+assert.match(app, /<DialogFrame id="settings-dialog"/);
+assert.match(app, /aria-pressed=\{option.id === accentTheme\}/);
+assert.match(app, /setAccentTheme\(option\.id\)/);
 assert.match(css, /:root\[data-theme='light'\] \{ --accent:var\(--accent-500\); \}/,
   'Light mode should use shade 500.');
 assert.match(css, /--accent:var\(--accent-600\);/,

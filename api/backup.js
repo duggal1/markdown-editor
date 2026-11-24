@@ -3,6 +3,7 @@ import { del, get, head, issueSignedToken, list, presignUrl, put, setTtl } from 
 
 const LIMIT = 100 * 1024 * 1024;
 const PART = 5 * 1024 * 1024;
+const INLINE_BYTES = 128 * 1024;
 const KEY = /^[A-Za-z0-9_-]{43}$/;
 const ID = /^[A-Za-z0-9_-]{1,128}$/;
 const VERSION = /^[A-Za-z0-9_-]{16}$/;
@@ -136,6 +137,30 @@ export default async function handler(req, res) {
       return reply(res, 200, { deleted: true });
     }
     if (current?.deleted) return reply(res, 409, { error: 'Record was deleted' });
+    if (req.method === 'POST' && body.action === 'inline') {
+      const { meta, markdown, bytes, checksum } = body;
+      if (!validMeta(kind, id, meta) || typeof markdown !== 'string' ||
+          (kind !== 'documents' && markdown !== '') || meta.assetType !== undefined ||
+          !Number.isSafeInteger(bytes) || bytes < 0 || bytes > INLINE_BYTES ||
+          Buffer.byteLength(markdown, 'utf8') !== bytes || !HASH.test(checksum || '') ||
+          digest(markdown) !== checksum)
+        return reply(res, 400, { error: 'Invalid inline backup' });
+      if (kind === 'documents' && current?.meta.updatedAt > meta.updatedAt)
+        return reply(res, 409, { error: 'A newer backup exists' });
+      if (current && current.checksum === checksum && JSON.stringify(current.meta) === JSON.stringify(meta))
+        return reply(res, 200, { committed: true, unchanged: true });
+      const version = randomBytes(12).toString('base64url');
+      const paths = partPaths(root, version, bytes);
+      // Same manifest and private paths as multipart uploads. Keep the part
+      // on an ambiguous commit failure: a lost response may hide a successful write.
+      if (paths.length) await put(paths[0], markdown, {
+        access: 'private', addRandomSuffix: false, allowOverwrite: false,
+        contentType: 'application/octet-stream', cacheControlMaxAge: 60,
+      });
+      await write(path, { meta, bytes, checksum, version }, cas);
+      await retire(root, current);
+      return reply(res, 200, { committed: true });
+    }
     if (req.method === 'POST' && body.action === 'begin') {
       const { meta, bytes, checksum } = body;
       if (!validMeta(kind, id, meta) || !Number.isSafeInteger(bytes) || bytes < 0 || bytes > LIMIT ||
@@ -147,8 +172,11 @@ export default async function handler(req, res) {
         return reply(res, 200, { unchanged: true });
       const version = randomBytes(12).toString('base64url');
       const session = { meta, bytes, checksum, version, base: current?.version || null };
-      await write(root + '/sessions/' + version + '.json', session, { ttlDays: 2 });
-      return reply(res, 200, { version, urls: await urls(partPaths(root, version, bytes), 'put') });
+      const [, signedUrls] = await Promise.all([
+        write(root + '/sessions/' + version + '.json', session, { ttlDays: 2 }),
+        urls(partPaths(root, version, bytes), 'put'),
+      ]);
+      return reply(res, 200, { version, urls: signedUrls });
     }
     if (req.method === 'PUT' && body.action === 'commit' && VERSION.test(body.version || '')) {
       if (current?.version === body.version) return reply(res, 200, { committed: true });
@@ -157,17 +185,14 @@ export default async function handler(req, res) {
       if (!session || session.base !== (current?.version || null))
         return reply(res, 409, { error: 'Backup changed; retry' });
       const paths = partPaths(root, session.version, session.bytes);
-      for (let offset = 0; offset < paths.length; offset += 4) {
-        const batch = await Promise.all(paths.slice(offset, offset + 4).map(p => head(p).catch(() => null)));
-        if (batch.some((part, i) => !part || part.size !== Math.min(PART, session.bytes - (offset + i) * PART)))
-          return reply(res, 409, { error: 'Backup upload incomplete' });
-      }
-      for (let offset = 0; offset < paths.length; offset += 4)
-        await Promise.all(paths.slice(offset, offset + 4).map(p => setTtl(p, { ttlDays: null })));
+      // At most 20 parts for the 100 MiB limit. Validate every part before publishing.
+      const parts = await Promise.all(paths.map(p => head(p).catch(() => null)));
+      if (parts.some((part, i) => !part || part.size !== Math.min(PART, session.bytes - i * PART)))
+        return reply(res, 409, { error: 'Backup upload incomplete' });
+      await Promise.all(paths.map(p => setTtl(p, { ttlDays: null })));
       const { base, ...record } = session;
       await write(path, record, cas);
-      await del(sessionPath).catch(() => {});
-      await retire(root, current);
+      await Promise.all([del(sessionPath).catch(() => {}), retire(root, current)]);
       return reply(res, 200, { committed: true });
     }
     return reply(res, 400, { error: 'Invalid backup action' });

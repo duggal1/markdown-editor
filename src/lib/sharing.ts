@@ -9,7 +9,7 @@ const PREFIX = 'flow.cloud-share.v1.';
 const ID = /^[A-Za-z0-9_-]{16}$/;
 const KEY = /^[A-Za-z0-9_-]{43}$/;
 const PART_BYTES = 5 * 1024 * 1024;
-const PARALLEL_UPLOADS = 4;
+const PARALLEL_UPLOADS = 6;
 const jobs = new Map<string, {
   latest: FlowDocument;
   timer: number | null;
@@ -103,6 +103,19 @@ async function uploadVersion(
   const bytes = new TextEncoder().encode(doc.markdown);
   if (bytes.byteLength > MAX_CLOUD_BYTES) {
     throw new Error('Cloud pages must be 100 MB or smaller (UTF-8).');
+  }
+  // The existing single-request API handles small new text shares without
+  // allocating a multipart session. Updates retain the versioned protocol.
+  if (!existing && bytes.byteLength <= 128 * 1024) {
+    const payload = { title: doc.title, language: doc.language, markdown: doc.markdown };
+    if (new Blob([JSON.stringify(payload)]).size <= 280_000) {
+      const created = await send('POST', payload) as { id?: string; secret?: string };
+      if (!created || typeof created.id !== 'string' || !ID.test(created.id) ||
+          typeof created.secret !== 'string' || !KEY.test(created.secret))
+        throw new Error('Cloud returned an invalid editing capability');
+      onProgress?.(100);
+      return { id: created.id, secret: created.secret, syncedVersion: doc.updatedAt };
+    }
   }
   const checksum = hex(await crypto.subtle.digest('SHA-256', bytes));
   const ticket = uploadTicket(await send(existing ? 'PUT' : 'POST', {

@@ -1,6 +1,7 @@
 import { EditorView, ViewPlugin, keymap, type ViewUpdate } from '@codemirror/view';
 import { Prec, type Text } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
+import { phosphorElement, type IconName } from './phosphorGlyphs';
 
 type Command = { name: string; icon: string; keywords: string; insert: string; caret?: number; group: string };
 const commands: Command[] = [
@@ -21,34 +22,9 @@ const commands: Command[] = [
   { name: 'Image', icon: 'image', keywords: 'photo picture url', insert: '![alt text](https://)', caret: 2, group: 'Media and code' },
   { name: 'HTML block', icon: 'html', keywords: 'embed markup', insert: '\x60\x60\x60html\n\n\x60\x60\x60', caret: 8, group: 'Media and code' },
 ];
-const paths: Record<string, string> = {
-  text: 'M4 5h16M12 5v14M8 19h8', bullet: 'M9 5h12M9 12h12M9 19h12M3 5h1M3 12h1M3 19h1',
-  number: 'M10 5h11M10 12h11M10 19h11M3 3h2v5M3 10h3l-3 4h3M3 17h3v4H3',
-  todo: 'M3 4h6v6H3zM3 14h6v6H3zM4 6l2 2 4-5M13 7h8M13 17h8',
-  quote: 'M9 5H4v7h5v-7M20 5h-5v7h5v-7M9 12c0 4-2 6-5 7M20 12c0 4-2 6-5 7',
-  divider: 'M3 12h18', table: 'M3 4h18v16H3zM3 10h18M3 15h18M12 4v16',
-  bold: 'M6 4h7a4 4 0 0 1 0 8H6V4m0 8h8a4 4 0 0 1 0 8H6z',
-  italic: 'M10 4h9M5 20h9M15 4L9 20', link: 'M10 14l4-4M9 16l-2 2a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0M15 8l2-2a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0',
-  code: 'M8 6l-6 6 6 6M16 6l6 6-6 6M14 4l-4 16', html: 'M4 4h16v16H4zM9 9l-3 3 3 3M15 9l3 3-3 3',
-  image: 'M3 4h18v16H3zM3 17l5-5 4 4 4-6 5 7M8 8h1', plus: 'M12 5v14M5 12h14',
-  grip: 'M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01',
-};
 function glyph(name: string): SVGSVGElement {
-  const ns = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(ns, 'svg');
-  svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('width', '16'); svg.setAttribute('height', '16');
-  svg.setAttribute('aria-hidden', 'true');
-  if (/^h[1-4]$/.test(name)) {
-    const text = document.createElementNS(ns, 'text');
-    text.setAttribute('x', '2'); text.setAttribute('y', '18'); text.setAttribute('font-size', '17');
-    text.setAttribute('fill', 'currentColor'); text.textContent = 'H' + name[1]; svg.append(text);
-  } else {
-    const path = document.createElementNS(ns, 'path'); path.setAttribute('d', paths[name] || paths.text);
-    path.setAttribute('fill', 'none'); path.setAttribute('stroke', 'currentColor');
-    path.setAttribute('stroke-width', name === 'grip' ? '3.5' : '1.6');
-    path.setAttribute('stroke-linecap', 'round'); path.setAttribute('stroke-linejoin', 'round'); svg.append(path);
-  }
-  return svg;
+  const aliases: Record<string, IconName> = { bullet: 'list', image: 'svg' };
+  return phosphorElement(aliases[name] || name as IconName);
 }
 type Span = { from: number; to: number };
 function blockAt(view: EditorView, pos: number): Span {
