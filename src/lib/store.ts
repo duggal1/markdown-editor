@@ -1,3 +1,4 @@
+import { needsBackupRecovery, queueBackup, queueBackupDeletion, restoreBackup, resumeBackup } from './backup';
 import { restoreDocument } from './document';
 import type { AccentTheme } from './accentTheme';
 
@@ -126,23 +127,29 @@ export async function saveDoc(doc: FlowDocument): Promise<void> {
     try { localStorage.setItem(FALLBACK + doc.id, JSON.stringify(doc)); }
     catch { throw error; }
   }
+  queueBackup('documents', doc);
 }
 export async function saveWorkspace(ws: Workspace): Promise<void> {
   await put('workspaces', ws);
+  queueBackup('workspaces', ws);
 }
 export async function saveFolder(folder: Folder): Promise<void> {
   await put('folders', folder);
+  queueBackup('folders', folder);
 }
 export async function removeFolder(id: string): Promise<void> {
   await remove('folders', id);
+  queueBackupDeletion('folders', id);
 }
 export async function removeDoc(id: string): Promise<void> {
   await remove('documents', id);
   try { localStorage.removeItem(FALLBACK + id); } catch { /* no-op */ }
   clearRecovery(id);
+  queueBackupDeletion('documents', id);
 }
 export async function removeWorkspace(id: string): Promise<void> {
   await remove('workspaces', id);
+  queueBackupDeletion('workspaces', id);
 }
 
 /** Delete an entire workspace atomically in one IndexedDB transaction.
@@ -167,7 +174,10 @@ export async function removeWorkspaceTree(
   for (const id of documentIds) {
     try { localStorage.removeItem(FALLBACK + id); } catch { /* IndexedDB is primary. */ }
     clearRecovery(id);
+    queueBackupDeletion('documents', id);
   }
+  for (const id of folderIds) queueBackupDeletion('folders', id);
+  queueBackupDeletion('workspaces', workspaceId);
 }
 
 export async function loadWorkspace(): Promise<{ workspaces: Workspace[]; folders: Folder[]; documents: FlowDocument[] }> {
@@ -202,6 +212,32 @@ export async function loadWorkspace(): Promise<{ workspaces: Workspace[]; folder
     const existing = documents.findIndex(doc => doc.id === recovered.id);
     if (existing < 0) documents.push(recovered);
     else if (recovered.updatedAt > documents[existing].updatedAt) documents[existing] = recovered;
+  }
+
+  // Recover before creating any defaults. Healthy local loads never wait for the cloud.
+  if (needsBackupRecovery({ workspaces, folders, documents })) {
+    try {
+      const cloud = await restoreBackup();
+      for (const ws of cloud.workspaces) if (!workspaces.some(item => item.id === ws.id)) {
+        workspaces.push(ws);
+        try { await put('workspaces', ws); } catch { /* Keep recovered data visible. */ }
+      }
+      for (const folder of cloud.folders) if (!folders.some(item => item.id === folder.id)) {
+        folders.push(folder);
+        try { await put('folders', folder); } catch { /* Keep recovered data visible. */ }
+      }
+      for (const doc of cloud.documents) {
+        const index = documents.findIndex(item => item.id === doc.id);
+        if (index >= 0 && documents[index].updatedAt >= doc.updatedAt) continue;
+        if (index < 0) documents.push(doc);
+        else documents[index] = doc;
+        try { await put('documents', doc); } catch { /* Keep recovered data visible. */ }
+      }
+    } catch (error) {
+      // A failed remote read is not an empty backup. Do not initialize a new
+      // blank workspace over a potentially recoverable one.
+      if (!documents.length) throw error;
+    }
   }
 
   // A missing workspace row must not hide documents whose workspaceId still
@@ -244,6 +280,7 @@ export async function loadWorkspace(): Promise<{ workspaces: Workspace[]; folder
     documents = [doc];
     await saveDoc(doc);
   }
+  resumeBackup({ workspaces, folders, documents });
   return { workspaces, folders, documents };
 }
 export { inferTitle } from './title';
