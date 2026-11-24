@@ -135,6 +135,19 @@ export default async function handler(req, res) {
       }
       const shared = await load(pathFor(id));
       if (!shared || shared.status === 'pending') return reply(res, 404, { error: 'Share not found' });
+      if (shared.backupPath) {
+        // Only explicit public aliases reach this branch. Backups themselves
+        // are never addressable through the public sharing endpoint.
+        const backup = await load(shared.backupPath);
+        if (!backup || backup.deleted || backup.meta.assetType !== undefined)
+          return reply(res, 404, { error: 'Share not found' });
+        const { title, language, updatedAt } = backup.meta;
+        if (!backup.bytes) return reply(res, 200, { title, language, updatedAt, markdown: '' });
+        const paths = Array.from({ length: Math.ceil(backup.bytes / PART_BYTES) },
+          (_, i) => shared.backupRoot + '/parts/' + backup.version + '/' + i + '.bin');
+        return reply(res, 200, { title, language, updatedAt, bytes: backup.bytes,
+          checksum: backup.checksum, urls: await signedUrls(paths, 'get') });
+      }
       if (shared.format === 2) {
         if (!ID_PATTERN.test(shared.version) || !Number.isSafeInteger(shared.count) ||
             shared.count !== partCount(shared.bytes) || shared.bytes > MAX_MARKDOWN_BYTES) {
@@ -190,6 +203,7 @@ export default async function handler(req, res) {
     }
     const current = await load(pathFor(id));
     if (!current) return reply(res, 404, { error: 'Share not found' });
+    if (current.backupPath) return reply(res, 403, { error: 'Use the backup owner session to change this link' });
     if (!secureEqual(body.secret, current.ownerHash)) {
       return reply(res, 403, { error: 'Only the creator can change this link' });
     }
