@@ -59,6 +59,7 @@ export function inferTitle(source: string, languageHint?: string | null): string
   let frontmatter = lines[0].trim() === '---';
   let firstFenceLanguage: string | null = null;
   let firstProse: string | null = null;
+  let firstListItem: string | null = null;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -79,7 +80,9 @@ export function inferTitle(source: string, languageHint?: string | null): string
       }
       continue;
     }
-    if (fence || !trimmed || /^([-*_])\1{2,}\s*$/.test(trimmed)) continue;
+    if (fence || !trimmed || /^([-*_])\1{2,}\s*$/.test(trimmed) || /^\/[\w-]*$/.test(trimmed)) continue;
+    const listItem = /^(?:[-*+]|\d+[.)]|>)\s+(?:\[[ xX]\]\s+)?(.+)$/.exec(trimmed);
+    if (!firstListItem && listItem) firstListItem = cleanHeading(listItem[1]) || null;
 
     const atx = /^ {0,3}#{1,6}[ \t]+(.+)$/.exec(line);
     if (atx) {
@@ -98,5 +101,5 @@ export function inferTitle(source: string, languageHint?: string | null): string
   }
 
   if (firstFenceLanguage) return codeTitle(firstFenceLanguage);
-  return firstProse || 'Untitled';
+  return firstProse || firstListItem || 'Untitled';
 }

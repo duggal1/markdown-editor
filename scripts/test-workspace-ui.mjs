@@ -21,7 +21,7 @@ assert.match(app, /setQuery\(''\);\s*selectDocument\(doc\.id\)/);
 assert.match(app, /A page cannot contain itself or its ancestors/);
 assert.match(treeCss, /\.private-page-row:hover \.private-add-child/);
 assert.match(treeCss, /\.private-tree > \* \{ flex:0 0 auto;/);
-assert.match(app, /className="private-page-title"/);
+assert.doesNotMatch(app, /className="private-page-title"/);
 assert.match(app, /className="private-visibility"/);
 const slash = read('src/lib/blockCommands.ts');
 assert.match(slash, /Heading /);

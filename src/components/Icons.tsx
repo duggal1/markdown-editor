@@ -1,16 +1,16 @@
 import type { CSSProperties } from 'react';
+import { FLOW_RIBBON_PATHS, FLOW_RIBBON_OPACITY } from '../lib/accentTheme';
 import { phosphorMarkup, type IconName } from '../lib/phosphorGlyphs';
 export type { IconName } from '../lib/phosphorGlyphs';
 
-// The product mark remains original branding, not an invented icon set.
+/** One vector mark across the workspace, Draw, public views and favicon. */
 export function FlowMark({ size = 22, style }: { size?: number; style?: CSSProperties }) {
-  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-    shapeRendering="crispEdges" aria-hidden="true" style={style}>
-    <path fill="currentColor" d="M5 2h14v3h3v14h-3v3H5v-3H2V5h3V2zm3 4v3H6v6h2v3h8v-3h2V9h-2V6H8z" />
-    <rect x="10" y="10" width="4" height="4" fill="var(--brand-head, #fff)" />
+  return <svg width={size} height={size} viewBox="0 0 26 26" fill="none"
+    aria-hidden="true" style={style}>
+    {FLOW_RIBBON_PATHS.map((d, index) => <path key={d} d={d}
+      fill="currentColor" opacity={FLOW_RIBBON_OPACITY[index]} />)}
   </svg>;
 }
-
 
 export function Icon({ name, size = 17, className = '', active = false }: {
   name: IconName; size?: number; className?: string; active?: boolean;

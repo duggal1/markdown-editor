@@ -118,7 +118,6 @@ export default function App() {
   const [assetView, setAssetView] = useState<{ id: string; url: string } | null>(null);
   const editorRef = useRef<EditorView | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const titleRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
   // The isolated HTML iframe sends only a contrast hint. Never read DOM across
@@ -1228,14 +1227,6 @@ export default function App() {
     if (compact && next === 'preview') editorRef.current?.contentDOM.blur();
     if (!compact && next !== 'preview') window.requestAnimationFrame(() => editorRef.current?.focus());
   }
-  function changeTitle(value: string) {
-    const current = live.current.get(activeIdRef.current);
-    if (!current) return;
-    const next = { ...current, title: value, titleAuto: false, updatedAt: Date.now() };
-    scheduleSave(next);
-    setDocs(docs => docs.map(doc => doc.id === next.id ? next : doc));
-  }
-
   // A phone's Split mode shows two vertically stacked, independently scrolling panes.
   const presentationMode: Mode = mode;
   const gridColumns = presentationMode === 'split' ? `minmax(0, ${splitPercent}fr) minmax(0, ${100 - splitPercent}fr)`
@@ -1264,7 +1255,7 @@ export default function App() {
         transition={motionOff ? { duration: 0 } : { duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
         style={{ pointerEvents: sidebarOpen ? 'auto' : 'none' }}>
         <div className="sidebar-brand">
-          <motion.div className="brand-lockup" initial={false} animate={{ opacity: sidebarOpen ? 1 : 0, x: sidebarOpen ? 0 : -8 }} transition={motionOff ? { duration: 0 } : { duration: 0.18 }}><span className="brand-mark"><FlowMark size={18} /></span><span>Flow<span className="brand-period">.</span></span></motion.div>
+          <motion.div className="brand-lockup" initial={false} animate={{ opacity: sidebarOpen ? 1 : 0, x: sidebarOpen ? 0 : -8 }} transition={motionOff ? { duration: 0 } : { duration: 0.18 }}><span className="brand-mark"><FlowMark size={18} /></span><span>Flow</span></motion.div>
         </div>
         <label className="search-field"><Icon name="search" size={16} />
           <input ref={searchRef} value={query}
@@ -1320,21 +1311,7 @@ export default function App() {
             onClick={() => setSidebarOpen(current => !current)}><Icon name="sidebar" size={18} /></motion.button>
           <span className="private-breadcrumb"><Icon name="file" size={15}/><span>{active?.title || 'Untitled'}</span></span>
           <span className="private-visibility"><SuppliedIcon kind="lock" size={14}/>{active && (readShareRecord(active.id) || readSiteRecord(active.id)) ? 'Shared' : 'Private'}</span>
-          <motion.span className="save-indicator" data-save-state={saveState}
-            initial={false} aria-hidden={saveState === 'idle'}
-            animate={{ opacity: saveState === 'idle' ? 0 : 1, y: saveState === 'idle' ? -2 : 0 }}
-            transition={motionOff ? { duration: 0 } : { duration: 0.19, ease: [0.22, 1, 0.36, 1] }}
-            aria-label={saveState === 'saving' ? 'Saving page' : saveState === 'saved' ? 'Page saved in ' + saveDuration + ' milliseconds' : saveState === 'error' ? 'Save failed' : undefined}
-            role="status" aria-live="polite">
-            <span className="save-prefix" aria-hidden="true" />
-            <span className="save-label">{saveState === 'error' ? 'Not saved' : saveState === 'saving' ? 'Saving' : 'Saved'}</span>
-            {saveState === 'saving' && <TerminalLoader loading />}
-            <span className={'save-duration' + (saveDuration <= 0 ? ' is-empty' : '')}>in <NumberFlow value={saveDuration}
-              animated={!motionOff}
-              spinTiming={{ duration: 260, easing: 'ease-out' }}
-              transformTiming={{ duration: 260, easing: 'ease-out' }}
-              opacityTiming={{ duration: 160, easing: 'ease-out' }} /> ms</span>
-          </motion.span>
+
         </div>
         <div className="header-actions">
           <div className="mode-switch" role="group" aria-label="Editor mode">
@@ -1382,11 +1359,22 @@ export default function App() {
           </motion.button>
           <motion.button {...pressMotion} title="Import files" aria-label="Import files" onClick={() => fileRef.current?.click()}><Icon name="upload" size={16} /></motion.button>
         </div>
+        <motion.span className="save-indicator" data-save-state={saveState}
+            initial={false} aria-hidden={saveState === 'idle'}
+            animate={{ opacity: saveState === 'idle' ? 0 : 1, y: saveState === 'idle' ? -2 : 0 }}
+            transition={motionOff ? { duration: 0 } : { duration: 0.19, ease: [0.22, 1, 0.36, 1] }}
+            aria-label={saveState === 'saving' ? 'Saving page' : saveState === 'saved' ? 'Page saved in ' + saveDuration + ' milliseconds' : saveState === 'error' ? 'Save failed' : undefined}
+            role="status" aria-live="polite">
+            <span className="save-prefix" aria-hidden="true" />
+            <span className="save-label">{saveState === 'error' ? 'Not saved' : saveState === 'saving' ? 'Saving' : 'Saved'}</span>
+            {saveState === 'saving' && <TerminalLoader loading />}
+            <span className={'save-duration' + (saveDuration <= 0 ? ' is-empty' : '')}>in <NumberFlow value={saveDuration}
+              animated={!motionOff}
+              spinTiming={{ duration: 260, easing: 'ease-out' }}
+              transformTiming={{ duration: 260, easing: 'ease-out' }}
+              opacityTiming={{ duration: 160, easing: 'ease-out' }} /> ms</span>
+          </motion.span>
         <span className="word-stat">{active?.fileType === 'image' ? 'Image' : active?.fileType === 'binary' ? 'File' : `${words.toLocaleString()} words`}</span>
-      </div>
-      <div className="private-page-title-wrap">
-        <input ref={titleRef} className="private-page-title" aria-label="Page title" spellCheck={false}
-          value={active?.title || ''} onChange={event => changeTitle(event.target.value)} placeholder="Untitled"/>
       </div>
       <motion.main ref={editorAreaRef} className={'editor-area mode-' + mode + (compact ? ' compact' : '') + (resizingSplit ? ' is-resizing' : '')} aria-label="Flow Markdown workspace"
         initial={false} animate={{ gridTemplateColumns: compact ? 'minmax(0, 1fr)' : gridColumns,
@@ -1462,25 +1450,29 @@ export default function App() {
             getCurrent={() => live.current.get(activeIdRef.current) || null}
             onClose={() => setShareOpen(false)} />)}
       {settingsOpen && <DialogFrame id="settings-dialog" title="Settings" icon="settings"
-        describedBy="settings-description" onClose={() => setSettingsOpen(false)}
-        footer={<button type="button" className="flow-dialog-button flow-dialog-neutral" onClick={() => setSettingsOpen(false)}>Done</button>}>
-        <p id="settings-description" className="flow-dialog-copy">Appearance preferences are saved on this device.</p>
+        describedBy="settings-description" onClose={() => setSettingsOpen(false)} footer={null}>
+        <p id="settings-description" className="flow-dialog-copy settings-sr-only">Appearance is saved automatically on this device.</p>
         <section className="flow-settings-section">
           <h3>Appearance</h3>
-          <div className="flow-settings-options" role="group" aria-label="Appearance">
+          <div className="flow-appearance" role="group" aria-label="Appearance">
             {(['dark', 'light'] as const).map(option => <button key={option} type="button"
               data-dialog-initial-focus={theme === option ? '' : undefined} aria-pressed={theme === option}
-              onClick={() => setTheme(option)}><Icon name={option === 'dark' ? 'moon' : 'sun'} size={17} />
-              {option === 'dark' ? 'Dark' : 'Light'}{theme === option && <Icon name="check" size={14} />}</button>)}
+              onClick={() => setTheme(option)}>
+              {theme === option && <motion.span layoutId="settings-appearance" className="flow-appearance-highlight"
+                transition={{ duration: motionOff ? 0 : .18, ease: [0.22, 1, 0.36, 1] }} />}
+              <Icon name={option === 'dark' ? 'moon' : 'sun'} size={16} />
+              <span>{option === 'dark' ? 'Dark' : 'Light'}</span>
+            </button>)}
           </div>
         </section>
         <section className="flow-settings-section">
-          <h3>Accent color</h3>
-          <div className="flow-settings-options" role="group" aria-label="Accent color">
-            {ACCENT_THEMES.map(option => <button key={option.id} type="button" aria-pressed={option.id === accentTheme}
-              onClick={() => setAccentTheme(option.id)}>
-              <span className="flow-settings-swatch" style={{ backgroundColor: `var(--palette-${option.id}-600)` }} />
-              {option.label}{option.id === accentTheme && <Icon name="check" size={14} />}
+          <div className="flow-settings-label"><h3>Accent color</h3><span>{ACCENT_THEMES.find(option => option.id === accentTheme)?.label}</span></div>
+          <div className="flow-accent-palette" role="group" aria-label="Accent color">
+            {ACCENT_THEMES.map(option => <button key={option.id} type="button" title={option.label}
+              aria-label={option.label} aria-pressed={option.id === accentTheme} onClick={() => setAccentTheme(option.id)}>
+              <span className="flow-settings-swatch" style={{ backgroundColor: `var(--palette-${option.id}-600)` }}>
+                {option.id === accentTheme && <Icon name="check" size={15} />}
+              </span>
             </button>)}
           </div>
         </section>

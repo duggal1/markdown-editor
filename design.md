@@ -91,3 +91,8 @@ The embedded iframe has an actual **306px layout viewport** and a visible 623px 
 - Dark overlay #101010, border #252525, 7px dropdown radius, 10px dialog radius, 5px control radius. Thin themed scrollbars; retain light appearance and reduced motion.
 - Appearance and accent settings are in the native Settings dialog. Page deletion executes the guarded deletion operation immediately with failure rollback and no confirmation modal. Subpages are preserved.
 - Backup drains six independent records concurrently, keeps same-record serialization, and uses six concurrent part uploads. Small text/metadata uses a verified inline commit, while large files retain the 100 MiB multipart protocol. Small initial public shares use the existing single-request endpoint.
+
+
+## Editorial workspace correction
+The editor body is the only writing surface. Titles are inferred from content, shown in the sidebar and breadcrumb, and may be explicitly renamed through the page menu. The save status occupies a reserved right-hand toolbar slot and shows measured milliseconds. No duplicate title heading.
+Settings has immediate appearance selection and a compact accent palette. Share prioritizes the URL and copy action, with plain document metadata, no nested cards, no borders, and consistent light/dark footer surfaces. Motion is brief and respects reduced motion. The original product mark is replaced by the selected ribbon F, shared by the app, Draw and favicon.

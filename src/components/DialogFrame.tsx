@@ -57,7 +57,7 @@ export default function DialogFrame({
         </button>
       </header>
       <div className="flow-dialog-body">{children}</div>
-      <footer className="flow-dialog-footer">{footer}</footer>
+      {footer != null && <footer className="flow-dialog-footer">{footer}</footer>}
     </dialog>,
     document.body,
   );

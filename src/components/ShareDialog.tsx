@@ -99,18 +99,14 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
       <button type="button" className="flow-dialog-button flow-dialog-neutral"
         disabled={busy} onClick={onClose}>Done</button>
     </>}>
-    <div className="flow-dialog-file">
-      <span className="flow-dialog-file-icon"><Icon name="file" size={16} /></span>
-      <span className="flow-dialog-file-text">
-        <strong title={title || 'Untitled'}>{title || 'Untitled'}</strong>
-        <small>Markdown page</small>
-      </span>
-      <span className="flow-dialog-readonly">View only</span>
+    <div className="flow-dialog-document">
+      <Icon name="file" size={16} />
+      <span title={title || 'Untitled'}>{title || 'Untitled'}</span>
     </div>
 
     {!record ? <>
       <p id="share-dialog-description" className="flow-dialog-copy">
-        {backedUp ? 'Preparing a read-only link from your private cloud backup. Anyone with the link can read the page.' : 'Create a read-only link to this page. Anyone with the link can read and copy its contents, but cannot edit it.'}
+        {backedUp ? 'Anyone with the link can read this page.' : 'Anyone with the link can read this page, but cannot edit it.'}
       </p>
       {!backedUp && <label className="flow-dialog-consent">
         <input type="checkbox" checked={consent}
@@ -124,13 +120,12 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
     </> : <>
       <p id="share-dialog-description" className="flow-dialog-status"
         data-status={status} role="status" aria-live="polite">
-        <span className="flow-dialog-status-dot" aria-hidden="true" />
+        
         {status === 'syncing' ? 'Syncing changes…' + (progress === null ? '' : ' ' + progress + '%') : status === 'error'
-          ? 'Sync failed. Your local page is safe.' : 'Link active · Read only'}
+          ? 'Sync failed. Your local page is safe.' : 'Anyone with the link can view'}
       </p>
-      <label className="flow-dialog-label" htmlFor="share-link-input">Share link</label>
       <div className="flow-dialog-link">
-        <input id="share-link-input" value={link} readOnly
+        <input id="share-link-input" aria-label="Share link" value={link} readOnly
           onFocus={event => event.currentTarget.select()} />
         <button type="button" className="flow-dialog-button flow-dialog-contrast"
           onClick={() => { void copyLink(); }}>
@@ -138,9 +133,7 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
           {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
-      <p className="flow-dialog-hint">
-        Changes sync while this editor is open. Anyone with the link can view the latest version.
-      </p>
+      <p className="flow-dialog-hint">Changes sync while this editor is open.</p>
     </>}
     {error && <p className="flow-dialog-error" role="alert">{error}</p>}
   </DialogFrame>;

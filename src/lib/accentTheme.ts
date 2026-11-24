@@ -21,13 +21,15 @@ const FAVICON_COLORS: Record<AccentTheme, string> = {
   pink: '#db2777', teal: '#0d9488', indigo: '#4f46e5', rose: '#e11d48',
 };
 
+// Ribbon F, vector reconstruction of the selected rebrand concept.
+export const FLOW_RIBBON_PATHS = ["M7.3 13.8C7.1 9.2 8.8 6.1 13.1 5.2L23 2C22.5 5.6 20.7 8 17.4 9.1L10.8 11.2C8.7 11.9 7.6 12.8 7.3 13.8Z","M5.5 18.1C5.5 15.1 7.3 12.9 10.8 11.8L18.7 9.3C18.4 12.4 16.8 14.8 13.8 15.7L8.9 17.3C7.2 17.9 6 19.1 5.9 21C5.6 20.2 5.5 19.2 5.5 18.1Z","M5.9 21C5.9 19.4 7 18.3 8.9 17.6L11.2 16.8C10.8 20.2 9.4 22.4 7.7 22.5C6.8 22.5 6.1 21.9 5.9 21Z"] as const;
+export const FLOW_RIBBON_OPACITY = [1, .84, .48] as const;
+
 function updateFavicon(accent: AccentTheme): void {
-  // Reuse the original Flow mark geometry, changing only its two accent fills.
   const fill = FAVICON_COLORS[accent];
-  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none" shape-rendering="crispEdges">' +
-    '<path d="M8 0H56V8H64V56H56V64H8V56H0V8H8Z" fill="' + fill + '"/>' +
-    '<path d="M21 12H43V18H49V46H43V52H21V46H15V18H21V12ZM25 22V28H21V36H25V42H39V36H43V28H39V22H25Z" fill="#0a0a0a"/>' +
-    '<path d="M29 29H35V35H29Z" fill="' + fill + '"/></svg>';
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 26 26">' +
+    FLOW_RIBBON_PATHS.map((d, index) => '<path d="' + d + '" fill="' + fill +
+      '" opacity="' + FLOW_RIBBON_OPACITY[index] + '"/>').join('') + '</svg>';
   let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
   if (!link) {
     link = document.createElement('link');

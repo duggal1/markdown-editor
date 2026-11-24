@@ -146,3 +146,5 @@
 .filetree-menu.private-page-menu { background:var(--flow-overlay); border:1px solid var(--flow-overlay-edge); border-radius:7px; padding:4px; width:184px; box-shadow:0 8px 24px #0003; }
 .private-page-menu button { height:29px; border-radius:4px; gap:8px; }
 .private-menu-label { padding:5px 8px; }
+
+.filetree-menu.private-page-menu { border:0; box-shadow:0 6px 20px #0003; }
