@@ -930,7 +930,7 @@ export default function App() {
     }
     autoFormatInFlight.current = true;
     setAutoFormatting(true);
-    setNotice(currentLanguage ? 'Checking ' + currentLanguage.toUpperCase() + ' source…' : 'Formatting Markdown…');
+    setNotice('Checking ' + currentLanguage.toUpperCase() + ' source…');
     try {
       const formatted = await repairCodeAction(source, currentLanguage);
       // The user can type or change pages while a large worker is running.
@@ -941,8 +941,7 @@ export default function App() {
         return;
       }
       if (formatted === source) {
-        setNotice(currentLanguage ? 'No recognizable paste artifacts. Source unchanged.' :
-          'Already formatted. No changes needed.');
+        setNotice('No recognizable paste artifacts. Source unchanged.');
         return;
       }
       // One replacement transaction ensures Cmd/Ctrl+Z reverts the entire action.
@@ -954,10 +953,7 @@ export default function App() {
           : { anchor: from, head: from + formatted.length },
       });
       if (modeRef.current !== 'preview') view.focus();
-      setNotice(currentLanguage
-        ? currentLanguage.toUpperCase() + ' paste artifacts removed · Undo to revert'
-        : range.empty ? 'Markdown formatted · Undo to revert'
-          : 'Selection formatted · Undo to revert');
+      setNotice(currentLanguage.toUpperCase() + ' paste artifacts removed · Undo to revert');
     } catch (error) {
       console.error('Source formatting failed', error);
       setNotice('Could not process source. Your text was not changed.');
@@ -1282,7 +1278,7 @@ export default function App() {
     whileTap: { scale: 0.985 },
     transition: { duration: 0.17, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
   };
-  if (!loaded) return <main className="boot"><FlowMark size={30} /><span>Opening workspace…</span></main>;
+  if (!loaded) return <main className="boot"><FlowMark size={30} /><span>{saveState === 'error' ? 'Workspace could not be opened. Reload to retry.' : 'Opening workspace…'}</span></main>;
   return <div className="flow-shell private-workspace" onDragOver={event => event.preventDefault()} onDrop={onDrop}>
     <motion.aside className={'sidebar' + (sidebarOpen ? ' is-open' : '')}
       initial={false} animate={{ width: sidebarOpen ? 256 : 0 }}
