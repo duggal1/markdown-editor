@@ -24,6 +24,7 @@ import { repairLanguage } from './lib/codeRepair';
 import { repairCodeAction } from './lib/codeRepairAction';
 import { inferTitle, isUntitledTitle } from './lib/title';
 import { editorPosition, previewPosition, restoreEditorPosition } from './lib/scrollPosition';
+import { documentOutline, type OutlineEntry } from './lib/outline';
 import type { SearchHit } from './lib/searchIndex';
 import {
   clearRecovery, loadWorkspace, readPrefs, removeDoc, removeFolder, removeWorkspaceTree,
@@ -110,6 +111,8 @@ export default function App() {
   const [shareOpen, setShareOpen] = useState(false);
   const [htmlSurfaceTone, setHtmlSurfaceTone] = useState<'dark' | 'light'>('dark');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [outline, setOutline] = useState<OutlineEntry[] | null>(null);
+  const [outlineQuery, setOutlineQuery] = useState('');
   const [pdfExporting, setPdfExporting] = useState(false);
   const [autoFormatting, setAutoFormatting] = useState(false);
   const autoFormatInFlight = useRef(false);
@@ -1213,6 +1216,7 @@ export default function App() {
       if (modeRef.current !== 'write') {
         scrollOwner.current = 'preview';
         modeRestore.current = null;
+        preview.dispatchEvent(new Event('flow-preview-user-scroll'));
       }
     };
     const onScroll = (event: Event) => {
@@ -1302,6 +1306,21 @@ export default function App() {
     if (next !== 'write') setPreviewText(view?.state.doc.toString() ?? live.current.get(activeIdRef.current)?.markdown ?? '');
     setMode(next);
     if (next === 'preview') view?.contentDOM.blur();
+  }
+  function openOutline() {
+    setOutlineQuery('');
+    const view = editorRef.current;
+    setOutline(documentOutline(view?.state.doc.toString() ?? live.current.get(activeIdRef.current)?.markdown ?? ''));
+  }
+  function jumpToHeading(line: number) {
+    const view = editorRef.current;
+    if (!view) return;
+    const target = { id: activeIdRef.current, line, total: view.state.doc.lines };
+    modeRestore.current = target;
+    targetLine.current = { ...target, kind: 'scroll' };
+    scrollOwner.current = 'transition';
+    setOutline(null);
+    requestAnimationFrame(restoreModePosition);
   }
   // A phone's Split mode shows two vertically stacked, independently scrolling panes.
   const presentationMode: Mode = mode;
@@ -1416,7 +1435,7 @@ export default function App() {
           </motion.button>
           <motion.button {...pressMotion} type="button" className="square-button theme-toggle settings-trigger"
             title="Settings" aria-label="Settings" aria-haspopup="dialog" aria-expanded={settingsOpen}
-            onClick={() => setSettingsOpen(true)}><Icon name="sliders" size={17} /></motion.button>
+            onClick={() => setSettingsOpen(true)}><Icon name="settings" size={16} /></motion.button>
           <input ref={fileRef} type="file" hidden multiple onChange={onFileSelected} aria-label="Import files" />
         </div>
       </header>
@@ -1431,9 +1450,10 @@ export default function App() {
           <motion.button type="button" {...pressMotion} className="copy-all-button"
             title="Copy the entire page" aria-label="Copy all" disabled={!active || Boolean(active.asset)}
             onClick={() => { void copyAll(); }}>
-            <Icon name="copy" size={16} /> <span>Copy all</span>
+            <Icon name="copy" size={14} /> <span>Copy all</span>
           </motion.button>
-          <motion.button {...pressMotion} title="Import files" aria-label="Import files" onClick={() => fileRef.current?.click()}><Icon name="upload" size={16} /></motion.button>
+          <motion.button {...pressMotion} title="Import files" aria-label="Import files" onClick={() => fileRef.current?.click()}><Icon name="upload" size={14} /></motion.button>
+          <button type="button" title="Page outline" aria-label="Page outline" disabled={!active || Boolean(active.asset)} onClick={openOutline}><Icon name="list" size={15} /></button>
         </div>
         <motion.span className="save-indicator" data-save-state={saveState}
             initial={false} aria-hidden={saveState === 'idle'}
@@ -1455,7 +1475,7 @@ export default function App() {
       <motion.main ref={editorAreaRef} className={'editor-area mode-' + mode + (compact ? ' compact' : '') + (resizingSplit ? ' is-resizing' : '')} aria-label="Flow Markdown workspace"
         initial={false} animate={{ gridTemplateColumns: compact ? 'minmax(0, 1fr)' : gridColumns,
           gridTemplateRows: compact ? mobileGridRows : 'minmax(0, 1fr)' }}
-        transition={motionOff || resizingSplit ? { duration: 0 } : { duration: 0.29, ease: [0.22, 1, 0.36, 1] }}
+        transition={motionOff || resizingSplit || compact || (active?.markdown.length ?? 0) > 80000 ? { duration: 0 } : { duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
         onAnimationComplete={() => { editorRef.current?.requestMeasure(); restoreModePosition(); }}>
         <section className="editor-pane" aria-label="Write Markdown"
           onPointerDownCapture={() => { scrollOwner.current = 'editor'; modeRestore.current = null; }}
@@ -1529,6 +1549,20 @@ export default function App() {
             title={live.current.get(active.id)?.title || active.title}
             getCurrent={() => live.current.get(activeIdRef.current) || null}
             onClose={() => setShareOpen(false)} />)}
+      {outline && <DialogFrame id="outline-dialog" title="Page outline" icon="list" describedBy="outline-description"
+        onClose={() => setOutline(null)} footer={null}>
+        <p id="outline-description" className="settings-sr-only">Jump to a heading in the current page.</p>
+        <input className="flow-outline-search" aria-label="Search headings" placeholder="Find a heading…" data-dialog-initial-focus
+          value={outlineQuery} onChange={event => setOutlineQuery(event.target.value)} />
+        <div className="flow-outline-list">
+          {outline.filter(item => item.title.toLowerCase().includes(outlineQuery.toLowerCase())).slice(0, 300).map(item =>
+            <button type="button" key={item.line} onClick={() => jumpToHeading(item.line)} style={{ paddingInlineStart: 8 + (item.level - 1) * 8 }}>
+              <span>{item.title}</span><small>{item.line}</small>
+            </button>)}
+          {outline.length === 0 && <p className="flow-dialog-copy">Add a Markdown heading to navigate this page.</p>}
+          {outline.length > 300 && <p className="flow-dialog-copy">Search to find headings beyond the first 300.</p>}
+        </div>
+      </DialogFrame>}
       {settingsOpen && <DialogFrame id="settings-dialog" title="Settings" icon="settings"
         describedBy="settings-description" onClose={() => setSettingsOpen(false)} footer={<button type="button" className="flow-dialog-button flow-dialog-done" onClick={() => setSettingsOpen(false)}>Done</button>}>
         <p id="settings-description" className="flow-dialog-copy settings-sr-only">Appearance is saved automatically on this device.</p>

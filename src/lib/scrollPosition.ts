@@ -12,11 +12,28 @@ export function editorPosition(view: EditorView): number {
 
 export function previewPosition(scroll: HTMLDivElement, total: number): number {
   const code = scroll.querySelector<HTMLElement>('.preview-is-code .virtual-code-scroll');
-  if (code) return Math.min(total, 1 + code.scrollTop / 22);
+  if (code) {
+    if (code.scrollTop <= 1) return 1;
+    if (code.scrollTop + code.clientHeight >= code.scrollHeight - 3) return total;
+    return Math.min(total, 1 + code.scrollTop / 22);
+  }
   if (scroll.scrollTop <= 1) return 1;
   if (scroll.scrollTop + scroll.clientHeight >= scroll.scrollHeight - 3) return total;
   const top = scroll.getBoundingClientRect().top + 12;
-  const nodes = scroll.querySelectorAll<HTMLElement>('[data-source-line]');
+  // Only inspect anchors in the mounted chunk intersecting the viewport.
+  // This bounds DOM walks during rapid scrolling of long Markdown.
+  const sections = scroll.querySelectorAll<HTMLElement>('.virtual-markdown-section');
+  let section: HTMLElement | undefined;
+  if (sections.length) {
+    let lo = 0, hi = sections.length - 1;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (sections[mid].getBoundingClientRect().top <= top) lo = mid;
+      else hi = mid - 1;
+    }
+    section = sections[lo];
+  }
+  const nodes = (section || scroll).querySelectorAll<HTMLElement>('[data-source-line]');
   if (!nodes.length) return 1 + (total - 1) * scroll.scrollTop / Math.max(1, scroll.scrollHeight - scroll.clientHeight);
   let lo = 0, hi = nodes.length - 1;
   while (lo < hi) {

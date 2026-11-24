@@ -96,3 +96,7 @@ The embedded iframe has an actual **306px layout viewport** and a visible 623px 
 ## Editorial workspace correction
 The editor body is the only writing surface. Titles are inferred from content, shown in the sidebar and breadcrumb, and may be explicitly renamed through the page menu. The save status occupies a reserved right-hand toolbar slot and shows measured milliseconds. No duplicate title heading.
 Settings has immediate appearance selection and a compact accent palette. Share prioritizes the URL and copy action, with plain document metadata, no nested cards, no borders, and consistent light/dark footer surfaces. Motion is brief and respects reduced motion. The original product mark is replaced by the selected ribbon F, shared by the app, Draw and favicon.
+
+
+## Dense workspace controls and reliable export
+Markdown controls use a 24–26px desktop height, 5–8px horizontal insets and soft 8–9px radii; mobile preserves larger targets. Copy and import are left aligned, save status right aligned. Settings uses an explicit Done control. Draw retains its layout; only the new SVG mark is unboxed. Heading outline is generated on demand. Scroll synchronization keeps a source-line anchor across modes and cancels stale virtual-window jumps on user input. Large pages avoid animated pane reflow. PDFMake's classic font script registers with its public API; the generated PDF, not a private VFS property, determines success. PDF styling is neutral A4 with selectable text, syntax colors and compact tables.

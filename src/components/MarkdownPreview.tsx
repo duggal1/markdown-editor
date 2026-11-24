@@ -83,7 +83,7 @@ function locatePreview(scroll: HTMLDivElement, line: number, kind: 'scroll' | 'c
   const target = top + (nextTop - top) * fraction;
   if (kind === 'cursor' && target >= scroll.scrollTop + scroll.clientHeight * 0.12 &&
     target <= scroll.scrollTop + scroll.clientHeight * 0.78) return;
-  const destination = Math.max(0, target - scroll.clientHeight * (kind === 'cursor' ? 0.30 : 0.12));
+  const destination = Math.max(0, target - (kind === 'cursor' ? scroll.clientHeight * 0.30 : 12));
   // Avoid a subpixel scroll write and layout invalidation every frame.
   if (Math.abs(destination - scrollTop) > 2) scroll.scrollTop = destination;
 }
@@ -314,7 +314,9 @@ function VirtualMarkdown({ markdown, scrollRef }: {
       pending = null;
       if (!scroll || !latest) return;
       const { line, total, kind } = latest;
-      if (line >= total - 1) {
+      if (settle !== null) { cancelAnimationFrame(settle); settle = null; }
+      if (line <= 1) { scroll.scrollTop = 0; return; }
+      if (line >= total) {
         virtualizer.scrollToIndex(chunks.length - 1, { align: 'end' });
         if (settle !== null) cancelAnimationFrame(settle);
         settle = requestAnimationFrame(() => {
@@ -378,10 +380,17 @@ function VirtualMarkdown({ markdown, scrollRef }: {
         pending = requestAnimationFrame(sync);
       }
     }
+    function cancelSync() {
+      latest = null;
+      if (pending !== null) { cancelAnimationFrame(pending); pending = null; }
+      if (settle !== null) { cancelAnimationFrame(settle); settle = null; }
+    }
     scroll.addEventListener('flow-preview-position', onPosition);
+    scroll.addEventListener('flow-preview-user-scroll', cancelSync);
     scroll.dispatchEvent(new Event('flow-preview-ready'));
     return () => {
       scroll.removeEventListener('flow-preview-position', onPosition);
+      scroll.removeEventListener('flow-preview-user-scroll', cancelSync);
       if (pending !== null) cancelAnimationFrame(pending);
       if (settle !== null) cancelAnimationFrame(settle);
     };
@@ -424,13 +433,13 @@ function MarkdownPreview({ markdown, sourceLanguage, scrollRef, theme, onToggleT
     if (!scroll || virtual || html) return;
     const onPosition = (event: Event) => {
       const { line, total, kind } = (event as PositionEvent).detail;
-      if (line >= total - 1) {
-        scroll.scrollTop = scroll.scrollHeight - scroll.clientHeight;
-        return;
-      }
       const code = scroll.querySelector<HTMLElement>('.virtual-code-scroll');
       if (detected && code) {
-        code.scrollTop = Math.max(0, (line - 1) * 22 - code.clientHeight * 0.28);
+        code.scrollTop = line >= total ? code.scrollHeight : Math.max(0, (line - 1) * 22 - (kind === 'cursor' ? code.clientHeight * .28 : 0));
+        return;
+      }
+      if (line >= total && total > 1) {
+        scroll.scrollTop = scroll.scrollHeight - scroll.clientHeight;
         return;
       }
       if (detected) {

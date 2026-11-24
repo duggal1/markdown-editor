@@ -650,3 +650,6 @@
     transition:none !important; animation:none !important;
   }
 }
+
+/* Keep Draw's original layout and control system; only unbox its new SVG mark. */
+.draw-logo { background:transparent; color:var(--draw-accent); clip-path:none; }

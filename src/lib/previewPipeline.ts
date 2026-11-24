@@ -17,6 +17,7 @@ export type PreparedPreview = {
 const preparedCache = new Map<string, PreparedPreview>();
 const MAX_ENTRIES = 4;
 const MAX_SOURCE_CHARS = 2_000_000;
+const pendingSources = new Map<string, Promise<PreparedPreview>>();
 
 export function buildPreviewSections(source: string): PreparedPreview {
   const parts = previewParts(source);
@@ -93,7 +94,15 @@ function availableWorker(): Worker | null {
 }
 
 /** Offload section splitting of large Markdown, falling back safely. */
-export async function preparePreview(source: string): Promise<PreparedPreview> {
+export function preparePreview(source: string): Promise<PreparedPreview> {
+  const existing = pendingSources.get(source);
+  if (existing) return existing;
+  const pending = prepare(source).finally(() => { pendingSources.delete(source); });
+  pendingSources.set(source, pending);
+  return pending;
+}
+
+async function prepare(source: string): Promise<PreparedPreview> {
   const cached = cachedPreview(source);
   if (cached) return cached;
   if (source.length < 80_000) return immediatePreview(source);

@@ -38,12 +38,12 @@ const plan = [
 
 const definition = buildPdfDefinition(plan, 'Lumen: Master Build Plan');
 assert.equal(definition.pageSize, 'A4');
-assert.deepEqual([...definition.pageMargins], [58, 68, 58, 64]);
+assert.deepEqual([...definition.pageMargins], [48, 54, 48, 46]);
 assert.equal(definition.info.title, 'Lumen: Master Build Plan');
-assert.equal(definition.defaultStyle.color, '#303030');
-assert.equal(definition.styles.h1.fontSize, 25);
+assert.equal(definition.defaultStyle.color, '#252525');
+assert.equal(definition.styles.h1.fontSize, 27);
 assert.equal(definition.styles.h2.fontSize, 16);
-assert.equal(definition.styles.body.lineHeight, 1.48);
+assert.equal(definition.styles.body.lineHeight, 1.42);
 const content = definition.content;
 assert.ok(Array.isArray(content));
 assert.ok(content.some(x => x.style === 'h1'));
@@ -79,7 +79,7 @@ const rawSwift = buildPdfDefinition(
 assert.ok(rawSwift.content.some(x => x.table && x.table.body?.[0]?.[0]?.stack?.some(y =>
   y.style === 'code' && (typeof y.text === 'string' ? y.text : y.text.map(part => typeof part === 'string' ? part : part.text).join('')).includes('import SwiftUI'))),
   'Raw Swift input must be rendered as an intact code block.');
-assert.equal(definition.styles.code.fontSize, 8.8);
+assert.equal(definition.styles.code.fontSize, 9);
 const imageData = new Map([['https://example.com/test.png', 'data:image/png;base64,aGVsbG8=']]);
 const imageDoc = buildPdfDefinition('![Diagram](https://example.com/test.png)', 'Diagram', imageData);
 assert.ok(imageDoc.content.some(x => x.image), 'Embedded PNG data should become a PDF image.');
@@ -93,7 +93,7 @@ const rawTree = parsePdfMarkdown('```swift\nlet answer = 42\n```');
 const fromTree = buildPdfDefinitionFromTree(rawTree, 'Swift');
 assert.ok(fromTree.content.some(block => block.table?.body?.[0]?.[0]?.stack?.some(x =>
   x.style === 'code' && x.text.some(y => y.color))), 'PDF must render token colors.');
-assert.ok(JSON.stringify(buildPdfDefinition('[Home](https://example.com)', 'Link').content).includes('#B45309'));
+assert.ok(JSON.stringify(buildPdfDefinition('[Home](https://example.com)', 'Link').content).includes('#205D9B'));
 const sourceApp = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
 const exportCode = readFileSync(new URL('../src/lib/pdfExport.ts', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
@@ -113,8 +113,21 @@ assert.match(css, /\.flow-export-menu/);
 
 // pdfmake smoke test: actually generate a real searchable-text PDF buffer.
 const lib = (await import('pdfmake/build/pdfmake.js')).default;
-const fonts = (await import('pdfmake/build/vfs_fonts.js')).default;
-lib.addVirtualFileSystem(fonts);
+// Exercise the real browser font script registration path: the module
+// must register against window.pdfMake without a public .vfs property.
+const { runInNewContext } = await import('node:vm');
+const { createRequire } = await import('node:module');
+const require = createRequire(import.meta.url);
+let registered = false;
+runInNewContext(readFileSync(require.resolve('pdfmake/build/vfs_fonts.js'), 'utf8'), {
+  window: { pdfMake: { addVirtualFileSystem(fonts) {
+    assert.ok(fonts['Roboto-Regular.ttf']);
+    lib.addVirtualFileSystem(fonts);
+    registered = true;
+  } } },
+});
+assert.equal(registered, true);
+assert.doesNotMatch(exportCode, /pdfMake\.vfs\?/);
 
 const actual = await new Promise((resolve, reject) => {
   try {
