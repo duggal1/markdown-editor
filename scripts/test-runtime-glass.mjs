@@ -20,6 +20,9 @@ const body = { tag: 'body' };
 const documentElement = { tag: 'html', dataset: {} };
 const messages = [];
 const observers = [];
+const panels = ['/', '/history', '/meetings'].map(path => ({ hidden: false, getAttribute: () => path }));
+const routeEvents = [];
+const history = { pushState() {}, replaceState() {} };
 let background = '#08080e';
 
 const context2d = {
@@ -42,6 +45,7 @@ const doc = {
     return { width: 0, height: 0, getContext: () => context2d };
   },
   querySelector: () => null,
+  querySelectorAll: () => panels,
   elementFromPoint: () => body,
   addEventListener() {},
 };
@@ -49,6 +53,7 @@ const listeners = new Map();
 const win = {
   requestAnimationFrame: () => 1,
   cancelAnimationFrame() {},
+  dispatchEvent(event) { routeEvents.push(event); },
   addEventListener(type, listener) { listeners.set(type, listener); },
 };
 const parentWindow = { postMessage: data => messages.push(data) };
@@ -66,7 +71,9 @@ runInNewContext(script, {
     };
   },
   MutationObserver: fakeObserver,
-  history: { pushState() {}, replaceState() {} },
+  history, URL, location: { hash: '' },
+  CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
+  HashChangeEvent: class {},
   matchMedia: () => ({ addEventListener() {} }),
   setTimeout: callback => { callback(); return 1; },
   clearTimeout() {},
@@ -96,6 +103,19 @@ assert.equal(documentElement.dataset.flowPhone, 'true',
 onMessage({ source: parentWindow, data: { type: 'flow-runtime-settings', fps: 0, phone: false } });
 assert.equal(documentElement.dataset.flowPhone, 'false',
   'Returning to desktop must restore themed scrollbar chrome.');
+
+assert.deepEqual(panels.map(p => p.hidden), [false, true, true]);
+history.pushState({ test: true }, '', '/history');
+assert.deepEqual(panels.map(p => p.hidden), [true, false, true]);
+assert.equal(messages.at(-1).path, '/history');
+assert.equal(messages.at(-1).mode, 'push');
+history.replaceState(null, '', 'meetings');
+assert.deepEqual(panels.map(p => p.hidden), [true, true, false]);
+assert.equal(messages.at(-1).mode, 'replace');
+onMessage({ source: parentWindow, data: { type: 'flow-runtime-popstate', path: '/' } });
+assert.deepEqual(panels.map(p => p.hidden), [false, true, true]);
+assert.equal(win.__FLOW_SITE_ROUTE__, '/');
+assert.ok(routeEvents.some(event => event.type === 'flow:route'));
 
 const runtimeHtml = mod.exports.htmlPreviewDocument(
   '<!doctype html><html><head></head><body>Phone</body></html>', { runtime: true });
