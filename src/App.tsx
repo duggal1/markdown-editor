@@ -12,7 +12,7 @@ import { downloadMarkdown } from './lib/document';
 import ShareDialog from './components/ShareDialog';
 import HtmlSiteDialog from './components/HtmlSiteDialog';
 import DialogFrame from './components/DialogFrame';
-import { backupStatus, enableBackup, resumeBackup } from './lib/backup';
+import { backupStatus, enableBackup, getRecoveryKey, recoverWithKey, resumeBackup } from './lib/backup';
 import { queueSharedSync, readShareRecord, revokeCloudShare } from './lib/sharing';
 import { isHtmlPage, localHtmlUrl, publishHtml, queueSiteSync, readSiteRecord, revokeHtml,
   siteUrl, verifyHostedHtml } from './lib/siteHosting';
@@ -586,6 +586,20 @@ export default function App() {
       resumeBackup({ workspaces, folders, documents: [...live.current.values()] });
       setCloudState(backupStatus());
     } catch { setNotice('Cloud backup could not be enabled. Local files are unchanged.'); }
+  }
+  async function copyRecoveryKey() {
+    try {
+      await navigator.clipboard.writeText(await getRecoveryKey());
+      setNotice('Recovery key copied. Save it privately; it grants access to your backups.');
+    } catch { setNotice('Could not copy the recovery key.'); }
+  }
+  async function recoverCloudWorkspace() {
+    const key = window.prompt('Enter your private Flow backup recovery key.');
+    if (!key?.trim()) return;
+    try {
+      await recoverWithKey(key);
+      window.location.reload();
+    } catch { setNotice('Could not recover the backup. Check your key and connection.'); }
   }
   function toggleWorkspace(id: string) {
     setExpandedIds(ids => ids.includes(id) ? ids.filter(item => item !== id) : [...ids, id]);
@@ -1379,6 +1393,12 @@ export default function App() {
               <Icon name={cloudState === 'synced' ? 'check' : 'history'} size={16} />
               {cloudState === 'synced' ? 'Cloud backup synced' : cloudState === 'error' ? 'Backup failed · retrying' : 'Backing up…'}
             </div>}
+          {cloudState === 'off'
+            ? <button className="sidebar-bottom-action" onClick={() => { void recoverCloudWorkspace(); }}>
+                <Icon name="history" size={16} /> Restore cloud backup</button>
+            : <button className="sidebar-bottom-action" onClick={() => { void copyRecoveryKey(); }}
+                title="Keep this private key outside your browser to restore after clearing site data">
+                <Icon name="copy" size={16} /> Copy recovery key</button>}
           <button className="sidebar-bottom-action" onClick={() => { if (recentIds[1]) selectDocument(recentIds[1]); }} disabled={!recentIds[1]}><Icon name="history" size={16} /> Previous page</button>
         </div>
       </motion.div>
