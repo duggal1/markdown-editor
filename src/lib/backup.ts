@@ -8,6 +8,8 @@ type BackupState = 'off' | 'pending' | 'synced' | 'error';
 type Restored = { documents: FlowDocument[]; workspaces: Workspace[]; folders: Folder[] };
 const PART = 5 * 1024 * 1024;
 const LIMIT = 100 * 1024 * 1024;
+const RECORD_CONCURRENCY = 6;
+const PART_CONCURRENCY = 6;
 const INDEX = 'flow.backup.index.v1';
 const TOMBSTONES = 'flow.backup.deletions.v1';
 const FORCE_RESTORE = 'flow.backup.restore.v1';
@@ -109,7 +111,7 @@ async function sync(job: Job) {
     if (!ticket.version || !urls || urls.length !== Math.ceil(blob.size / PART) ||
         !urls.every(url => typeof url === 'string' && url.startsWith('https://'))) throw new Error('Invalid backup upload session');
     let cursor = 0;
-    await Promise.all(Array.from({ length: Math.min(4, urls.length) }, async () => {
+    await Promise.all(Array.from({ length: Math.min(PART_CONCURRENCY, urls.length) }, async () => {
       while (cursor < urls.length) {
         const i = cursor++;
         await uploadPart(urls[i], blob.slice(i * PART, (i + 1) * PART));
@@ -128,7 +130,7 @@ function run(job: Job): Promise<void> {
   void next.finally(() => { if (running.get(id) === next) running.delete(id); }).catch(() => {});
   return next;
 }
-function schedule(delay = 1500) {
+function schedule(delay = 250) {
   if (timer !== undefined || draining) return;
   timer = window.setTimeout(() => { timer = undefined; void drain(); }, delay);
 }
@@ -138,19 +140,23 @@ async function drain() {
   let failed = false;
   // Take a bounded batch. Edits arriving during upload remain queued.
   const batch = [...pending.values()];
-  for (const job of batch) {
-    const id = key(job);
-    if (pending.get(id) !== job) continue;
-    pending.delete(id);
-    try { await run(job); }
-    catch {
-      failed = true;
-      if (!pending.has(id)) pending.set(id, job);
+  let cursor = 0;
+  await Promise.all(Array.from({ length: Math.min(RECORD_CONCURRENCY, batch.length) }, async () => {
+    while (cursor < batch.length) {
+      const job = batch[cursor++];
+      const id = key(job);
+      if (pending.get(id) !== job) continue;
+      pending.delete(id);
+      try { await run(job); }
+      catch {
+        failed = true;
+        if (!pending.has(id)) pending.set(id, job);
+      }
     }
-  }
+  }));
   draining = false;
   announce(failed ? 'error' : pending.size || running.size ? 'pending' : 'synced');
-  if (pending.size) schedule(failed ? 30000 : 1500);
+  if (pending.size) schedule(failed ? 30000 : 250);
 }
 export function queueBackup(kind: BackupKind, value: Value) {
   if (!backupEnabled()) return;

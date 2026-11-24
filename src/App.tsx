@@ -108,12 +108,11 @@ export default function App() {
   const [exportMenu, setExportMenu] = useState<{ top: number; right: number } | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [htmlSurfaceTone, setHtmlSurfaceTone] = useState<'dark' | 'light'>('dark');
-  const [accentMenu, setAccentMenu] = useState<{ top: number; right: number } | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [pdfExporting, setPdfExporting] = useState(false);
   const [autoFormatting, setAutoFormatting] = useState(false);
   const autoFormatInFlight = useRef(false);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<{ kind: 'document' | 'workspace'; id: string; title: string; count?: number } | null>(null);
   const deletionsInFlight = useRef(new Set<string>());
   const importInFlight = useRef(false);
   const [assetView, setAssetView] = useState<{ id: string; url: string } | null>(null);
@@ -121,7 +120,6 @@ export default function App() {
   const fileRef = useRef<HTMLInputElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const accentButtonRef = useRef<HTMLButtonElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
   // The isolated HTML iframe sends only a contrast hint. Never read DOM across
   // origins or let unrelated frames override the preview pop-out appearance.
@@ -743,15 +741,10 @@ export default function App() {
       setNotice('Workspace deletion could not finish. Its files were restored; check public share links.');
     }
   }
-  async function confirmDelete() {
-    if (!pendingDelete) return;
-    const target = pendingDelete;
+  async function deleteTarget(target: { kind: 'document' | 'workspace'; id: string }) {
     const operationKey = target.kind + ':' + target.id;
     if (deletionsInFlight.current.has(operationKey)) return;
     deletionsInFlight.current.add(operationKey);
-    // Close immediately, including while a separate file's cloud revoke
-    // is still in flight. The operation is guarded by its own target ID.
-    setPendingDelete(null);
     try {
       if (target.kind === 'workspace') await eraseWorkspace(target.id);
       else {
@@ -788,54 +781,6 @@ export default function App() {
       document.removeEventListener('keydown', dismiss);
     };
   }, [exportMenu]);
-
-  function toggleAccentMenu(event: React.MouseEvent<HTMLButtonElement>) {
-    const bounds = event.currentTarget.getBoundingClientRect();
-    setExportMenu(null);
-    setAccentMenu(current => current ? null : {
-      top: Math.max(8, Math.min(bounds.bottom + 8, window.innerHeight - 335)),
-      right: Math.max(8, window.innerWidth - bounds.right),
-    });
-    requestAnimationFrame(() => {
-      document.querySelector<HTMLButtonElement>(
-        '.accent-theme-menu [role="menuitemradio"][aria-checked="true"]',
-      )?.focus();
-    });
-  }
-  useEffect(() => {
-    if (!accentMenu) return;
-    const outside = (event: globalThis.PointerEvent) => {
-      const target = event.target;
-      if (target instanceof Element && !target.closest('.accent-theme-menu,.accent-theme-trigger')) {
-        setAccentMenu(null);
-      }
-    };
-    const dismiss = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setAccentMenu(null);
-        accentButtonRef.current?.focus();
-      }
-    };
-    document.addEventListener('pointerdown', outside);
-    document.addEventListener('keydown', dismiss);
-    return () => {
-      document.removeEventListener('pointerdown', outside);
-      document.removeEventListener('keydown', dismiss);
-    };
-  }, [accentMenu]);
-
-  function onAccentMenuKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-    if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
-    const options = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>(
-      '[role="menuitemradio"]',
-    ));
-    if (!options.length) return;
-    event.preventDefault();
-    const selected = options.indexOf(document.activeElement as HTMLButtonElement);
-    const next = event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1
-      : (selected + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
-    options[next].focus();
-  }
 
   async function exportPdf(doc: FlowDocument) {
     setExportMenu(null);
@@ -1309,7 +1254,7 @@ export default function App() {
   if (!loaded) return <main className="boot"><FlowMark size={30} /><span>{saveState === 'error' ? 'Workspace could not be opened. Reload to retry.' : 'Opening workspace…'}</span></main>;
   return <div className="flow-shell private-workspace" onDragOver={event => event.preventDefault()} onDrop={onDrop}>
     <motion.aside className={'sidebar' + (sidebarOpen ? ' is-open' : '')}
-      initial={false} animate={{ width: sidebarOpen ? 256 : 0 }}
+      initial={false} animate={{ width: sidebarOpen ? 232 : 0 }}
       transition={motionOff ? { duration: 0 } : { duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
       aria-hidden={!sidebarOpen}
       aria-label="Private pages">
@@ -1345,7 +1290,7 @@ export default function App() {
           onMovePage={movePage} onDeleteFolder={id => { void eraseFolder(id); }}
           onDeleteDocument={id => {
             const doc = live.current.get(id);
-            if (doc) setPendingDelete({ kind: 'document', id, title: doc.title });
+            if (doc) void deleteTarget({ kind: 'document', id });
           }}
         />
         <div className="sidebar-bottom">
@@ -1416,18 +1361,9 @@ export default function App() {
             onClick={toggleExport}>
             {pdfExporting ? <TerminalLoader loading /> : <Icon name="download" size={15} />} <span>{pdfExporting ? 'Exporting…' : 'Export'}</span>
           </motion.button>
-          <motion.button {...pressMotion} type="button" className="square-button theme-toggle" title={theme === 'light' ? 'Dark mode' : 'Light mode'} aria-label={theme === 'light' ? 'Dark mode' : 'Light mode'} onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')}>
-            <AnimatePresence initial={false} mode="wait"><motion.span key={theme} className="theme-icon" initial={motionOff ? false : { opacity: 0, rotate: -25 }} animate={{ opacity: 1, rotate: 0 }} exit={motionOff ? undefined : { opacity: 0, rotate: 25 }} transition={{ duration: motionOff ? 0 : 0.15 }}><Icon name={theme === 'light' ? 'moon' : 'sun'} size={17} /></motion.span></AnimatePresence>
-          </motion.button>
-          <button ref={accentButtonRef} type="button" className="accent-theme-trigger"
-            title={'Accent theme: ' + ACCENT_THEMES.find(option => option.id === accentTheme)?.label}
-            aria-label="Accent theme" aria-haspopup="menu" aria-expanded={Boolean(accentMenu)}
-            aria-controls={accentMenu ? 'accent-theme-menu' : undefined}
-            onClick={toggleAccentMenu}>
-            <span className="accent-theme-dot" aria-hidden="true" />
-            <span className="accent-theme-label">Theme</span>
-            <span className="accent-theme-chevron" aria-hidden="true"><Icon name="chevron" size={12} /></span>
-          </button>
+          <motion.button {...pressMotion} type="button" className="square-button theme-toggle settings-trigger"
+            title="Settings" aria-label="Settings" aria-haspopup="dialog" aria-expanded={settingsOpen}
+            onClick={() => setSettingsOpen(true)}><Icon name="settings" size={18} /></motion.button>
           <input ref={fileRef} type="file" hidden multiple onChange={onFileSelected} aria-label="Import files" />
         </div>
       </header>
@@ -1497,29 +1433,6 @@ export default function App() {
           }}><span className="split-grip" /></div>}
       </motion.main>
       {createPortal(<AnimatePresence initial={false}>
-        {accentMenu && <motion.div id="accent-theme-menu" role="menu"
-          aria-label="Accent color theme" className="accent-theme-menu"
-          style={{ top: accentMenu.top, right: accentMenu.right }}
-          onKeyDown={onAccentMenuKeyDown}
-          initial={motionOff ? false : { opacity: 0, y: -4, scale: 0.985 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={motionOff ? undefined : { opacity: 0, y: -3, scale: 0.99 }}
-          transition={{ duration: motionOff ? 0 : 0.15, ease: [0.22, 1, 0.36, 1] }}>
-          <div className="accent-theme-menu-title">Accent color</div>
-          {ACCENT_THEMES.map(option => <button key={option.id}
-            type="button" role="menuitemradio" aria-checked={option.id === accentTheme}
-            className="accent-theme-option"
-            onClick={() => {
-              setAccentTheme(option.id);
-              setAccentMenu(null);
-              accentButtonRef.current?.focus();
-            }}>
-            <span className="accent-theme-swatch" aria-hidden="true"
-              style={{ backgroundColor: `var(--palette-${option.id}-600)` }} />
-            <span>{option.label}</span>
-            {option.id === accentTheme && <span className="accent-theme-check"><Icon name="check" size={14} /></span>}
-          </button>)}
-        </motion.div>}
         {exportMenu && <motion.div role="menu" aria-label="Export page as"
           className="flow-export-menu" style={{ top: exportMenu.top, right: exportMenu.right }}
           initial={motionOff ? false : { opacity: 0, y: -5, scale: 0.985 }}
@@ -1548,32 +1461,29 @@ export default function App() {
             title={live.current.get(active.id)?.title || active.title}
             getCurrent={() => live.current.get(activeIdRef.current) || null}
             onClose={() => setShareOpen(false)} />)}
-      {pendingDelete && <DialogFrame id="delete-dialog"
-        title={`Delete ${pendingDelete.kind === 'document' ? 'page' : 'workspace'}?`}
-        icon="trash" describedBy="delete-dialog-description"
-        busy={false} onClose={() => setPendingDelete(null)}
-        footer={<>
-          <button type="button" className="flow-dialog-button flow-dialog-neutral"
-            data-dialog-initial-focus
-            onClick={() => setPendingDelete(null)}>Cancel</button>
-          <button type="button" className="flow-dialog-button flow-dialog-destructive"
-            onClick={() => { void confirmDelete(); }}>
-            Delete
-          </button>
-        </>}>
-        <div className="flow-dialog-file flow-dialog-delete-file">
-          <span className="flow-dialog-file-icon"><Icon name={pendingDelete.kind === 'workspace' ? 'folder' : 'file'} size={16} /></span>
-          <span className="flow-dialog-file-text">
-            <strong title={pendingDelete.title}>{pendingDelete.title}</strong>
-            <small>{pendingDelete.kind === 'workspace'
-              ? (pendingDelete.count || 0) + ' pages in this workspace'
-              : 'Local page'}</small>
-          </span>
-        </div>
-        <p id="delete-dialog-description" className="flow-dialog-copy flow-dialog-delete-copy">
-          Permanently delete {pendingDelete.kind === 'workspace' ? 'this workspace and its pages' : 'this page'}?
-          {' '}This cannot be undone.
-        </p>
+      {settingsOpen && <DialogFrame id="settings-dialog" title="Settings" icon="settings"
+        describedBy="settings-description" onClose={() => setSettingsOpen(false)}
+        footer={<button type="button" className="flow-dialog-button flow-dialog-neutral" onClick={() => setSettingsOpen(false)}>Done</button>}>
+        <p id="settings-description" className="flow-dialog-copy">Appearance preferences are saved on this device.</p>
+        <section className="flow-settings-section">
+          <h3>Appearance</h3>
+          <div className="flow-settings-options" role="group" aria-label="Appearance">
+            {(['dark', 'light'] as const).map(option => <button key={option} type="button"
+              data-dialog-initial-focus={theme === option ? '' : undefined} aria-pressed={theme === option}
+              onClick={() => setTheme(option)}><Icon name={option === 'dark' ? 'moon' : 'sun'} size={17} />
+              {option === 'dark' ? 'Dark' : 'Light'}{theme === option && <Icon name="check" size={14} />}</button>)}
+          </div>
+        </section>
+        <section className="flow-settings-section">
+          <h3>Accent color</h3>
+          <div className="flow-settings-options" role="group" aria-label="Accent color">
+            {ACCENT_THEMES.map(option => <button key={option.id} type="button" aria-pressed={option.id === accentTheme}
+              onClick={() => setAccentTheme(option.id)}>
+              <span className="flow-settings-swatch" style={{ backgroundColor: `var(--palette-${option.id}-600)` }} />
+              {option.label}{option.id === accentTheme && <Icon name="check" size={14} />}
+            </button>)}
+          </div>
+        </section>
       </DialogFrame>}
       <AnimatePresence initial={false}>
         {notice && <motion.div key={notice} role="status" className="notice" aria-live="polite"
