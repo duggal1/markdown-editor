@@ -1,10 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { HugeiconsIcon } from '@hugeicons/react';
-import {
-  ComputerIcon, SmartPhone01Icon, DragDropVerticalIcon, ArrowDown01Icon,
-  Cancel01Icon, ReloadIcon, Maximize01Icon, ArrowLeft01Icon,
-} from '@hugeicons/core-free-icons';
+import { Icon } from './Icons';
 import RuntimeSelect, { type RuntimeOption } from './RuntimeSelect';
 import IPhoneFrame from './IPhoneFrame';
 import { htmlPreviewDocument } from '../lib/htmlPreview';
@@ -279,7 +275,7 @@ export default function HtmlPlayPage() {
           onPointerDown={startDrag} onPointerMove={moveDrag}
           onPointerUp={stopDrag} onPointerCancel={stopDrag}
           whileTap={reduce ? undefined : { scale: .92 }} transition={spring}>
-          <HugeiconsIcon icon={DragDropVerticalIcon} size={16} strokeWidth={1.7} />
+          <Icon name="grip" size={16} />
         </motion.button>
         <motion.button type="button" className="html-play-toggle"
           aria-label={expanded ? 'Collapse runtime controls' : 'Expand runtime controls'}
@@ -290,7 +286,7 @@ export default function HtmlPlayPage() {
           <span>{observedFps === null ? 'HTML' : observedFps + ' FPS'}</span>
           <motion.span className="html-play-chevron" animate={{ rotate: expanded ? 180 : 0 }}
             transition={{ duration: reduce ? 0 : .2, ease: [0.22, 1, 0.36, 1] }}>
-            <HugeiconsIcon icon={ArrowDown01Icon} size={12} strokeWidth={1.7} />
+            <Icon name="caretDown" size={12} />
           </motion.span>
         </motion.button>
         <motion.button type="button" className="html-play-hide"
@@ -298,7 +294,7 @@ export default function HtmlPlayPage() {
           onClick={() => setControlsVisible(false)}
           whileHover={reduce ? undefined : { scale: 1.075 }}
           whileTap={reduce ? undefined : { scale: .9 }} transition={spring}>
-          <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.75} />
+          <Icon name="close" size={14} />
         </motion.button>
       </motion.div>
       <AnimatePresence initial={false}>
@@ -312,13 +308,13 @@ export default function HtmlPlayPage() {
             <motion.button type="button" aria-pressed={!phone} onClick={() => setPhone(false)}
               whileTap={reduce ? undefined : { scale: .97 }}
               whileHover={reduce ? undefined : { y: -1 }} transition={spring}>
-              <HugeiconsIcon icon={ComputerIcon} size={16} strokeWidth={1.6} /> Desktop
+              <Icon name="desktop" size={16} /> Desktop
             </motion.button>
             <motion.button type="button" aria-pressed={Boolean(phone)}
               onClick={() => setPhone(true)}
               whileTap={reduce ? undefined : { scale: .97 }}
               whileHover={reduce ? undefined : { y: -1 }} transition={spring}>
-              <HugeiconsIcon icon={SmartPhone01Icon} size={16} strokeWidth={1.6} /> iPhone
+              <Icon name="phone" size={16} /> iPhone
             </motion.button>
           </div>
           {!phone && <RuntimeSelect label="Resolution" value={resolution}
@@ -330,19 +326,19 @@ export default function HtmlPlayPage() {
               onClick={() => { setObservedFps(null); setReload(value => value + 1); }}
               whileTap={reduce ? undefined : { scale: .95 }}
               whileHover={reduce ? undefined : { y: -1 }} transition={spring}>
-              <HugeiconsIcon icon={ReloadIcon} size={15} strokeWidth={1.65} /> Reload
+              <Icon name="refresh" size={15} /> Reload
             </motion.button>
             <motion.button type="button"
               onClick={() => { void toggleFullscreen(); }}
               whileTap={reduce ? undefined : { scale: .95 }}
               whileHover={reduce ? undefined : { y: -1 }} transition={spring}>
-              <HugeiconsIcon icon={Maximize01Icon} size={15} strokeWidth={1.65} />
+              <Icon name="maximize" size={15} />
               {nativeFullscreen ? 'Exit fullscreen' : resumeFullscreen ? 'Resume fullscreen' : 'Fullscreen'}
             </motion.button>
             {LOCAL && <motion.a href="/"
               whileTap={reduce ? undefined : { scale: .95 }}
               whileHover={reduce ? undefined : { y: -1 }} transition={spring}>
-              <HugeiconsIcon icon={ArrowLeft01Icon} size={15} strokeWidth={1.65} /> Editor
+              <Icon name="back" size={15} /> Editor
             </motion.a>}
           </div>
         </motion.div>}

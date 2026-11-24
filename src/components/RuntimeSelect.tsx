@@ -1,8 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { HugeiconsIcon } from '@hugeicons/react';
-import { ArrowDown01Icon, Tick01Icon } from '@hugeicons/core-free-icons';
+import { Icon } from './Icons';
 
 export type RuntimeOption<T extends string | number> = {
   value: T; label: string;
@@ -130,7 +129,7 @@ export default function RuntimeSelect<T extends string | number>({
         whileTap={reduce ? undefined : { scale: .985 }}
         transition={{ duration: reduce ? 0 : .12 }}>
         <span>{option.label}</span>
-        {option.value === value && <HugeiconsIcon icon={Tick01Icon} size={15} strokeWidth={1.75} />}
+        {option.value === value && <Icon name="check" size={15} />}
       </motion.button>)}
     </motion.div>}
   </AnimatePresence>;
@@ -148,7 +147,7 @@ export default function RuntimeSelect<T extends string | number>({
         <span id={id + '-value'}>{options[selected]?.label}</span>
         <motion.span className="html-runtime-chevron" animate={{ rotate: open ? 180 : 0 }}
           transition={{ duration: reduce ? 0 : .18, ease: [0.22, 1, 0.36, 1] }}>
-          <HugeiconsIcon icon={ArrowDown01Icon} size={14} strokeWidth={1.7} />
+          <Icon name="caretDown" size={14} />
         </motion.span>
       </motion.button>
     </div>

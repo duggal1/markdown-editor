@@ -1,3 +1,8 @@
+import desktopGlyph from '@phosphor-icons/core/assets/regular/desktop.svg?raw';
+import phoneGlyph from '@phosphor-icons/core/assets/regular/device-mobile.svg?raw';
+import caretDownGlyph from '@phosphor-icons/core/assets/regular/caret-down.svg?raw';
+import refreshGlyph from '@phosphor-icons/core/assets/regular/arrow-clockwise.svg?raw';
+import maximizeGlyph from '@phosphor-icons/core/assets/regular/arrows-out.svg?raw';
 import sidebarGlyph from '@phosphor-icons/core/assets/regular/sidebar-simple.svg?raw';
 import searchGlyph from '@phosphor-icons/core/assets/regular/magnifying-glass.svg?raw';
 import plusGlyph from '@phosphor-icons/core/assets/regular/plus.svg?raw';
@@ -52,6 +57,11 @@ import gripGlyph from '@phosphor-icons/core/assets/regular/dots-six-vertical.svg
 
 // All markup is imported at build time from Phosphor; never interpolate user text.
 const glyphs = {
+  desktop: desktopGlyph,
+  phone: phoneGlyph,
+  caretDown: caretDownGlyph,
+  refresh: refreshGlyph,
+  maximize: maximizeGlyph,
   sidebar: sidebarGlyph,
   search: searchGlyph,
   plus: plusGlyph,
