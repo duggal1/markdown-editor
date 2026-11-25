@@ -212,3 +212,25 @@ assert.match(app, /verifyHostedHtml\(current.id\)/,
 assert.match(player, /const PUBLIC_PREFIX = PATH\[0\] === 'slug' \? '\/slug\/' : '\/play\/'/,
   'Hosted subroutes must stay scoped under the current public URL prefix.');
 console.log('HTML hosting, 10MB chunking, route reload, safety, runtime, and exact iPhone SVG tests passed.');
+
+const viewportModule = { exports: {} };
+const viewportSource = readFileSync(new URL('../src/lib/deviceViewport.ts', import.meta.url), 'utf8');
+runInNewContext(ts.transpileModule(viewportSource, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText, { module: viewportModule, exports: viewportModule.exports });
+const { tabletViewport, fitDevice } = viewportModule.exports;
+const portrait = tabletViewport('portrait');
+const landscape = tabletViewport('landscape');
+assert.equal(portrait.width, 820);
+assert.equal(portrait.height, 1180);
+assert.equal(landscape.width, 1180);
+assert.equal(landscape.height, 820);
+assert.equal(portrait.outerWidth, 844);
+assert.equal(portrait.outerHeight, 1204);
+assert.equal(fitDevice(2000, 2000, 844, 1204), 1);
+const scale = fitDevice(390, 844, 844, 1204);
+assert.ok(844 * scale <= 366 && 1204 * scale <= 820);
+assert.match(player, /width: tabletSize.width, height: tabletSize.height/);
+assert.match(player, /setFrameRoute\(currentRoute\(\)\);\s*setDevice\(next\)/);
+assert.match(player, /label="Orientation"/);
+assert.match(player, /name="tablet"/);
