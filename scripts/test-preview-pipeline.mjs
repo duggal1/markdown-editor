@@ -14,11 +14,18 @@ runInNewContext(transpile('src/lib/previewChunks.ts'), {
   module: chunks, exports: chunks.exports,
 });
 
+const codeModule = { exports: {} };
+runInNewContext(transpile('src/lib/code.ts'), {
+  module: codeModule, exports: codeModule.exports,
+  require: () => ({ looksLikeHtml: () => false }),
+});
+
 const pipeline = { exports: {} };
 runInNewContext(transpile('src/lib/previewPipeline.ts'), {
   module: pipeline, exports: pipeline.exports,
   require: (name) => {
     if (name === './previewChunks') return chunks.exports;
+    if (name === './code') return codeModule.exports;
     throw new Error('Unexpected import ' + name);
   },
 });
@@ -92,11 +99,6 @@ for (const hex of ['#ff0000', '#00ff00', '#0000ff', '#123456', '#000000', '#ffff
   const { h, s, v, a } = hexToHsv(hex);
   assert.equal(hsvToHex(h, s, v, hex.length === 9 ? a : undefined), hex);
 }
-const codeModule = { exports: {} };
-runInNewContext(transpile('src/lib/code.ts'), {
-  module: codeModule, exports: codeModule.exports,
-  require: () => ({ looksLikeHtml: () => false }),
-});
 assert.equal(codeModule.exports.detectRawCode('<svg/>'), 'svg');
 assert.equal(codeModule.exports.detectRawCode('<?xml version="1.0"?><svg><style>rect{fill:#abc}</style></svg>'), 'svg');
 const svgMarkdown = ('Paragraph\n\n').repeat(1800) + '<svg>\n\n' + '  <rect fill="#123456"/>\n\n'.repeat(300) + '</svg>\n\nAfter.';
@@ -152,3 +154,22 @@ assert.equal(dynamicColors.length, 2, 'Inherited references must not merge with 
 assert.equal(dynamicColors[0].token, 'currentColor');
 assert.equal(dynamicColors[0].count, 3);
 assert.equal(replaceSvgColor(dynamicArt, dynamicColors[0], '#112233'), '<svg fill="#112233"><path stroke="#112233" fill="#171717"/><style>path { color: #112233; fill: var(--paint); }</style></svg>');
+{
+const mixed = '# Batch API\n\n'+ '\x60\x60\x60sql\nconst [page, total] = await db.batch([\n  db.$count(products),\n\x60\x60\x60\n\n], { isolation: "repeatable read" });\n\n## Metrics\n\nconst response = await db.batch([\ndb.$count(products),\n], { metrics: "us" });\nconsole.log(response.metrics.total);\n\n- [ ] Task stays mapped';
+const fixed = buildPreviewSections(mixed);
+assert.match(fixed.chunks.join(''), /\x60{3}javascript\nconst \[page, total\][\s\S]*?\], \{ isolation: "repeatable read" \}\);\n\x60{3}/);
+assert.ok(fixed.sourceLineMaps);
+const taskIndex = fixed.chunks[0].split('\n').findIndex(line=>line.includes('Task stays mapped'));
+assert.equal(fixed.sourceLineMaps[0][taskIndex],mixed.split('\n').length);
+assert.equal(buildPreviewSections(fixed.chunks.join('')).sourceLineMaps,undefined,'Repair is idempotent');
+const longMixed = ('## Intro\n\nA normal paragraph remains untouched.\n\n').repeat(600)+mixed;
+const longFixed=buildPreviewSections(longMixed);
+assert.ok(longFixed.chunks.length>1);
+const repairedChunk=longFixed.chunks.find(chunk=>chunk.includes('const [page, total]'));
+assert.ok(repairedChunk.includes('isolation: "repeatable read"'));
+assert.match(css,/--code-bg:#111111/);
+assert.doesNotMatch(css,/\.markdown-preview \.code-language,/);
+assert.match(previewSource,/function CodeLanguageLabel/);
+assert.match(previewSource,/label: 'JavaScript', icon: 'fileJs'/);
+assert.match(previewSource,/label: 'TypeScript', icon: 'fileTs'/);
+}

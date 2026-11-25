@@ -1,7 +1,7 @@
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
-import { detectRawCode } from './code';
+import { detectRawCode, repairMixedCode } from './code';
 import hljs from 'highlight.js/lib/common';
 import swift from 'highlight.js/lib/languages/swift';
 import rust from 'highlight.js/lib/languages/rust';
@@ -285,7 +285,7 @@ export function parsePdfMarkdown(markdown: string): MdNode {
   const source = language && withoutFrontmatter.length < 2_000_000
     ? '\x60\x60\x60' + language + '\n' + withoutFrontmatter.replace(/\n$/, '') +
       '\n\x60\x60\x60'
-    : withoutFrontmatter;
+    : repairMixedCode(withoutFrontmatter).markdown;
   return unified().use(remarkParse).use(remarkGfm).parse(source) as unknown as MdNode;
 }
 

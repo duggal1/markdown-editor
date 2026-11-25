@@ -195,3 +195,27 @@ assert.equal(detectRawCode('def hello():\n    print("Hi")\n'), 'python');
 assert.equal(detectRawCode('SELECT id FROM products;'), 'sql');
 
 console.log('Auto Markdown regression cases passed.');
+{
+const { repairMixedCode } = codeModule.exports;
+const fence = '\x60\x60\x60';
+const isolation = [ 'const [page, total] = await db.batch([', '  db.select().from(products).orderBy(products.sku).limit(25),', '  db.$count(products),', "], { isolation: 'repeatable read', readOnly: true });" ];
+const metrics = [ 'const response = await db.batch([', 'db.$count(products),', 'db.$count(stockReceipts),', "], { metrics: 'us' });", 'console.log(response.metrics.total, response.metrics.roundTrips);' ];
+const bulk = [ 'const updated = await db.bulkUpdate(products, [', "  { sku: 'usb-c-hub', name: 'USB-C Hub', stock: 40 },", "  { sku: 'usb-c-adapter', name: 'USB-C Adapter', stock: 75 },", "  { sku: 'usb-c-charger', name: 'USB-C Charger', stock: 12 },", '], { by: products.sku });', 'console.log(updated.rowCount); // 2 when the charger SKU is missing' ];
+const broken = ['# Batch API','','## Isolation','','Use isolation to control which changes from other transactions each query can see.','',fence+'sql',...isolation.slice(0,-1),fence,'',isolation.at(-1),'','Set readOnly: true to run a read-only transaction.','','## Metrics','','Set metrics to measure the batch.','',...metrics,'','Use metrics: true for fractional milliseconds.','','## bulkUpdate','',fence+'javascript',...bulk.slice(0,4),fence,'',...bulk.slice(4),'','Unmatched keys are skipped.'].join('\n');
+const normalized = repairMixedCode(broken).markdown;
+const actualBlocks = [...normalized.matchAll(/\x60{3}javascript\n([\s\S]*?)\n\x60{3}/g)].map(m=>m[1]);
+assert.equal(actualBlocks.length,3);
+assert.equal(actualBlocks[0],isolation.join('\n'));
+assert.equal(actualBlocks[1],metrics.join('\n'));
+assert.equal(actualBlocks[2],bulk.join('\n'));
+assert.ok(normalized.includes('Set readOnly: true to run a read-only transaction.'));
+assert.ok(normalized.includes('Unmatched keys are skipped.'));
+assert.equal(repairMixedCode(normalized).markdown,normalized);
+const correctSql = '# SQL\n\n'+fence+'sql\nSELECT id FROM products;\n'+fence+'\n\nUse the result.';
+assert.equal(repairMixedCode(correctSql).markdown,correctSql);
+const intentionalPartial = '# Example\n\n'+fence+'javascript\nconst data = [\n'+fence+'\n\nThis is intentionally incomplete.';
+assert.equal(repairMixedCode(intentionalPartial).markdown,intentionalPartial);
+const ordinary = '# Docs\n\nUse db.batch() to run statements.\n\n- const example = 42;\n\nA normal sentence.';
+assert.equal(repairMixedCode(ordinary).markdown,ordinary);
+assert.equal(repairMixedCode('# Prose\n\nconst text is a reserved word in this explanation.').markdown,'# Prose\n\nconst text is a reserved word in this explanation.');
+}

@@ -33,13 +33,153 @@ function codeContinuation(line: string): boolean {
     || (/^\s+/.test(line) && !proseLine(t)));
 }
 
+// Narrow, deterministic repair for copied JS/TS documentation. Only strong
+// declarations/calls are anchors; an unmatched expression must be closed by
+// an immediately adjacent code-shaped continuation. Never synthesize code.
+const jsDeclaration = /^(?:export\s+)?(?:const|let|var)\s+(?:[\w$]+|\[[^\]]+\]|\{[^}]+\})\s*(?::[^=]+)?=(?!=)/;
+const jsCall = /^(?:await\s+)?(?:console\.[\w$]+|[\w$]+(?:\.[\w$]+)+)\s*\([^]*\)\s*;\s*(?:\/\/.*)?$/;
+const jsAnchor = (line: string) => jsDeclaration.test(line.trim()) || jsCall.test(line.trim());
+const jsTail = (line: string) => /^[\s]*[}\])]/.test(line);
+const fenceMarker = /^ {0,3}(\x60{3,}|~{3,})(.*)$/;
+
+type Balance = { stack: string[]; quote: string; comment: boolean; invalid: boolean };
+function newBalance(): Balance { return { stack: [], quote: '', comment: false, invalid: false }; }
+function scanBalance(state: Balance, line: string) {
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i], next = line[i + 1];
+    if (state.comment) {
+      if (c === '*' && next === '/') { state.comment = false; i++; }
+      continue;
+    }
+    if (state.quote) {
+      if (c === '\\') { i++; continue; }
+      if (c === state.quote) state.quote = '';
+      continue;
+    }
+    if (c === '/' && next === '/') break;
+    if (c === '/' && next === '*') { state.comment = true; i++; continue; }
+    if (c === "'" || c === '"' || c === '\x60') { state.quote = c; continue; }
+    if (c === '(' || c === '[' || c === '{') state.stack.push(c);
+    else if (c === ')' || c === ']' || c === '}') {
+      if (state.stack.pop() !== ({ ')': '(', ']': '[', '}': '{' } as Record<string,string>)[c]) {
+        state.invalid = true; return;
+      }
+    }
+  }
+}
+function settled(state: Balance) { return !state.invalid && !state.stack.length && !state.quote && !state.comment; }
+function jsCodeLine(line: string): boolean {
+  const t = line.trim();
+  return jsAnchor(t) || jsTail(t) || /^(?:\.[\w$]+\s*\(|\/\/|\/\*|\*\/|(?:if|for|while)\s*\(|[\w$]+(?:\.[\w$]+)*\s*\(|[\w$]+\s*:|[{\[])/.test(t);
+}
+function jsLanguage(body: string): 'javascript' | 'typescript' {
+  return /^(?:export\s+)?(?:const|let|var)\s+[\w$]+\s*:\s*[^=\n]+=/m.test(body)
+    ? 'typescript' : 'javascript';
+}
+export type RepairedMixedCode = { markdown: string; sourceLines?: number[] };
+
+/** Read-only normalization with original 1-based source line mapping.
+ * Valid fences remain byte-identical. No DOM, parser dependency or AI calls.
+ */
+export function repairMixedCode(source: string): RepairedMixedCode {
+  if (!source.trim() || source.length > 2_000_000 || detectRawCode(source)) return { markdown: source };
+  const lines = source.split(/\r\n|\n|\r/);
+  const output: string[] = [], sourceLines: number[] = [];
+  let changed = false;
+  const push = (value: string, line: number) => { output.push(value); sourceLines.push(line + 1); };
+  const blankBefore = (line: number) => { if (output.length && output[output.length - 1].trim()) push('', line); };
+  const blankAfter = (line: number) => { if (lines[line]?.trim()) push('', line); };
+  const isBoundary = (line: string) => /^ {0,3}(?:#{1,6}\s|[-+*]\s|>\s|\|)/.test(line);
+  let inHtml = false;
+  let listContext = false;
+  for (let i = 0; i < lines.length;) {
+    const line = lines[i], marker = fenceMarker.exec(line);
+    // Raw HTML and nested Markdown containers are deliberately not repaired.
+    if (!inHtml && /^ {0,3}<(?:div|table|details|section|article|pre|script|style|svg)(?:\s|>)/i.test(line)) inHtml = true;
+    if (inHtml) {
+      push(line,i++);
+      if (/<\/(?:div|table|details|section|article|pre|script|style|svg)\s*>|\/>\s*$/i.test(line)) inHtml = false;
+      continue;
+    }
+    if (/^ {0,3}(?:[-+*]|\d+[.)])\s+/.test(line)) listContext = true;
+    else if (line.trim() && !/^\s/.test(line)) listContext = false;
+    if (marker) {
+      const close = (j: number) => {
+        const m = fenceMarker.exec(lines[j]);
+        return !!m && m[1][0] === marker[1][0] && m[1].length >= marker[1].length && !m[2].trim();
+      };
+      let end = i + 1;
+      while (end < lines.length && !close(end)) end++;
+      if (end >= lines.length) { while(i < lines.length) push(lines[i],i++); break; }
+      const lang = marker[2].trim().toLowerCase();
+      const body = lines.slice(i+1,end);
+      const first = body.find(x => x.trim()) || '';
+      const recognized = /^(?:js|javascript|ts|typescript|jsx|tsx|sql)?$/.test(lang) && jsDeclaration.test(first.trim());
+      if (recognized && !listContext && !/^\s/.test(line)) {
+        const state = newBalance();
+        body.forEach(x => scanBalance(state,x));
+        let tail = end+1;
+        while (tail < lines.length && !lines[tail].trim() && tail-end <= 3) tail++;
+        let last = tail;
+        // A missing closing expression is strong evidence that the fence is premature.
+        if (!state.invalid && state.stack.length && !state.quote && !state.comment && jsTail(lines[tail] || '')) {
+          while(last < lines.length && last-tail < 64 && jsCodeLine(lines[last]) && !isBoundary(lines[last])) {
+            scanBalance(state,lines[last++]);
+            if (state.invalid || settled(state)) break;
+          }
+          if (settled(state)) {
+            while(last < lines.length && jsCall.test(lines[last].trim())) last++;
+            const repairedLang = lang === 'sql' || !lang ? jsLanguage(body.join('\n')) : marker[2].trim();
+            push(marker[1]+repairedLang,i);
+            for(let j=i+1;j<end;j++) push(lines[j],j);
+            for(let j=tail;j<last;j++) push(lines[j],j);
+            push(lines[end],last-1); blankAfter(last);
+            changed = true; i = last; continue;
+          }
+        }
+        if (lang === 'sql' || !lang) {
+          push(marker[1]+jsLanguage(body.join('\n')),i);
+          for(let j=i+1;j<=end;j++) push(lines[j],j);
+          changed = true; i = end+1; continue;
+        }
+      }
+      while(i<=end) push(lines[i],i++);
+      continue;
+    }
+    // Never infer a block inside a list or from indented prose, and require a
+    // declaration at a paragraph boundary before interpreting unfenced text.
+    if (!listContext && !/^\s/.test(line) && jsDeclaration.test(line) && (i===0 || !lines[i-1].trim())) {
+      const state = newBalance();
+      let end = i;
+      while(end < lines.length && end-i < 512 && lines[end].trim() && !isBoundary(lines[end]) && !fenceMarker.test(lines[end])) {
+        if (end>i && !jsCodeLine(lines[end])) break;
+        scanBalance(state,lines[end++]);
+        if (state.invalid) break;
+      }
+      if (end>i && settled(state) && (end-i>1 || /;\s*$/.test(line))) {
+        const body = lines.slice(i,end).join('\n');
+        let width = 3;
+        for(const m of body.matchAll(/\x60+/g)) width = Math.max(width,m[0].length+1);
+        const delimiter = '\x60'.repeat(width);
+        blankBefore(i); push(delimiter+jsLanguage(body),i);
+        for(let j=i;j<end;j++) push(lines[j],j);
+        push(delimiter,end-1); blankAfter(end);
+        changed=true; i=end; continue;
+      }
+    }
+    push(line,i++);
+  }
+  return changed ? { markdown: output.join('\n'), sourceLines } : { markdown: source };
+}
+
 /** Recover code islands and tab-separated tables without changing snippet text. */
 export function normalizeMixedContent(source: string): string {
   if (!source.trim() || source.length > 1_000_000 || detectRawCode(source)) return source;
-  const lines = source.replace(/\r\n?/g, '\n').split('\n');
+  const repaired = repairMixedCode(source).markdown;
+  const lines = repaired.replace(/\r\n?/g, '\n').split('\n');
   const out: string[] = [];
   let fence: { char: string; width: number } | null = null;
-  let changed = false;
+  let changed = repaired !== source;
   const blank = () => { if (out.length && out[out.length - 1].trim()) out.push(''); };
   const cells = (line: string) => line.includes('\t') && !/^\s/.test(line) ? line.split('\t').map(cell => cell.trim()) : [];
   for (let i = 0; i < lines.length;) {
@@ -115,7 +255,7 @@ export function detectRawCode(source: string): CodeLanguage | null {
   if (/\bfn\s+\w+\s*\(|\blet\s+mut\s+\w+|\bimpl\s+\w+\s*\{/.test(head)) return 'rust';
   if (/\bpackage\s+main\b|\bfunc\s+main\s*\(\)|\bimport\s*\(\s*"/.test(head)) return 'go';
   if (/\b(?:interface|type)\s+\w+\s*[={<]|:\s*(?:string|number|boolean|unknown|never)\b/.test(head)) return 'typescript';
-  if (/^\s*(?:(?:export|default|async)\s+)*(?:function\s+[\w$]+|(?:const|let|var)\s+[\w$]+\s*=|class\s+[\w$]+|import\s+[^\n]+\s+from\s*['"])/m.test(head)
+  if (/^\s*(?:(?:export|default|async)\s+)*(?:function\s+[\w$]+|(?:const|let|var)\s+(?:[\w$]+|\[[^\]\n]+\]|\{[^}\n]+\})\s*=|class\s+[\w$]+|import\s+[^\n]+\s+from\s*['"])/m.test(head)
       && /(?:\{|=>|\breturn\b|;)/.test(head)) return 'javascript';
   if (/\b(?:const|let|function|export|import)\b/.test(head)
       && /(?:=>|console\.|\breturn\b|from\s*['"]|;\s*(?:\n|$))/.test(head)) return 'javascript';
