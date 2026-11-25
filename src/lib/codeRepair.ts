@@ -70,8 +70,9 @@ function repairPython(source: string): string {
 /** Detect HTML/Python even when wrapper junk defeated normal code detection. */
 export function repairLanguage(source: string, explicit?: string | null): RepairLanguage | null {
   const declared = explicit?.toLowerCase();
-  if (declared === 'html' || declared === 'python') return declared;
   const detected = detectRawCode(source);
+  if (declared === 'svg' || detected === 'svg') return null;
+  if (declared === 'html' || declared === 'python') return declared;
   if (detected === 'html' || detected === 'python') return detected;
   if (safeHtmlStart(source) >= 0) return 'html';
   const first = source.slice(0, 8192).split(/\r?\n/);

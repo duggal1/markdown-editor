@@ -224,9 +224,14 @@ function colorCodeHtml(value: string, html: string): string {
   }
   return template.innerHTML;
 }
+/** SVG is artwork, never an accompanying source viewer. The editor retains its source. */
+function SvgCanvas({ source }: { source: string }) {
+  const theme = useContext(ThemeContext);
+  const document = useMemo(() => svgPreviewDocument(source, theme), [source, theme]);
+  return <div className="svg-preview"><iframe title="SVG preview" sandbox="" referrerPolicy="no-referrer" srcDoc={document} /></div>;
+}
 function VirtualCodeBlock({ code, rawLanguage }: { code: string; rawLanguage: string }) {
   const ref = useRef<HTMLPreElement>(null);
-  const theme = useContext(ThemeContext);
   const language = aliases[rawLanguage.toLowerCase()] || rawLanguage.toLowerCase();
   const lines = useMemo(() => code.split('\n'), [code]);
   const { copied, copy } = useCopy(code);
@@ -236,16 +241,13 @@ function VirtualCodeBlock({ code, rawLanguage }: { code: string; rawLanguage: st
     estimateSize: () => 22,
     overscan: 12,
   });
-  const svgDocument = useMemo(() => isSvgCode(code, rawLanguage)
-    ? svgPreviewDocument(code, theme) : '', [code, rawLanguage, theme]);
   return <div className="code-block virtual-code-block">
     <div className="code-header"><span className="code-language"><span className="language-dot" />{rawLanguage || 'code'}</span>
       <button type="button" className="code-copy" onClick={() => { void copy(); }}>
         <Icon name={copied ? 'check' : 'copy'} size={13} />{copied ? 'Copied' : 'Copy'}
       </button>
     </div>
-    {svgDocument && <div className="svg-preview"><iframe title="SVG preview" sandbox="" srcDoc={svgDocument} /></div>}
-    {rawLanguage.toLowerCase() === 'html' && !isSvgCode(code, rawLanguage) && <HtmlCanvas source={code} embedded />}
+    {rawLanguage.toLowerCase() === 'html' && <HtmlCanvas source={code} embedded />}
     <pre ref={ref} className="code-content virtual-code-scroll" tabIndex={0}>
       <code className="virtual-code-canvas" style={{ height: virtualizer.getTotalSize() }}>
         {virtualizer.getVirtualItems().map(item => <span key={item.key} className="virtual-code-row"
@@ -258,14 +260,15 @@ function VirtualCodeBlock({ code, rawLanguage }: { code: string; rawLanguage: st
   </div>;
 }
 function CodeBlock({ code, rawLanguage }: { code: string; rawLanguage: string }) {
-  const theme = useContext(ThemeContext);
+  if (isSvgCode(code, rawLanguage)) return <SvgCanvas source={code} />;
+  return <SourceCodeBlock code={code} rawLanguage={rawLanguage} />;
+}
+function SourceCodeBlock({ code, rawLanguage }: { code: string; rawLanguage: string }) {
   const { copied, copy } = useCopy(code);
   const language = aliases[rawLanguage.toLowerCase()] || rawLanguage.toLowerCase();
   const big = code.length > 20000;
   const highlighted = useMemo(() => big ? '' : colorCodeHtml(code, highlight(code, language, 20000)), [code, language, big]);
   const rows = useMemo(() => big ? 0 : code.split('\n').length, [code, big]);
-  const svgDocument = useMemo(() => !big && isSvgCode(code, rawLanguage)
-    ? svgPreviewDocument(code, theme) : '', [code, rawLanguage, big, theme]);
   // Large code is a fixed-height, line-virtualized source viewer instead of thousands of DOM nodes.
   if (big) return <VirtualCodeBlock code={code} rawLanguage={rawLanguage} />;
   return <div className="code-block">
@@ -275,8 +278,7 @@ function CodeBlock({ code, rawLanguage }: { code: string; rawLanguage: string })
         <Icon name={copied ? 'check' : 'copy'} size={13} />{copied ? 'Copied' : 'Copy'}
       </button>
     </div>
-    {svgDocument && <div className="svg-preview"><iframe title="SVG preview" sandbox="" srcDoc={svgDocument} /></div>}
-    {rawLanguage.toLowerCase() === 'html' && !isSvgCode(code, rawLanguage) && <HtmlCanvas source={code} embedded />}
+    {rawLanguage.toLowerCase() === 'html' && <HtmlCanvas source={code} embedded />}
     <pre className="code-content" tabIndex={0}>
       {rows <= 400 && <span className="code-gutter" aria-hidden="true">
         {Array.from({ length: rows }, (_, index) => <span key={index}>{index + 1}</span>)}
@@ -531,10 +533,11 @@ function MarkdownPreview({ markdown, sourceLanguage, scrollRef, theme, onToggleT
   const detected = useMemo(() => detectRawCode(value) === 'svg' ? 'svg' : sourceLanguage && sourceLanguage !== 'markdown'
     ? sourceLanguage : detectRawCode(value), [value, sourceLanguage]);
   const html = detected === 'html';
+  const svg = detected === 'svg';
   const virtual = !detected && value.length > 18000;
   useEffect(() => {
     const scroll = scrollRef.current;
-    if (!scroll || virtual || html) return;
+    if (!scroll || virtual || html || svg) return;
     const onPosition = (event: Event) => {
       const { line, total, kind } = (event as PositionEvent).detail;
       const code = scroll.querySelector<HTMLElement>('.virtual-code-scroll');
@@ -563,9 +566,11 @@ function MarkdownPreview({ markdown, sourceLanguage, scrollRef, theme, onToggleT
       scroll.removeEventListener('flow-preview-user-scroll', cancel);
       cancelNavigation(scroll);
     };
-  }, [detected, scrollRef, virtual, html, value]);
+  }, [detected, scrollRef, virtual, html, svg, value]);
   const body = !value.trim()
     ? <article className="markdown-preview"><p className="empty-preview">Nothing to preview.</p></article>
+    : svg
+      ? <article className="markdown-preview preview-is-svg"><SvgCanvas source={value} /></article>
     : html
       ? <HtmlCanvas source={value} scrollRef={scrollRef} />
     : detected

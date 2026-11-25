@@ -95,7 +95,7 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
       <button type="button" className="share-done" onClick={onClose} disabled={operation === 'revoke'}>Done</button>
     </>}>
     <div className="share-access">
-      <Icon name="globe" size={20} />
+      <Icon name="globe" size={17} />
       <div className="share-access-text">
         <strong>{record ? 'Anyone with the link' : 'Share a read-only link'}</strong>
         <p id="share-dialog-description">{record ? 'Can view · Cannot edit' : 'Only this page will be visible to link holders.'}</p>
@@ -105,8 +105,12 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
       <div className="share-url-row">
         <Icon name="link" size={15} />
         <input aria-label="Share link" value={link} readOnly onFocus={event => event.currentTarget.select()} />
-        <button type="button" className="share-copy" onClick={() => { void copyLink(); }} disabled={busy}>
-          <Icon name="link" size={14} /><span>{copied ? 'Copied' : 'Copy link'}</span>
+        <button type="button" className="share-copy" aria-label={copied ? 'Copied' : 'Copy link'} onClick={() => { void copyLink(); }} disabled={busy}>
+          <span className="share-copy-labels" data-copied={copied} aria-hidden="true">
+            <span className="share-copy-idle">Copy link</span>
+            <span className="share-copy-success"><Icon name="check" size={14} />Copied</span>
+          </span>
+          <span className="settings-sr-only" role="status">{copied ? 'Copied' : 'Copy link'}</span>
         </button>
       </div>
       <p className="share-status" role="status" aria-live="polite">

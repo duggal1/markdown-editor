@@ -1546,7 +1546,7 @@ async function eraseDocument(doc: FlowDocument) {
           </motion.button>
           <motion.button {...pressMotion} type="button" className="square-button theme-toggle settings-trigger"
             title="Settings" aria-label="Settings" aria-haspopup="dialog" aria-expanded={settingsOpen}
-            onClick={() => setSettingsOpen(true)}><Icon name="settings" size={18} /></motion.button>
+            onClick={() => setSettingsOpen(true)}><Icon name="sliders" size={17} /></motion.button>
           <input ref={fileRef} type="file" hidden multiple onChange={onFileSelected} aria-label="Import files" />
         </div>
       </header>

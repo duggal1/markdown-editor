@@ -58,7 +58,7 @@ assert.match(css, /\.markdown-preview :not\(pre\) > code,[\s\S]*?\.markdown-prev
   'Inline-code badges and orange syntax tokens must use the same Tailwind shade.');
 assert.match(css, /:root\[data-theme='light'\] \.markdown-preview \{/,
   'Preview accents and table borders must have a separate light theme.');
-assert.match(css, /--preview-table-border:#303030/,
+assert.match(css, /--preview-table-border:#1f1f1f/,
   'Dark-mode table grid must be subtle but complete.');
 assert.match(css, /--preview-table-border:#dedede/,
   'Light-mode table grid must remain visible and neutral.');
@@ -95,3 +95,12 @@ const svgSections = buildPreviewSections(svgMarkdown).chunks;
 assert.equal(svgSections.join(''), svgMarkdown);
 assert.equal(svgSections.findIndex(c => c.includes('<svg>')), svgSections.findIndex(c => c.includes('</svg>')));
 console.log('SVG classification, chunk integrity, hex validation and HSV round trips passed.');
+const previewSource = readFileSync(new URL('../src/components/MarkdownPreview.tsx', import.meta.url), 'utf8');
+const svgSource = readFileSync(new URL('../src/lib/svgPreview.ts', import.meta.url), 'utf8');
+assert.match(previewSource, /if \(isSvgCode\(code, rawLanguage\)\) return <SvgCanvas source=\{code\} \/>/);
+assert.match(previewSource, /: svg\s*\? <article className="markdown-preview preview-is-svg"><SvgCanvas source=\{value\} \/>/);
+assert.doesNotMatch(previewSource, /svgDocument &&/);
+assert.match(previewSource, /title="SVG preview" sandbox=""/);
+assert.match(svgSource, /root\.hasAttribute\('color'\)/);
+assert.match(svgSource, /namespaceURI === SVG_NS/);
+assert.doesNotMatch(svgSource, /repeating-conic-gradient/);
