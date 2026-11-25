@@ -80,7 +80,8 @@ assert.equal(touchRecent(history, '0'), history);
 assert.deepEqual(restoreRecent(['4', '4', 'missing', 2], [docs[0], docs[4]]), ['4', '0']);
 assert.deepEqual(rankDocuments(docs.slice(0, 3), []).map(doc => doc.id), ['2', '1', '0']);
 assert.match(tree, /className="workspace-root" role="treeitem"/);
-assert.match(tree, /tree\.entries\.map/);
+assert.match(tree, /tree\.roots\.map\(doc => row\(doc, 1\)\)/);
+assert.match(tree, /tree\.topLevelFolders\.map\(folder =>/);
 assert.match(tree, /branchRank\(child\.id\)/);
 assert.match(app, /rankDocuments\(docs, recentIds\)/);
 assert.match(app, /finishVisit\(ids, previous, id, live.current.has\(previous\)\)/);
@@ -111,3 +112,19 @@ assert.match(app, /Date.now\(\) \+ EMPTY_DRAFT_IDLE_MS/);
 assert.match(app, /removeEmptyDraft\(doc\)/);
 assert.match(read('src/lib/store.ts'), /sameEmptyDraft\(current, expected\)/);
 console.log('Departure-only recency and protected empty-draft eligibility passed.');
+
+ // Verify sibling folder rendering is outside the protected root, while
+ // documents stay scoped to their persisted folder ID.
+const rootStart = tree.indexOf('<div className="workspace-root"');
+const folderStart = tree.indexOf('tree.topLevelFolders.map(folder =>');
+assert.ok(folderStart > 0 && folderStart < rootStart);
+assert.match(tree.slice(folderStart, rootStart), /workspace-sibling-folder/);
+assert.match(tree.slice(folderStart, rootStart), /tree\.children\.get\('folder:' \+ folder\.id\)/);
+assert.match(tree.slice(folderStart, rootStart), /row\(doc, 1\)/);
+assert.doesNotMatch(tree.slice(rootStart), /topLevelFolders\.map/);
+assert.match(tree.slice(rootStart), /tree\.roots\.map/);
+assert.match(tree, /onNewDocument\(folder\.workspaceId, folder\.id\)/);
+assert.match(tree, /onDrop=\{e => dropped\(e, undefined, folder\.id\)\}/);
+assert.match(app, /const targetFolder = parent \? parent\.folderId : folder\?\.id/);
+assert.match(app, /setFolders\(items => \[\.\.\.items, folder\]\);\s*setQuery\(''\);\s*setNewFolderId\(folder\.id\)/);
+console.log('Top-level sibling folder hierarchy and explicit destination routing passed.');
