@@ -437,12 +437,8 @@ function VirtualMarkdown({ markdown, scrollRef }: {
         locatePreview(scroll, line, kind, section);
         return;
       }
-      // Jump to the nearest virtual chunk immediately, then land on its
-      // exact source anchor after React mounts it. One frame was insufficient
-      // during heavy Markdown rendering, leaving the preview behind.
-      cancelNavigation(scroll);
-      virtualizer.scrollToIndex(index, { align: 'start' });
-      if (settle !== null) cancelAnimationFrame(settle);
+      // Explicit navigation eases to an estimated virtual offset, then aligns
+      // the measured heading once mounted. Ordinary sync stays immediate.
       let attempts = 0;
       const settleWhenMounted = () => {
         settle = null;
@@ -463,7 +459,19 @@ function VirtualMarkdown({ markdown, scrollRef }: {
           settle = requestAnimationFrame(settleWhenMounted);
         }
       };
-      settle = requestAnimationFrame(settleWhenMounted);
+      const estimated = kind === 'jump' ? virtualizer.getOffsetForIndex(index, 'start')?.[0] : undefined;
+      if (estimated !== undefined) {
+        navigateScroll(scroll, estimated, true, true, () => {
+          if (latest?.line !== line) return;
+          // Measurement may shift the estimate while traversing virtual chunks.
+          if (!scroll.querySelector(selector)) virtualizer.scrollToIndex(index, { align: 'start' });
+          settle = requestAnimationFrame(settleWhenMounted);
+        });
+      } else {
+        cancelNavigation(scroll);
+        virtualizer.scrollToIndex(index, { align: 'start' });
+        settle = requestAnimationFrame(settleWhenMounted);
+      }
     }
     function onPosition(event: Event) {
       latest = (event as PositionEvent).detail;

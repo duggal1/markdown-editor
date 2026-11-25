@@ -90,6 +90,31 @@ assert.equal(mapHexOccurrences('#FF8A30', '#FF8A30', 30)[0].from, 30);
 assert.equal(mapHexOccurrences('#abc #abc', '#abc #abc', 10)[1].from, 15);
 assert.equal(mapHexOccurrences('#abc', '#def', 10)[0].from, -1);
 assert.match(previewColors, /expected = expected\.slice/);
+const previewColorModule = { exports: {} };
+runInNewContext(ts.transpileModule(previewColors, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText, {
+  module: previewColorModule, exports: previewColorModule.exports,
+  require: name => name === './hexColor' ? hexMapping.exports : { openColorPopover: () => {} },
+});
+const { createElement } = await import('react');
+const { renderToStaticMarkup } = await import('react-dom/server');
+const { default: ReactMarkdown } = await import('react-markdown');
+const { default: remarkGfm } = await import('remark-gfm');
+const { default: rehypeRaw } = await import('rehype-raw');
+const { default: rehypeSanitize } = await import('rehype-sanitize');
+const colorDocument = '# Colors\n\nOrange #FF8A30, repeat #FF8A30.\n\n| Token | Value |\n| --- | --- |\n| Shell | ' + String.fromCharCode(96) + '#000000' + String.fromCharCode(96) + ' |\n';
+const renderedColors = renderToStaticMarkup(createElement(ReactMarkdown, {
+  remarkPlugins: [remarkGfm],
+  rehypePlugins: [rehypeRaw, rehypeSanitize, [previewColorModule.exports.rehypePreviewColors, 100]],
+  children: colorDocument,
+}));
+for (const literal of ['#FF8A30', '#000000']) {
+  assert.ok(renderedColors.includes('--hex-swatch:' + literal), 'Actual swatch must render: ' + literal);
+  const at = colorDocument.indexOf(literal) + 100;
+  assert.ok(renderedColors.includes('data-flow-from="' + at + '"'), 'Source offset must survive sanitization for ' + literal + ': ' + renderedColors);
+}
+assert.ok(renderedColors.includes('data-flow-from="' + (colorDocument.lastIndexOf('#FF8A30') + 100) + '"'), 'Repeated color literals have distinct source offsets');
 const outline = read('src/components/PageOutline.tsx');
 assert.doesNotMatch(app, /id="outline-dialog"|onClick=\{openOutline\}/);
 assert.doesNotMatch(css, /#outline-dialog/);

@@ -20,14 +20,15 @@ export function cancelNavigation(scroll: HTMLElement | null | undefined): void {
   running.delete(scroll);
 }
 
-export function navigateScroll(scroll: HTMLElement, top: number, smooth = false, bounded = false): void {
+export function navigateScroll(scroll: HTMLElement, top: number, smooth = false, bounded = false, onDone?: () => void): void {
   const target = Math.max(0, Math.min(top, Math.max(0, scroll.scrollHeight - scroll.clientHeight)));
   const previous = running.get(scroll);
   if (smooth && previous && Math.abs(previous.target - target) < 2) return;
   cancelNavigation(scroll);
-  if (Math.abs(scroll.scrollTop - target) < 1) return;
+  if (Math.abs(scroll.scrollTop - target) < 1) { onDone?.(); return; }
   if (!smooth || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     scroll.scrollTop = target;
+    onDone?.();
     return;
   }
   let from = scroll.scrollTop;
@@ -48,7 +49,7 @@ export function navigateScroll(scroll: HTMLElement, top: number, smooth = false,
     // One write per display refresh. No React updates or geometry reads here.
     scroll.scrollTop = progress === 1 ? target : from + distance * navigationEase(progress);
     if (progress < 1) motion.frame = requestAnimationFrame(tick);
-    else running.delete(scroll);
+    else { running.delete(scroll); onDone?.(); }
   };
   running.set(scroll, motion);
   motion.frame = requestAnimationFrame(tick);
