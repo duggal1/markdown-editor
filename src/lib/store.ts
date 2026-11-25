@@ -44,12 +44,18 @@ function database(): Promise<IDBDatabase> {
   }).catch(error => { dbPromise = undefined; throw error; });
   return dbPromise!;
 }
-async function getAll<T>(store: 'documents' | 'workspaces' | 'folders'): Promise<T[]> {
+type WorkspaceSnapshot = { workspaces: Workspace[]; folders: Folder[]; documents: FlowDocument[] };
+/** All three stores are read from one consistent IndexedDB transaction. */
+async function readWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
   const db = await database();
   return new Promise((resolve, reject) => {
-    const request = db.transaction(store, 'readonly').objectStore(store).getAll();
-    request.onsuccess = () => resolve(request.result as T[]);
-    request.onerror = () => reject(request.error);
+    const tx = db.transaction(['workspaces', 'folders', 'documents'], 'readonly');
+    const workspaces = tx.objectStore('workspaces').getAll();
+    const folders = tx.objectStore('folders').getAll();
+    const documents = tx.objectStore('documents').getAll();
+    tx.oncomplete = () => resolve({ workspaces: workspaces.result, folders: folders.result, documents: documents.result });
+    tx.onerror = () => reject(tx.error || Error('Workspace read failed'));
+    tx.onabort = () => reject(tx.error || Error('Workspace read aborted'));
   });
 }
 async function put(store: 'documents' | 'workspaces' | 'folders', value: FlowDocument | Workspace | Folder): Promise<void> {
@@ -180,15 +186,23 @@ export async function removeWorkspaceTree(
   queueBackupDeletion('workspaces', workspaceId);
 }
 
-export async function loadWorkspace(): Promise<{ workspaces: Workspace[]; folders: Folder[]; documents: FlowDocument[] }> {
+let workspaceLoad: Promise<WorkspaceSnapshot> | undefined;
+/** Deduplicate simultaneous startup reads, including React StrictMode remounts.
+ * Do not retain a stale snapshot after completion: IndexedDB remains authoritative.
+ */
+export function loadWorkspace(): Promise<WorkspaceSnapshot> {
+  if (!workspaceLoad) {
+    workspaceLoad = loadWorkspaceOnce().finally(() => { workspaceLoad = undefined; });
+  }
+  return workspaceLoad;
+}
+async function loadWorkspaceOnce(): Promise<WorkspaceSnapshot> {
   let workspaces: Workspace[] = [];
   let folders: Folder[] = [];
   let documents: FlowDocument[] = [];
   let readError: unknown = null;
   try {
-    [workspaces, folders, documents] = await Promise.all([
-      getAll<Workspace>('workspaces'), getAll<Folder>('folders'), getAll<FlowDocument>('documents'),
-    ]);
+    ({ workspaces, folders, documents } = await readWorkspaceSnapshot());
   } catch (error) {
     // Never interpret an unreadable IndexedDB as an empty workspace: it may
     // contain every document the user has ever created.

@@ -8,6 +8,25 @@
 <link rel="icon" type="image/svg+xml" sizes="any" href="/flow.svg?v=5"/>
 <title>Flow · Markdown workspace</title>
 <script>try{var p=JSON.parse(localStorage.getItem("flow.preferences.v1")||"{}");var t=p.theme==="dark"||p.theme==="light"?p.theme:"dark";document.documentElement.dataset.theme=t;document.querySelector('meta[name="theme-color"]').content=t==="dark"?"#0a0a0a":"#f4f4f4";}catch(e){document.documentElement.dataset.theme="dark";}</script>
+<style>
+:root{color-scheme:dark;--boot-bg:#050505;--boot-sidebar:#080808;--boot-line:#1a1a1a;--boot-text:#777}
+:root[data-theme=light]{color-scheme:light;--boot-bg:#fff;--boot-sidebar:#f4f4f4;--boot-line:#e5e5e5;--boot-text:#888}
+html,body,#root{min-height:100%;margin:0;background:var(--boot-bg)}
+.flow-boot-shell{display:flex;height:100dvh;background:var(--boot-bg);color:var(--boot-text);font:12px system-ui,sans-serif;overflow:hidden}
+.flow-boot-shell aside{box-sizing:border-box;width:248px;flex:none;background:var(--boot-sidebar);padding:20px 16px;display:flex;flex-direction:column;gap:13px}
+.flow-boot-shell aside span{margin-top:20px}
+.flow-boot-shell i{display:block;background:var(--boot-line);border-radius:4px;height:8px;width:64%}
+.flow-boot-shell aside i:nth-of-type(2){width:82%}
+.flow-boot-shell aside i:nth-of-type(3){width:53%}
+.flow-boot-shell main{flex:1;min-width:0}
+.flow-boot-shell header{height:60px;display:flex;align-items:center;padding:0 30px}
+.flow-boot-shell header i{width:100px}
+.flow-boot-shell section{padding:54px 30px;max-width:760px;margin:auto;display:grid;gap:18px}
+.flow-boot-shell section i:first-child{height:22px;width:32%}
+.flow-boot-shell section i:nth-child(2){width:80%}
+.flow-boot-shell section i:nth-child(3){width:55%}
+@media(max-width:800px){.flow-boot-shell aside{display:none}}
+</style>
 </head>
-<body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body>
+<body><div id="root"><div class="flow-boot-shell" role="status" aria-label="Opening Flow"><aside aria-hidden="true"><img src="/flow.svg?v=5" width="26" height="26" alt=""><span>Private</span><i></i><i></i><i></i></aside><main aria-hidden="true"><header><i></i></header><section><i></i><i></i><i></i></section></main></div></div><script type="module" src="/src/main.tsx"></script></body>
 </html>

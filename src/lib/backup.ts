@@ -29,6 +29,7 @@ export function backupEnabled() {
 }
 export function backupStatus(): BackupState { return backupEnabled() ? (state === 'off' ? 'pending' : state) : 'off'; }
 function announce(next: BackupState) {
+  if (state === next) return;
   state = next;
   window.dispatchEvent(new CustomEvent('flow-backup-status', { detail: next }));
 }
@@ -194,9 +195,19 @@ export function queueBackupDeletion(kind: BackupKind, id: string) {
 }
 export function resumeBackup(data: Restored) {
   if (!backupEnabled()) return;
-  for (const entry of readEntries(TOMBSTONES)) queueBackupDeletion(entry.kind, entry.id);
-  for (const kind of ['workspaces', 'folders', 'documents'] as const)
-    for (const value of data[kind]) queueBackup(kind, value);
+  // Read the durable deletion journal once, not once per document.
+  // Avoid rewriting the journal for tombstones already persisted.
+  const tombstones = readEntries(TOMBSTONES);
+  const deleted = new Set(tombstones.map(key));
+  for (const entry of tombstones) pending.set(key(entry), { ...entry, value: null });
+  for (const kind of ['workspaces', 'folders', 'documents'] as const) {
+    for (const value of data[kind]) {
+      const job = { kind, id: value.id, value };
+      const id = key(job);
+      if (!deleted.has(id) && !pending.has(id) && synced.get(id) !== value) pending.set(id, job);
+    }
+  }
+  if (pending.size) { announce('pending'); schedule(); }
 }
 export function needsBackupRecovery(data: Restored) {
   if (!backupEnabled()) return false;
