@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { del, get, head, issueSignedToken, list, presignUrl, put, setTtl } from '../server/storage.js';
+import { del, get, head, headMany, issueSignedToken, list, presignUrl, put, setTtl } from '../server/storage.js';
 
 const LIMIT = 100 * 1024 * 1024;
 const LEGACY_PART = 5 * 1024 * 1024;
@@ -193,7 +193,7 @@ export default async function handler(req, res) {
       const partBytes = session.partBytes || LEGACY_PART;
       const paths = partPaths(root, session.version, session.bytes, partBytes);
       // At most 20 parts for the 100 MiB limit. Validate every part before publishing.
-      const parts = await Promise.all(paths.map(p => head(p).catch(() => null)));
+      const parts = await headMany(paths);
       if (parts.some((part, i) => !part || part.size !== Math.min(partBytes, session.bytes - i * partBytes)))
         return reply(res, 409, { error: 'Backup upload incomplete' });
       await Promise.all(paths.map(p => setTtl(p, { ttlDays: null })));

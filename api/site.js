@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { once } from 'node:events';
-import { del, get, head, put } from '../server/storage.js';
+import { del, get, head, headMany, put } from '../server/storage.js';
 
 // HTML sites are intentionally separate from Markdown shares. A 10 MB site is
 // uploaded in bounded chunks so Vercel's request body limit is never exceeded.
@@ -242,8 +242,8 @@ export default async function handler(req, res) {
       // Never promote an incomplete upload. Count actual Blob bytes instead of
       // trusting the browser's declared size.
       let actual = 0;
-      for (let index = 0; index < chunks; index++) {
-        const blob = await head(chunkPath(id, version, index), { access: 'private' });
+      const parts = await headMany(Array.from({ length: chunks }, (_, index) => chunkPath(id, version, index)));
+      for (const blob of parts) {
         if (!blob) return respond(res, 409, { error: 'Upload is incomplete' });
         actual += blob.size;
         if (actual > MAX_SITE_BYTES) return respond(res, 413, { error: 'Site exceeds 10 MB' });

@@ -35,7 +35,7 @@ const byPath = path => and(eq(objects.path, path), live());
 const fields = { pathname: objects.path, size: objects.size, etag: objects.etag, contentType: objects.contentType };
 const bytes = body => Buffer.isBuffer(body) ? body : Buffer.from(body);
 const sha = body => createHash('sha256').update(body).digest('hex');
-function conflict() { const error = Error('Conditional storage write failed'); error.statusCode = 409; return error; }
+function conflict() { const error = Error('Conditional storage write failed'); error.statusCode = 409; error.code = '409'; return error; }
 function expiry(days) { return days == null ? null : new Date(Date.now() + days * 86400000); }
 export async function put(path, body, options = {}) {
   const data = bytes(body);
@@ -93,7 +93,8 @@ export async function heads(paths) {
   if (!paths.length) return [];
   const db = database();
   const result = await db.batch(paths.map(path => db.select(fields).from(objects).where(byPath(path)).limit(1)),
-    { readOnly: true, isolation: 'repeatable read' });
+    { readOnly: true, isolation: 'repeatable read', ...(process.env.FLOW_DB_METRICS === '1' ? { metrics: 'us' } : {}) });
+  if (result.metrics) console.info('Flow storage head batch', { total: result.metrics.total, roundTrips: result.metrics.roundTrips });
   return result.map(rows => rows[0] || null);
 }
 /** Import immutable legacy objects; reject differing data rather than overwriting. */

@@ -8,6 +8,7 @@ const backend = async () => postgresMode() ? import('./postgres-storage.js') : l
 export const put = async (...args) => (await backend()).put(...args);
 export const get = async (...args) => (await backend()).get(...args);
 export const head = async (...args) => (await backend()).head(...args);
+export const headMany = async paths => postgresMode() ? (await backend()).heads(paths) : Promise.all(paths.map(path => legacy.head(path).catch(() => null)));
 export const del = async (...args) => (await backend()).del(...args);
 export const list = async (...args) => (await backend()).list(...args);
 export const setTtl = async (...args) => (await backend()).setTtl(...args);

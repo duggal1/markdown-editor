@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { del, get, head, issueSignedToken, presignUrl, put, setTtl } from '../server/storage.js';
+import { del, get, head, headMany, issueSignedToken, presignUrl, put, setTtl } from '../server/storage.js';
 
 // Vercel Functions have a 4.5 MB body limit. Large pages go directly from
 // browser to private Blob storage using individually signed, retryable parts.
@@ -95,7 +95,7 @@ async function startUpload(id, ownerHash, info, baseRevision) {
 }
 async function verifiedParts(id, version, bytes, count, partBytes) {
   const paths = partPaths(id, version, count);
-  const parts = await Promise.all(paths.map(path => head(path).catch(() => null)));
+  const parts = await headMany(paths);
   if (parts.some((part, index) => !part || part.size !== Math.min(partBytes, Math.max(0, bytes - index * partBytes)))) return null;
   return paths;
 }
