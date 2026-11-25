@@ -244,3 +244,10 @@ assert.match(shareDialogSource, /className="share-consent-control"[\s\S]*?type="
 assert.match(css, /\.share-consent-control input:focus-visible \+ \.share-consent-mark/);
 assert.match(css, /--share-control:#202020;\s*--share-control-hover:#151515/);
 assert.match(css, /--share-control:#e8e8e8;\s*--share-control-hover:#f5f5f5/);
+// Reconciled clipboard fallback from the original sharing PR. Keep the
+// current compact layout and require an actual successful copy before feedback.
+assert.match(shareDialogSource, /if \(!link \|\| busy\) return/);
+assert.match(shareDialogSource, /navigator\.clipboard\?\.writeText/);
+assert.match(shareDialogSource, /input\.select\(\);\s*try \{ successful = document\.execCommand\('copy'\); \}/);
+assert.match(shareDialogSource, /if \(!successful\) \{[\s\S]*?return;\s*\}[\s\S]*?setCopied\(true\)/);
+assert.match(shareDialogSource, /ref=\{linkInputRef\} data-dialog-initial-focus/);

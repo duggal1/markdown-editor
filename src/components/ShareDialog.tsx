@@ -19,6 +19,7 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef<number | undefined>(undefined);
+  const linkInputRef = useRef<HTMLInputElement>(null);
   const busy = operation !== null;
   const link = record ? shareUrl(record.id) : '';
 
@@ -62,13 +63,30 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
   }, [backedUp, record]);
 
   async function copyLink() {
+    if (!link || busy) return;
+    let successful = false;
     try {
+      if (!navigator.clipboard?.writeText) throw Error('Clipboard unavailable');
       await navigator.clipboard.writeText(link);
-      setError('');
-      setCopied(true);
-      if (copyTimer.current !== undefined) window.clearTimeout(copyTimer.current);
-      copyTimer.current = window.setTimeout(() => setCopied(false), 1800);
-    } catch { setError('Could not copy link. Select and copy it manually.'); }
+      successful = true;
+    } catch {
+      // Preserve manual selection when clipboard permissions are unavailable.
+      const input = linkInputRef.current;
+      if (input?.isConnected) {
+        input.focus();
+        input.select();
+        try { successful = document.execCommand('copy'); }
+        catch { successful = false; }
+      }
+    }
+    if (!successful) {
+      setError('Could not copy link. Select and copy it manually.');
+      return;
+    }
+    setError('');
+    setCopied(true);
+    if (copyTimer.current !== undefined) window.clearTimeout(copyTimer.current);
+    copyTimer.current = window.setTimeout(() => setCopied(false), 1800);
   }
 
   async function revoke() {
@@ -81,6 +99,7 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
       setRecord(null);
       setConsent(false);
       setCopied(false);
+      if (copyTimer.current !== undefined) window.clearTimeout(copyTimer.current);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not stop sharing');
     } finally { inFlight.current = false; setOperation(null); }
@@ -105,7 +124,7 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
     {record ? <>
       <div className="share-url-row">
         <Icon name="link" size={16} />
-        <input aria-label="Share link" value={link} title={link} spellCheck={false} readOnly onFocus={event => event.currentTarget.select()} />
+        <input ref={linkInputRef} data-dialog-initial-focus aria-label="Share link" value={link} title={link} spellCheck={false} readOnly onFocus={event => event.currentTarget.select()} />
         <button type="button" className="share-copy" aria-label={copied ? 'Copied' : 'Copy link'} onClick={() => { void copyLink(); }} disabled={busy}>
           <span className="share-copy-labels" data-copied={copied} aria-hidden="true">
             <span className="share-copy-idle">Copy link</span>
