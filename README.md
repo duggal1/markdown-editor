@@ -1,172 +1,86 @@
 <div align="center">
-  <img src="./public/flow.svg" alt="Flow logo" width="80" height="80" />
+  <img src="assets/readme/workspace.svg" alt="Flow: a private Markdown workspace with source and live preview." width="1120" />
   <h1>Flow</h1>
- 
- <p>A local-first Markdown workspace for professional writing, coding, live preview, and screenshot annotation.</p>
+  <p>A Markdown workspace for writing, engineering and working with the output.</p>
 </div>
 
-<p align="center">
-  <a href="#the-product">Product</a> ·
-  <a href="#architecture">Architecture</a> ·
-  <a href="#the-decisions">The decisions</a> ·
-  <a href="#development">Development</a>
-</p>
+Write and organize Markdown. Preview code, HTML and SVG. Inspect and edit SVG colors, export PDF or PNG, annotate screenshots, publish interactive HTML and share read-only pages. Local editing works without an account; cloud backup is optional.
 
----
+## 1. The pain point
 
-## The idea
+I built Flow because I kept switching tools to do what felt like one job. Write a technical note, paste a code snippet, check the rendered output, inspect an SVG, export a PDF, annotate a screenshot. None of those steps should be a separate project.
 
-Most writing tools compete by adding more: accounts, AI buttons, collaboration layers, databases, elaborate toolbars. Flow starts with a different question:
+I wanted a tool I could use for hours without fighting the interface. Plain text, fast feedback and output I can actually use. I built it for my own workflow, not as an all-purpose productivity platform.
 
-**What does a tool need to do exceptionally well before it deserves to do anything else?**
+## 2. Judgment
 
-For Flow, the answer is straightforward: make writing feel immediate, make the output trustworthy, keep the user's work under their control, and stay out of the way.
+- **No mandatory accounts, collaboration engine or proprietary document format.** Writing does not need a server in its critical path.
+- **No custom text engine.** CodeMirror already solves selection, undo, composition and viewport rendering.
+- **No mandatory workspace hierarchy.** The visible navigation is a single Private page tree; existing workspace IDs remain for compatibility.
+- **Remove duplicate UI.** No separate title input competing with the document, no outline modal, no source code beneath SVG artwork, no decorative borders around every control.
+- **Separate genuinely different problems.** Draw has its own canvas and export engine. HTML runs in an isolated player. Neither belongs inside the Markdown renderer's implementation.
 
-The technology is important, but it is not the differentiator. **Product judgment, taste, system design, and architecture are the work.** They determine which capabilities belong together, where boundaries should exist, how complexity is contained, and which features are better left unbuilt.
+I would rather delete an unnecessary abstraction than spend time making it more elegant.
 
-## The product
+## 3. Architecture
 
-**Write.** A CodeMirror 6 editor with Markdown-aware editing, a contextual slash-command menu, draggable Markdown blocks, automatic paste formatting, language support, formatting shortcuts and viewport-based rendering. Write, Split, and Preview modes let the interface follow the task instead of forcing one layout.
+<img src="assets/readme/architecture.svg" alt="Flow's browser-side document, preview and persistence paths, with optional cloud API and selectable storage backend." width="1120" />
 
-**Organize.** A single Private page tree with nested subpages, optional folders, drag-to-nest, recent documents and local search. Existing workspace IDs are retained for compatibility, not exposed as a mandatory navigation layer. Import Markdown, code, text, images, and other files; export the original content without a proprietary document format.
+React 19, TypeScript 5.9, Vite 8, CodeMirror 6. A client-rendered SPA with lazy route boundaries: `/`, `/draw`, `/s/:id` and `/play/:id` (including legacy `/slug/:id` links).
 
-**Preview.** GitHub-flavored Markdown with tables, task lists, syntax-highlighted code, copy actions, and source-aware scroll alignment. Standalone HTML and SVG have purpose-built previews. Large Markdown documents and code blocks take a different, virtualized rendering path.
+| Layer | Implementation |
+|---|---|
+| Editor | CodeMirror transactions, language compartments, Markdown syntax tree and undo history. React coordinates the active document and workspace. |
+| Preview | React Markdown, remark-gfm, rehype-raw and rehype-sanitize; worker-prepared source chunks, highlight.js and TanStack Virtual. |
+| Local storage | IndexedDB v2: documents, folders and workspaces. Serialized per-document saves, bounded localStorage recovery and preference data. |
+| Background work | Dedicated workers for preview preparation, search/word counts, formatting, code repair, PDF import and Draw ZIP export. |
+| Cloud | Vercel functions for backup, share and site hosting; versioned manifests, signed part URLs and conditional writes. |
+| Storage adapter | Vercel Blob or Drizzle ORM 1.0.0-rc.6 / PostgreSQL. The SQL adapter stores path-keyed bytea objects, metadata, ETags and expiry. |
 
-**Draw.** A separate surface at `/draw` for annotating screenshots with arrows and text. Inspect with zoom and pan, edit annotations, and export a single image or a batch as JPEG/WebP and ZIP. It shares the visual language of Flow without turning the writing editor into an image-editing framework.
+The database is outside the editing path. PostgreSQL support is implemented, but the production cutover is a separate operation; existing Blob installations remain on Blob by default. See the [cutover procedure](docs/postgres-cutover.md).
 
-**Stay local.** Documents, workspaces and folders are saved in the browser first. Enable private cloud backup once to automatically back up all workspaces, folders and files (up to 100 MiB per file). No account is required. Copy and keep your recovery key privately if you want to restore after clearing all browser data.
+## 4. Design
 
-## Architecture
+I don't want the interface to compete with the work. The document is the product; the toolbar, sidebar and settings are supporting infrastructure.
 
-Flow is a **client-side, local-first React application**, organized around explicit browser capabilities rather than a server-driven application architecture.
+The visual system is deliberately small: Geist, Phosphor regular icons, neutral surfaces, a slightly darker preview, tight control geometry and a selectable accent independent of light or dark appearance. Borderless by default. Hierarchy comes from tone, spacing and typography, not rectangles drawn around everything.
 
-~~~text
-Browser
-├── /                          Markdown workspace
-│   ├── React                  UI and workspace coordination
-│   ├── CodeMirror 6           Source editing
-│   ├── Preview pipeline       GFM, sanitization, code / HTML / SVG
-│   ├── IndexedDB              Documents, workspaces, folders, assets
-│   ├── localStorage           Preferences and bounded edit recovery
-│   └── Web Worker             Search and word-count work
-│
-└── /draw                      Screenshot annotation
-    ├── Canvas                 Annotation geometry and interaction
-    ├── Canvas export          Native-resolution JPEG / WebP
-    └── ZIP Web Worker         Batch packaging
-~~~
+Motion should explain what changed, not announce that the app has animations. Keep native scrolling native, respect reduced motion and don't animate layout unnecessarily. The HTML player follows the embedded page's appearance rather than imposing Flow's theme on it.
 
-The boundaries are intentional.
+[Design specification](design.md)
 
-| Concern | Design choice | Why it exists |
-| --- | --- | --- |
-| **Source of truth** | Plain text documents with browser-local persistence | Content stays portable; an editor should not own the format. |
-| **Editor** | CodeMirror 6, not a homegrown text engine | Mature selection, input, undo, and viewport behavior are difficult to reproduce correctly. |
-| **Rendering** | A separate Markdown preview pipeline | Editing stays responsive without coupling keystrokes to an entire rendered document. |
-| **Large documents** | Deferred updates, chunked Markdown, virtualized code and preview | Rendering cost should scale with what is visible where possible. |
-| **Search** | In-memory document scan in a Web Worker | Simple local search does not need a remote index or a main-thread stall. |
-| **Saving** | Debounced, serialized IndexedDB writes with bounded local recovery | Minimize write churn while protecting recent edits; avoid synchronously storing huge snapshots. |
-| **HTML / SVG** | Sanitized Markdown HTML; sandboxed isolated previews | Display source faithfully without giving preview content access to the app's origin or storage. |
-| **Draw** | Image-relative annotation geometry and a shared renderer for preview/export | An annotation should land in the same place in the editor and in the downloaded image. |
-| **Delivery** | Vite, static assets, route-level lazy loading | The app doesn't need a runtime server to edit a local document. |
+## 5. Technical notes
 
-### The important paths
+**Input and rendering.** The source remains plain text. Mixed-content detection distinguishes prose from recognizable code. HTML/Python repair removes only known paste wrappers, not guessed program errors. Preview preparation preserves source-line anchors; deferred rendering and virtualization handle long content without mounting the entire document. The prepared-preview cache is bounded to four entries and excludes sources above two million characters.
 
-~~~text
-src/
-├── App.tsx                    Workspace orchestration and editing flows
-├── main.tsx                   Lazy route selection and error boundary
-├── components/
-│   ├── MarkdownEditor.tsx     CodeMirror configuration and input
-│   ├── MarkdownPreview.tsx    Markdown, code, HTML, SVG and virtualization
-│   ├── WorkspaceTree.tsx      Workspace / folder / document navigation
-│   └── Icons.tsx              Shared icon language
-├── lib/
-│   ├── store.ts               IndexedDB, preferences and recovery
-│   ├── code.ts                File language and raw code detection
-│   ├── htmlPreview.ts         Isolated HTML preview document
-│   ├── svgPreview.ts          Theme-aware SVG preview document
-│   └── previewChunks.ts       Safe-enough Markdown chunk boundaries
-├── workers/
-│   └── search.ts              Local search and word metrics
-└── draw/
-    ├── DrawPage.tsx           Annotation interaction and export UI
-    ├── annotations.ts         Drawing, hit testing and image encoding
-    ├── zip.ts                 Dependency-free ZIP/STORE writer
-    └── zip.worker.ts          Off-main-thread ZIP assembly
-~~~
+**Persistence.** The save scheduler uses 340 ms or 900 ms quiet periods based on document size and bounds dirty time to 1,500 ms in the scheduling logic. IndexedDB writes are serialized per document; the recovery snapshot is size-limited. Private backup runs separately with up to six record and six part uploads, a 100 MiB per-file limit and recovery-key access. That is a supported size limit, not a throughput benchmark.
 
-## The decisions
+**Isolation.** Markdown HTML is sanitized. Executable HTML uses an opaque-origin sandbox with a CSP and a route bridge; external resources can still use the network. Desktop, iPhone and iPad previews use actual CSS layout dimensions, not simulated Safari or physical DPR. SVG is displayed as script-disabled artwork; editable color ranges are applied back to the source in an undoable edit. PNG allocation is bounded.
 
-### 01. Taste is restraint, not decoration
+**Export.** PDFMake typesets selectable A4 text from the Markdown tree. The pagination pass inspects actual last-page text geometry, optionally renders one compact candidate and keeps it only if the page count decreases. Draw stores annotations in image-relative coordinates, uses a common renderer for preview/export, and packages compressed images with a ZIP/STORE worker.
 
-Whitespace, typography, contrast, surface tone, roundedness, and motion all affect how an editor feels after hours of use. The aim is not to maximize visual novelty. It is to give the content priority, make actions discoverable, and make the interface predictable.
+Key implementation paths: [editor](src/components/MarkdownEditor.tsx), [preview](src/components/MarkdownPreview.tsx), [store](src/lib/store.ts), [backup](src/lib/backup.ts), [HTML runtime](src/lib/htmlPreview.ts), [SVG inspector](src/components/SvgInspector.tsx), [PDF pagination](src/lib/pdfPagination.ts), [Draw](src/draw), [storage](server).
 
-Flow uses a small visual vocabulary, responsive layouts, deliberate interaction states, and reduced-motion support. The editor and preview have distinct responsibilities, but neither should feel like a separate product.
+### Run locally
 
-### 02. Performance is an interaction design problem
+Node.js 22 (22.12+) or 20.19+.
 
-A fast initial render is not enough if typing, scrolling, searching, or switching documents becomes expensive.
-
-Flow keeps CodeMirror in charge of text input, coalesces preview work, uses source-position anchors for scroll alignment, moves document search and word metrics to a worker, and virtualizes long rendered content. Those are targeted solutions to actual UI costs, not a generalized performance framework.
-
-### 03. Local-first is a product boundary
-
-Keeping documents in IndexedDB removes login and backend availability from the writing path. Preferences and a size-limited recovery snapshot use localStorage. Imported binary assets stay local unless private cloud backup is enabled.
-
-There is an important tradeoff: **local-first is not the same as backed up**. Clearing browser data, changing browser profiles, or losing the device can lose documents. Enable private cloud backup and keep its recovery key outside the browser, or export work you cannot afford to lose.
-
-### 04. Preview is a security boundary
-
-Markdown can contain raw HTML; standalone HTML may contain scripts. They are not treated as the same thing.
-
-Markdown HTML is sanitized before rendering. Standalone HTML runs inside a sandboxed iframe with a restrictive Content Security Policy; SVG previews use an iframe without script permissions. Preview content is not trusted with access to the editor's storage. Isolation is part of correctness, not an optional hardening pass.
-
-### 05. Keep separate problems separate
-
-Writing and screenshot annotation belong to the same workflow, but not the same rendering engine. Draw owns its canvas interactions and export logic. Flow owns documents, navigation, source editing, and preview. A shared identity is useful; shared complexity is not.
-
-Draw's annotations use image-relative coordinates so zoom and screen size do not define the exported geometry. Batch images are already compressed, so ZIP packaging uses a small STORE writer rather than pulling in a larger compression stack.
-
-## What we deliberately avoid
-
-- **No mandatory account or sync service.** There is no reason to put a server between a person and a local Markdown file.
-- **No custom rich-text document format.** Markdown and imported source files remain portable.
-- **No invented editor engine.** CodeMirror handles the hard, well-understood text-editing problems.
-- **No global state framework by default.** React state, refs, and focused modules are enough for this application's current boundaries.
-- **No plugin platform or abstraction layer for hypothetical future features.** New systems should justify their maintenance cost before they exist.
-- **No unsandboxed executable preview.** Rendering arbitrary user content in the main app origin is not an acceptable shortcut.
-- **No treating animation as quality.** Motion is restrained and respects reduced-motion preferences.
-
-These are choices, not universal rules. If the product's constraints change, the architecture should change with evidence, not fashion.
-
-## Development
-
-Requires **Node.js 22.12+** or **20.19+**.
-
-~~~bash
+~~~sh
 npm install
 npm run dev
-~~~
-
-Create a production build:
-
-~~~bash
 npm run build
-npm run preview
 ~~~
 
-The stack is **React 19 · TypeScript 5 · Vite 8 · CodeMirror 6 · react-markdown / remark-gfm · TanStack Virtual · Motion · Geist**.
+The [CI workflow](.github/workflows/ci.yml) runs formatting, editor, cloud, PostgreSQL, preview, HTML, interaction and PDF regression tests before the production build. Generate or check the two README SVGs with `python3 scripts/generate_readme_assets.py` (add `--check` to verify).
 
-GitHub Actions runs the TypeScript and Vite production build on pushes to `main` and on pull requests. The repository does not currently include a separate automated test suite.
+Local-first is not the same as backed up. Keep the recovery key outside the browser or export important work. A public link is readable by anyone who has it until revoked.
 
-## Current boundaries
+## 6. Upcoming features
 
-Flow is a browser application, not a desktop filesystem editor or a synchronized collaboration service. Browser persistence alone is not a guaranteed backup. Optional private backups are independent of public sharing; opening Share creates a read-only link for the selected backed-up text page. Backup runs while the editor is open, and only committed uploads are recoverable. A browser cookie or a saved recovery key is required to restore. Draw operates on an in-memory annotation session, so export images before navigating away. Very large or unusually complex previews can still be constrained by browser memory and rendering performance.
+The next work is about reliability rather than expanding the product's scope.
 
----
+- Separate document metadata from large bodies in a versioned IndexedDB migration.
+- Persist resumable upload sessions and complete the validated PostgreSQL cutover, including restore, legacy links and rollback.
+- Measure boot, input and cloud latency on representative large documents; address the actual bottlenecks.
 
-<div align="center">
-  <p><strong>Good software is the accumulation of decisions that did not need to become features.</strong></p>
-  <sub>Flow · Built with care for the work on the screen.</sub>
-</div>
+These are planned improvements, not shipped guarantees. The [performance rollout](docs/performance-rollout.md) records the remaining engineering work.
