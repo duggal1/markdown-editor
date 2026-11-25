@@ -5,6 +5,13 @@ export type CodeLanguage = 'swift' | 'typescript' | 'javascript' | 'python' | 'r
 export function detectRawCode(source: string): CodeLanguage | null {
   const text = source.trim();
   if (!text) return null;
+  // SVG must be identified before generic HTML or CSS heuristics.
+  if (/^\s*(?:<\?xml[^>]*>\s*|<!--[\s\S]*?-->\s*)*<svg(?:\s|\/?>)/i.test(text)) {
+    const close = /<\/svg\s*>|<svg\b[^>]*\/>/gi;
+    const ends = Array.from(text.matchAll(close));
+    if (!ends.length || ends[ends.length - 1].index! + ends[ends.length - 1][0].length === text.length) return 'svg';
+    return null;
+  }
   // Even a tiny valid snippet like <p>Hi</p> deserves a real preview.
   // Check before scanning Markdown-like text inside <style> and <script>.
   if (looksLikeHtml(text)) return 'html';

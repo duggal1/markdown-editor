@@ -20,6 +20,7 @@ export function previewParts(markdown: string, target = 3600): PreviewPart[] {
   let lastListContext = false;
   let fence: { char: string; length: number } | null = null;
   let inHtmlBlock = false;
+  let svgDepth = 0;
 
   function flush(end: number, nextList: boolean) {
     if (end > start) {
@@ -38,7 +39,7 @@ export function previewParts(markdown: string, target = 3600): PreviewPart[] {
     const listItem = /^(?:[-+*]\s+|\d+[.)]\s+)/.test(line);
     const heading = /^ {0,3}#{1,6}[ \t]+\S/.test(line);
     const newFence = Boolean(match && !fence && match[1].length === 0);
-    const canBreakBefore = !fence && !inHtmlBlock &&
+    const canBreakBefore = !fence && !inHtmlBlock && !svgDepth &&
       position - start >= target && (heading || listItem || newFence);
 
     // ReactMarkdown handles each window as its own tree; these are complete
@@ -51,6 +52,12 @@ export function previewParts(markdown: string, target = 3600): PreviewPart[] {
       else if (fence.char === char && match[2].length >= fence.length &&
         !trimmed.slice(match[0].length).trim()) fence = null;
     }
+    if (!fence && (svgDepth || /^<svg(?:\s|>)/i.test(trimmed))) {
+      for (const tag of line.matchAll(/<\/?svg\b[^>]*>/gi)) {
+        if (tag[0].startsWith('</')) svgDepth = Math.max(0, svgDepth - 1);
+        else if (!tag[0].endsWith('/>')) svgDepth++;
+      }
+    }
     if (!fence && /^<(?:div|table|details|section|article|pre|script|style)(?:\s|>)/i.test(trimmed)) inHtmlBlock = true;
     if (inHtmlBlock && /^<\/(?:div|table|details|section|article|pre|script|style)>/i.test(trimmed)) inHtmlBlock = false;
 
@@ -61,7 +68,7 @@ export function previewParts(markdown: string, target = 3600): PreviewPart[] {
     const followingLine = markdown.slice(nextStart, followingEnd < 0 ? markdown.length : followingEnd);
     const continuesNestedList = !trimmed && lastListContext &&
       /^(?: {2,}|\t)\S/.test(followingLine);
-    if (!fence && !inHtmlBlock && !trimmed && !continuesNestedList &&
+    if (!fence && !inHtmlBlock && !svgDepth && !trimmed && !continuesNestedList &&
       nextStart - start >= target && nextStart < markdown.length) {
       flush(nextStart, false);
     }

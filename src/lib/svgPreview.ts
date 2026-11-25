@@ -1,65 +1,40 @@
 /**
- * Render SVG in a script-disabled, network-disabled iframe.
- * Adapt only dark monochrome paint for Flow's dark canvas; preserve the original file.
+ * Render authored SVG as an image inside a script-disabled opaque iframe.
+ * Image mode prevents active SVG content and external resources from running.
+ * Never recolor authored fills, strokes, gradients, or currentColor.
  */
-function darkInk(color: string): boolean {
-  const value = color.trim().toLowerCase().replace(/\s+/g, '');
-  if (value === 'black') return true;
-  if (!value || value === 'none' || value === 'transparent' ||
-    value === 'currentcolor' || value.startsWith('url(')) return false;
-  let parts: number[] | null = null;
-  if (/^#[0-9a-f]{3,8}$/i.test(value)) {
-    let hex = value.slice(1);
-    if (hex.length === 3 || hex.length === 4) hex = hex.slice(0, 3).split('').map(c => c + c).join('');
-    if (hex.length >= 6) parts = [0, 2, 4].map(at => parseInt(hex.slice(at, at + 2), 16));
-  } else {
-    const match = /^rgba?\((\d+),(\d+),(\d+)/.exec(value);
-    if (match) parts = [Number(match[1]), Number(match[2]), Number(match[3])];
-  }
-  if (!parts) return false;
-  const [r, g, b] = parts;
-  return Math.max(r, g, b) < 125 && Math.max(r, g, b) - Math.min(r, g, b) < 35;
-}
-export function adaptSvgForTheme(code: string, theme: 'light' | 'dark'): string {
-  if (theme !== 'dark') return code;
-  const parsed = new DOMParser().parseFromString(code, 'image/svg+xml');
-  const root = parsed.documentElement;
-  if (root.localName.toLowerCase() !== 'svg' || parsed.querySelector('parsererror')) return code;
-
-  const nodes = [root, ...Array.from(root.querySelectorAll('*'))];
-  for (const node of nodes) {
-    for (const attribute of ['fill', 'stroke', 'color']) {
-      const value = node.getAttribute(attribute);
-      // currentColor is intentionally left intact here. The sandbox gets
-      // color:#fafaf9, so inherited icon ink becomes white without touching source.
-      if (value && darkInk(value)) node.setAttribute(attribute, '#fafaf9');
-    }
-    const element = node as SVGElement;
-    for (const property of ['fill', 'stroke', 'color'] as const) {
-      const value = element.style?.getPropertyValue(property);
-      if (value && darkInk(value)) element.style.setProperty(property, '#fafaf9');
-    }
-  }
-
-  // SVG's default fill is black. On a dark canvas, an SVG with no root fill
-  // must inherit a visible light fill. Explicit colored descendants remain unchanged.
-  if (!root.hasAttribute('fill') && !(root as unknown as SVGElement).style?.getPropertyValue('fill')) {
-    root.setAttribute('fill', '#fafaf9');
-  }
-
-  return new XMLSerializer().serializeToString(root);
+export function adaptSvgForTheme(code: string, _theme: 'light' | 'dark'): string {
+  return code;
 }
 
 export function svgPreviewDocument(code: string, theme: 'light' | 'dark'): string {
-  const svg = adaptSvgForTheme(code, theme);
-  // currentColor can inherit from a nested SVG group or stylesheet, not just the root.
-  // Override ONLY the inherited "color" channel in dark mode. Explicit colored
-  // fills and strokes remain as-authored; dark monochrome values were handled above.
-  const ink = theme === 'dark' ? '#fafaf9' : '#1c1917';
-  const css = 'html,body{margin:0;height:100%;display:grid;place-items:center;background:transparent;color:' +
-    ink + '}svg{display:block;max-width:100%;max-height:100%;width:auto;height:auto}' +
-    (theme === 'dark' ? 'svg,svg *{color:#fafaf9!important}' : '');
+  const parser = new DOMParser();
+  const parsed = parser.parseFromString(code, 'image/svg+xml');
+  const valid = !parsed.querySelector('parsererror') && parsed.documentElement.localName === 'svg';
+  const roots: Element[] = valid ? [parsed.documentElement] : [];
+  if (!valid) {
+    const wrapped = parser.parseFromString('<flow-root xmlns="http://www.w3.org/2000/svg">' +
+      code.replace(/<\?xml[^>]*\?>/gi, '') + '</flow-root>', 'image/svg+xml');
+    if (!wrapped.querySelector('parsererror')) {
+      const root = wrapped.documentElement;
+      if (Array.from(root.childNodes).every(node => node.nodeType !== 3 || !node.textContent?.trim())) {
+        roots.push(...Array.from(root.children).filter(node => node.localName === 'svg'));
+      }
+    }
+  }
+  const images = roots.map(root => {
+    // Standalone fragments commonly omit the SVG namespace.
+    if (!root.namespaceURI) root.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    const source = new XMLSerializer().serializeToString(root);
+    const encoded = encodeURIComponent(source);
+    return '<img alt="SVG artwork" src="data:image/svg+xml;charset=utf-8,' + encoded + '">';
+  }).join('');
+  const css = 'html,body{margin:0;min-height:100%;background:transparent}' +
+    'body{box-sizing:border-box;display:grid;place-items:center;gap:12px;padding:8px;' +
+    'font:12px system-ui;color:' + (theme === 'dark' ? '#a3a3a3' : '#666') + '}' +
+    'img{display:block;max-width:100%;max-height:250px;width:auto;height:auto;' +
+    'background:repeating-conic-gradient(#b8b8b8 0% 25%,#d2d2d2 0% 50%) 0 0/12px 12px;border-radius:3px}';
   return '<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="' +
-    "default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'" +
-    '"><style>' + css + '</style></head><body>' + svg + '</body></html>';
+    "default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'" +
+    '"><style>' + css + '</style></head><body>' + (images || '<span>SVG is incomplete or invalid.</span>') + '</body></html>';
 }
