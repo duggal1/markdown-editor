@@ -57,17 +57,26 @@ assert.match(css, /\.markdown-preview a,[\s\S]*?color:var\(--preview-orange\)/,
 assert.match(css, /\.markdown-preview :not\(pre\) > code,[\s\S]*?\.markdown-preview \.hljs-number,[\s\S]*?color:var\(--preview-orange\)/,
   'Inline-code badges and orange syntax tokens must use the same Tailwind shade.');
 assert.match(css, /:root\[data-theme='light'\] \.markdown-preview \{/,
-  'Preview accents and table borders must have a separate light theme.');
-assert.match(css, /--preview-table-border:#1f1f1f/,
-  'Dark-mode table grid must be subtle but complete.');
-assert.match(css, /--preview-table-border:#dedede/,
-  'Light-mode table grid must remain visible and neutral.');
-assert.match(css, /\.markdown-preview \.table-scroll \{[\s\S]*?border:1px solid var\(--preview-table-border\)/,
-  'Tables require a complete outer border.');
-assert.match(css, /\.markdown-preview th,\s*\.markdown-preview td \{[\s\S]*?border-right:1px solid var\(--preview-table-border\);[\s\S]*?border-bottom:1px solid var\(--preview-table-border\)/,
-  'Table cells require vertical and horizontal dividers.');
-assert.match(css, /\.markdown-preview table > :last-child > tr:last-child > :is\(th,td\) \{ border-bottom:0; \}/,
-  'The outer border must not double up on the last row.');
+  'Preview accents and table surfaces must have a separate light theme.');
+// Approved borderless table direction: one set of table rules, no grid strokes.
+assert.doesNotMatch(css, /--preview-table-border/);
+const tableRules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+  .filter(([,selector]) => /\.markdown-preview\s+(?:\.table-scroll|table\b|thead\b|tbody\b|th\b|td\b|tr\b)/.test(selector));
+for (const [, selector, declarations] of tableRules) {
+  assert.doesNotMatch(declarations, /(?:^|;)\s*border(?:-(?:top|right|bottom|left|width|color|style)(?:-\w+)?)?\s*:\s*(?!0(?:\s|;|$)|none(?:\s|;|$))[^;]+/, 'No decorative table border: ' + selector.trim());
+}
+assert.match(css, /\.markdown-preview \.table-scroll \{[^}]*border:0;[^}]*box-shadow:none;[^}]*border-radius:10px/);
+assert.match(css, /\.markdown-preview th, \.markdown-preview td \{[^}]*border:0;[^}]*box-shadow:none/);
+assert.match(css, /\.markdown-preview tbody tr:nth-child\(even\) \{ background:var\(--preview-table-stripe\); \}/);
+assert.match(css, /\.markdown-preview tbody tr:hover \{ background:var\(--preview-table-hover\); \}/);
+const darkTable = css.match(/\.markdown-preview \{\s*--preview-orange:[^}]+\}/)[0];
+const lightTable = css.match(/:root\[data-theme='light'\] \.markdown-preview \{\s*--preview-orange:[^}]+\}/)[0];
+const tone = (block, name) => parseInt(block.match(new RegExp('--preview-table-' + name + ':#([a-f0-9]{6})'))[1], 16);
+for (const resting of ['surface', 'stripe']) {
+  assert.ok(tone(darkTable, 'hover') < tone(darkTable, resting), 'Dark hover must darken resting rows');
+  assert.ok(tone(lightTable, 'hover') > tone(lightTable, resting), 'Light hover must lighten resting rows');
+}
+assert.match(css, /@media\(prefers-reduced-motion:reduce\) \{\s*\.markdown-preview tbody tr \{ transition:none; \}/);
 
 console.log('Preview worker preparation, line indexes and bounded cache tests passed.');
 

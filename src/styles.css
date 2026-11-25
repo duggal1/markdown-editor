@@ -216,15 +216,35 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .markdown-preview blockquote p { margin: 3px 0; }
 .markdown-preview hr { height: 1px; margin: 30px 0; border: 0; background: var(--line); }
 .markdown-preview :not(pre) > code { padding: 2px 5px; background: var(--neutral-100); border: 0; border-radius: 4px; color: var(--code-ink); font: 400 12px/1.7 var(--mono); }
-.markdown-preview .table-scroll { width: 100%; min-width: 0; max-width: 100%; margin: 16px auto 27px; overflow-x: auto; overflow-y: hidden; border-radius: 3px; }
-.markdown-preview table { display: table; width: 100%; min-width: max-content; margin: 0; border: 0; border-collapse: separate; border-spacing: 0; table-layout: auto; font-size: 12px; line-height: 1.55; }
-.markdown-preview thead { background: var(--neutral-100); color: var(--strong); }
-.markdown-preview th, .markdown-preview td { padding: 7px 11px; border: 0; border-bottom: 1px solid var(--line); text-align: left; white-space: normal; vertical-align: top; }
-.markdown-preview th[align='right'], .markdown-preview td[align='right'] { text-align: right; }
-.markdown-preview th[align='center'], .markdown-preview td[align='center'] { text-align: center; }
-.markdown-preview tbody tr:nth-child(even) { background: var(--neutral-100); }
-.markdown-preview tbody tr:last-child td { border-bottom: 0; }
-.markdown-preview td code, .markdown-preview th code { white-space: nowrap; }
+.markdown-preview .table-scroll {
+  width:100%; min-width:0; max-width:100%; margin:16px auto 27px;
+  overflow-x:auto; overflow-y:hidden; border:0; box-shadow:none; border-radius:10px;
+  background:var(--preview-table-surface);
+}
+.markdown-preview table {
+  display:table; width:100%; min-width:max-content; margin:0; border:0;
+  border-collapse:separate; border-spacing:0; table-layout:auto;
+  font-size:12px; line-height:1.55;
+}
+.markdown-preview thead { background:var(--preview-table-head); color:var(--strong); }
+.markdown-preview th, .markdown-preview td {
+  padding:10px 14px; border:0; box-shadow:none;
+  text-align:left; white-space:normal; vertical-align:top;
+}
+.markdown-preview th { font-weight:550; letter-spacing:-.012em; color:var(--strong); }
+.markdown-preview th[align='right'], .markdown-preview td[align='right'] { text-align:right; }
+.markdown-preview th[align='center'], .markdown-preview td[align='center'] { text-align:center; }
+.markdown-preview tbody tr { background:var(--preview-table-surface); }
+.markdown-preview tbody tr:nth-child(even) { background:var(--preview-table-stripe); }
+@media(hover:hover) {
+  .markdown-preview tbody tr { transition:background-color 170ms cubic-bezier(.22,1,.36,1); }
+  .markdown-preview tbody tr:hover { background:var(--preview-table-hover); }
+}
+.markdown-preview tbody tr:focus-within { background:var(--preview-table-hover); }
+@media(prefers-reduced-motion:reduce) {
+  .markdown-preview tbody tr { transition:none; }
+}
+.markdown-preview td code, .markdown-preview th code { white-space:nowrap; }
 .markdown-preview img { max-width: 100%; height: auto; border-radius: 4px; }
 .markdown-preview mark { background: color-mix(in srgb, var(--accent) 24%, transparent); color: var(--strong); padding: 0 2px; border-radius: 1px; }
 .markdown-preview u { text-decoration-thickness: 1px; text-underline-offset: 3px; }
@@ -640,7 +660,7 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
     width: 100%; max-width: 100%; overflow-x: auto; margin: 17px 0 22px;
     -webkit-overflow-scrolling: touch;
   }
-  .markdown-preview th, .markdown-preview td { padding: 8px 10px; }
+  .markdown-preview th, .markdown-preview td { padding:9px 10px; }
   .code-block {
     width: 100%; max-width: 100%; min-width: 0;
     margin: 16px 0 20px; overflow: hidden; border-radius: 4px;
@@ -733,7 +753,6 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .markdown-preview blockquote { background: var(--neutral-100); border-radius: 8px; padding: 12px 18px; }
 .markdown-preview :not(pre) > code { background: var(--neutral-100); }
 .markdown-preview ul > li:not(.task-list-item)::before { border-radius: 1px; background: var(--muted); }
-.markdown-preview th, .markdown-preview td { border-bottom-color: var(--neutral-200); }
 @media (max-width: 800px) {
   .topbar { padding: 0 12px; }
   .subbar { padding: 0 8px; }
@@ -1152,20 +1171,18 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
    No Tailwind runtime required: this repo uses plain CSS. */
 .markdown-preview {
   --preview-orange:var(--accent-600); /* selected palette, 600 in dark mode */
-  --preview-table-border:#1f1f1f;
-  --preview-table-surface:#080808;
-  --preview-table-head:#101010;
-  --preview-table-stripe:#0a0a0a;
-  --preview-table-hover:#121212;
+  --preview-table-surface:#101010;
+  --preview-table-head:#1a1a1a;
+  --preview-table-stripe:#141414;
+  --preview-table-hover:#080808;
   text-rendering:optimizeLegibility;
 }
 :root[data-theme='light'] .markdown-preview {
   --preview-orange:var(--accent-500); /* selected palette, 500 in light mode */
-  --preview-table-border:#dedede;
-  --preview-table-surface:#ffffff;
-  --preview-table-head:#f3f3f3;
-  --preview-table-stripe:#fafafa;
-  --preview-table-hover:#f1f1f1;
+  --preview-table-surface:#f0f0f0;
+  --preview-table-head:#e7e7e7;
+  --preview-table-stripe:#f5f5f5;
+  --preview-table-hover:#ffffff;
 }
 .markdown-preview a,
 .markdown-preview .footnote-ref a,
@@ -1193,34 +1210,6 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .markdown-preview .hljs-variable.language_,
 .markdown-preview .hljs-regexp {
   color:var(--preview-orange);
-}
-.markdown-preview .table-scroll {
-  border:1px solid var(--preview-table-border);
-  border-radius:6px;
-  background:var(--preview-table-surface);
-  overflow-x:auto;
-}
-.markdown-preview table { border:0; border-collapse:separate; border-spacing:0; }
-.markdown-preview thead { background:var(--preview-table-head); }
-.markdown-preview th,
-.markdown-preview td {
-  padding:10px 14px;
-  border:0;
-  border-right:1px solid var(--preview-table-border);
-  border-bottom:1px solid var(--preview-table-border);
-  line-height:1.55;
-}
-.markdown-preview th {
-  font-weight:550;
-  letter-spacing:-.012em;
-  color:var(--strong);
-}
-.markdown-preview tbody tr:nth-child(even) { background:var(--preview-table-stripe); }
-.markdown-preview tbody tr:hover { background:var(--preview-table-hover); }
-.markdown-preview tr > :last-child { border-right:0; }
-.markdown-preview table > :last-child > tr:last-child > :is(th,td) { border-bottom:0; }
-@media(max-width:800px) {
-  .markdown-preview th, .markdown-preview td { padding:9px 10px; }
 }
 
 /* One semantic palette drives Flow, the Markdown preview and Draw.
