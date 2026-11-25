@@ -7,6 +7,11 @@ const prefixes: Partial<Record<SelectionFormat, string>> = {
 };
 const marker = /^(#{1,6}[ \t]+|[-+*][ \t]+\[[ xX]\][ \t]+|[-+*][ \t]+|\d+[.)][ \t]+|>[ \t]?)/;
 const tick = String.fromCharCode(96);
+function fenceLength(source: string, minimum: number): number {
+  let size = minimum;
+  for (const match of source.matchAll(/\x60+/g)) size = Math.max(size, match[0].length + 1);
+  return size;
+}
 
 export function selectionEdit(doc: Text, from: number, to: number, kind: SelectionFormat): Edit | null {
   if (from >= to) return null;
@@ -45,12 +50,12 @@ export function selectionEdit(doc: Text, from: number, to: number, kind: Selecti
   if (kind === 'code' && selected.includes('\n')) {
     const first = doc.lineAt(from), last = doc.lineAt(to - 1);
     const body = doc.sliceString(first.from, last.to);
-    const fence = tick.repeat(Math.max(3, ...Array.from(body.matchAll(/\x60+/g), m => m[0].length + 1)));
+    const fence = tick.repeat(fenceLength(body, 3));
     return edit(first.from, last.to, fence + '\n' + body + '\n' + fence,
       first.from + fence.length + 1, first.from + fence.length + 1 + body.length);
   }
   const delim = kind === 'bold' ? '**' : kind === 'italic' ? '*' :
-    tick.repeat(Math.max(1, ...Array.from(selected.matchAll(/\x60+/g), m => m[0].length + 1)));
+    tick.repeat(fenceLength(selected, 1));
   if (kind !== 'code' && doc.sliceString(Math.max(0, from - delim.length), from) === delim &&
       doc.sliceString(to, Math.min(doc.length, to + delim.length)) === delim &&
       !(kind === 'italic' && (doc.sliceString(Math.max(0, from - 2), from) === '**' ||
