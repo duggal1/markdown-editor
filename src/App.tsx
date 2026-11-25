@@ -34,7 +34,7 @@ import TokenCounter from './components/TokenCounter';
 import { localSaveDelay } from './lib/saveSchedule';
 import type { SearchHit } from './lib/searchIndex';
 import {
-  clearRecovery, loadWorkspace, readPrefs, removeDoc, removeEmptyDraft, removeFolder, removeWorkspaceTree,
+  clearRecovery, loadDoc, loadWorkspace, readPrefs, removeDoc, removeEmptyDraft, removeFolder, removeWorkspaceTree,
   saveDoc, saveFolder, savePrefs, saveRecovery, uid,
   type FlowDocument, type Folder, type Mode, type Theme, type Workspace,
 } from './lib/store';
@@ -659,9 +659,12 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
       ]);
       if (automatic) {
         if (!await removeEmptyDraft(doc)) {
-          live.current.set(doc.id, doc);
+          // A newer persisted revision may have prevented deletion. Restore
+          // that revision instead of exposing the old blank snapshot for editing.
+          const restored = await loadDoc(doc.id) || doc;
+          live.current.set(restored.id, restored);
           setDocs([...live.current.values()]);
-          workerRef.current?.postMessage({ type: 'upsert', document: { id: doc.id, workspaceId: doc.workspaceId, title: doc.title, markdown: doc.markdown, updatedAt: doc.updatedAt } });
+          workerRef.current?.postMessage({ type: 'upsert', document: { id: restored.id, workspaceId: restored.workspaceId, title: restored.title, markdown: restored.markdown, updatedAt: restored.updatedAt } });
           return;
         }
       } else await removeDoc(doc.id);

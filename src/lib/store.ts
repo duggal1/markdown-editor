@@ -176,7 +176,8 @@ export async function removeEmptyDraft(expected: FlowDocument): Promise<boolean>
         if (entry) {
           if ((entry.value as FlowDocument).parentId === id) return;
           entry.continue();
-        } else {
+        } else if (readPrefs().activeDocumentId !== id && !readJson<FlowDocument>(FALLBACK + id) &&
+          readJson<FlowDocument>(RECOVERY)?.id !== id) {
           docs.delete(id);
           deleted = true;
         }
