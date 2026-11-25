@@ -1,7 +1,8 @@
 import type { TDocumentDefinitions } from 'pdfmake/interfaces';
 import pdfMakeScriptUrl from 'pdfmake/build/pdfmake.js?url';
 import pdfFontsScriptUrl from 'pdfmake/build/vfs_fonts.js?url';
-import { buildPdfDefinitionFromTree, parsePdfMarkdown, pdfImageUrlsFromTree, type PdfImageAssets } from './pdfDocument';
+import { buildPdfDefinitionFromTree, parsePdfMarkdown, pdfImageUrlsFromTree, type PdfImageAssets, type PdfDensity } from './pdfDocument';
+import { optimizePdfPagination } from './pdfPagination';
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 
@@ -126,8 +127,9 @@ export async function downloadStyledPdf(markdown: string, title: string, onProgr
   const tree = parsePdfMarkdown(markdown);
   const [pdfMake, images] = await Promise.all([pdfEngine(), prepareImages(pdfImageUrlsFromTree(tree))]);
   onProgress?.('Typesetting PDF…');
-  const doc = buildPdfDefinitionFromTree(tree, title, images) as TDocumentDefinitions;
-  const blob: Blob = await new Promise((resolve, reject) => {
+  const render = (density: PdfDensity): Promise<Blob> => {
+    const doc = buildPdfDefinitionFromTree(tree, title, images, density);
+    return new Promise<Blob>((resolve, reject) => {
     const timeout = window.setTimeout(() => reject(new Error('PDF generation timed out. Try exporting a smaller page.')), 120000);
     const fail = (error: unknown) => { clearTimeout(timeout); reject(error); };
     try {
@@ -143,7 +145,9 @@ export async function downloadStyledPdf(markdown: string, title: string, onProgr
     } catch (error) {
       fail(error);
     }
-  });
+    });
+  };
+  const blob = await optimizePdfPagination(render, () => onProgress?.('Optimizing page layout…'));
   // A non-empty Blob is not necessarily a PDF, particularly after a failed
   // renderer initialization. Check the actual file header before downloading.
   if (await blob.slice(0, 5).text() !== '%PDF-') {

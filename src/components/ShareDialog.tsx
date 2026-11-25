@@ -64,6 +64,7 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
   async function copyLink() {
     try {
       await navigator.clipboard.writeText(link);
+      setError('');
       setCopied(true);
       if (copyTimer.current !== undefined) window.clearTimeout(copyTimer.current);
       copyTimer.current = window.setTimeout(() => setCopied(false), 1800);
@@ -103,8 +104,8 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
     </div>
     {record ? <>
       <div className="share-url-row">
-        <Icon name="link" size={15} />
-        <input aria-label="Share link" value={link} readOnly onFocus={event => event.currentTarget.select()} />
+        <Icon name="link" size={16} />
+        <input aria-label="Share link" value={link} title={link} spellCheck={false} readOnly onFocus={event => event.currentTarget.select()} />
         <button type="button" className="share-copy" aria-label={copied ? 'Copied' : 'Copy link'} onClick={() => { void copyLink(); }} disabled={busy}>
           <span className="share-copy-labels" data-copied={copied} aria-hidden="true">
             <span className="share-copy-idle">Copy link</span>
@@ -119,11 +120,14 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
       </p>
     </> : <>
       {!backedUp && <label className="share-consent">
-        <input type="checkbox" checked={consent} onChange={event => setConsent(event.target.checked)} disabled={busy} data-dialog-initial-focus />
+        <span className="share-consent-control">
+          <input type="checkbox" checked={consent} onChange={event => setConsent(event.target.checked)} disabled={busy} data-dialog-initial-focus />
+          <span className="share-consent-mark" aria-hidden="true"><Icon name="check" size={12} /></span>
+        </span>
         <span>Upload to cloud</span>
       </label>}
       <button type="button" className="share-create" disabled={busy || (!backedUp && !consent)} onClick={() => { void enable(); }}>
-        {operation === 'create' ? <span className="share-spinner" aria-hidden="true" /> : <Icon name="link" size={15} />}
+        {operation === 'create' ? <span className="share-spinner" aria-hidden="true" /> : <Icon name="link" size={16} />}
         {operation === 'create' ? 'Creating link…' : error ? 'Retry' : 'Create link'}
       </button>
       {operation === 'create' && <p className="share-status" role="status">

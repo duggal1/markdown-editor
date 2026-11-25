@@ -9,7 +9,7 @@ import type { TDocumentDefinitions } from 'pdfmake/interfaces';
 
 /**
  * An actual vector/text PDF, not a canvas screenshot of the editor.
- * 595pt A4 page, 48pt outer measure, one grayscale typographic system.
+ * 595pt A4 page, 48pt horizontal measure, one grayscale typographic system.
  * Parsing and rendering run only after the user chooses Export PDF.
  */
 hljs.registerLanguage('swift', swift);
@@ -31,6 +31,8 @@ type MdNode = {
 type PdfPart = string | Record<string, unknown>;
 type PdfBlock = Record<string, unknown>;
 export type PdfImageAssets = ReadonlyMap<string, string>;
+export type PdfDensity = 'balanced' | 'compact';
+export const PDF_PAGE_MARGINS = { balanced: [48, 48, 48, 42], compact: [48, 40, 48, 38] } as const;
 const BLACK = '#101010';
 const BODY = '#252525';
 const MUTED = '#656565';
@@ -304,13 +306,13 @@ export function pdfImageUrlsFromTree(root: MdNode): string[] {
 }
 
 export function buildPdfDefinition(
-  markdown: string, title: string, images: PdfImageAssets = new Map(),
+  markdown: string, title: string, images: PdfImageAssets = new Map(), density: PdfDensity = 'balanced',
 ): TDocumentDefinitions {
-  return buildPdfDefinitionFromTree(parsePdfMarkdown(markdown), title, images);
+  return buildPdfDefinitionFromTree(parsePdfMarkdown(markdown), title, images, density);
 }
 
 export function buildPdfDefinitionFromTree(
-  root: MdNode, title: string, images: PdfImageAssets = new Map(),
+  root: MdNode, title: string, images: PdfImageAssets = new Map(), density: PdfDensity = 'balanced',
 ): TDocumentDefinitions {
   const safeTitle = (title || 'Untitled').trim().slice(0, 160) || 'Untitled';
   const nodes = root.children || [];
@@ -323,14 +325,29 @@ export function buildPdfDefinitionFromTree(
   content.push(...blocks(nodes, images));
   if (!content.length) content.push({ text: safeTitle, style: 'h1' });
 
+  const compact = density === 'compact';
+  // Scale only vertical whitespace, not font size, horizontal measure, image
+  // dimensions, or source. This includes nested lists and code cell stacks.
+  const tighten = (value: unknown): void => {
+    if (Array.isArray(value)) { value.forEach(tighten); return; }
+    if (!value || typeof value !== 'object') return;
+    const node = value as Record<string, unknown>;
+    if (Array.isArray(node.margin) && node.margin.length === 4) {
+      const [l,t,r,b] = node.margin as number[];
+      const scale = compact ? .68 : .88;
+      node.margin = [l, Math.round(t * scale * 10) / 10, r, Math.round(b * scale * 10) / 10];
+    }
+    Object.values(node).forEach(tighten);
+  };
+  tighten(content);
   const definition = {
     info: { title: safeTitle, creator: 'Flow', producer: 'Flow PDF Export' },
     pageSize: 'A4', pageOrientation: 'portrait',
-    pageMargins: [48, 54, 48, 46],
+    pageMargins: [...PDF_PAGE_MARGINS[density]],
     content,
     defaultStyle: {
       font: 'Roboto', fontSize: 10.5, color: BODY,
-      lineHeight: 1.42,
+      lineHeight: compact ? 1.28 : 1.36,
     },
     styles: {
       h1: { fontSize: 27, bold: true, color: BLACK, lineHeight: 1.13 },
@@ -339,12 +356,12 @@ export function buildPdfDefinitionFromTree(
       h4: { fontSize: 11.1, bold: true, color: BLACK, lineHeight: 1.32 },
       h5: { fontSize: 10.5, bold: true, color: BLACK, lineHeight: 1.36 },
       h6: { fontSize: 10.3, bold: true, color: MUTED, lineHeight: 1.36 },
-      body: { fontSize: 10.5, color: BODY, lineHeight: 1.42 },
-      list: { fontSize: 10.5, color: BODY, lineHeight: 1.45 },
-      code: { fontSize: 9, color: BLACK, lineHeight: 1.35 },
+      body: { fontSize: 10.5, color: BODY, lineHeight: compact ? 1.28 : 1.36 },
+      list: { fontSize: 10.5, color: BODY, lineHeight: compact ? 1.30 : 1.38 },
+      code: { fontSize: 9, color: BLACK, lineHeight: compact ? 1.24 : 1.30 },
       codeLabel: { fontSize: 8.1, bold: true, color: MUTED, characterSpacing: 0.5 },
       tableHead: { fontSize: 9.1, bold: true, color: BLACK, lineHeight: 1.3 },
-      tableCell: { fontSize: 9.1, color: BODY, lineHeight: 1.32 },
+      tableCell: { fontSize: 9.1, color: BODY, lineHeight: compact ? 1.26 : 1.32 },
     },
     header: (page: number) => page === 1 ? { text: '' } : {
       text: safeTitle, color: '#969696', fontSize: 8.2,
