@@ -16,7 +16,7 @@ import { backupStatus, enableBackup, getRecoveryKey, recoverWithKey, resumeBacku
 import { queueSharedSync, readShareRecord, revokeCloudShare } from './lib/sharing';
 import { isHtmlPage, localHtmlUrl, publishHtml, queueSiteSync, readSiteRecord, revokeHtml,
   siteUrl, verifyHostedHtml } from './lib/siteHosting';
-import { detectRawCode, isMarkdownFile, languageForFile } from './lib/code';
+import { detectRawCode, isMarkdownFile, languageForFile, normalizeMixedContent } from './lib/code';
 import { svgPreviewDocument } from './lib/svgPreview';
 import { readTextImport } from './lib/textImport';
 import { formatPlainTextAsMarkdown, MAX_MANUAL_FORMAT_CHARS } from './lib/autoMarkdown';
@@ -207,7 +207,19 @@ export default function App() {
       if (!alive) return;
       // Upgrade older default "Untitled" pages once. Named pages and
       // imported filenames are never silently renamed.
-      const restored = data.documents.map(doc => {
+      const restored = data.documents.map(original => {
+        let doc = original;
+        // Recover old inferred-code pages, never explicit source-file imports.
+        if (!doc.asset && doc.markdown.length < 180_000 &&
+          (!doc.fileName || isMarkdownFile(doc.fileName) || !languageForFile(doc.fileName)) &&
+          normalizeMixedContent(doc.markdown) !== doc.markdown) {
+          const markdown = formatPlainTextAsMarkdown(doc.markdown, { atDocumentStart: true });
+          if (markdown !== doc.markdown) {
+            doc = { ...doc, markdown, language: undefined, updatedAt: Date.now() };
+            if (doc.titleAuto && !doc.fileName) doc.title = inferTitle(markdown);
+            void saveDoc(doc).catch(() => setNotice('Could not save recovered Markdown structure.'));
+          }
+        }
         if (doc.asset || doc.fileName || !doc.markdown.trim() ||
             (!doc.titleAuto && !isUntitledTitle(doc.title))) return doc;
         const title = inferTitle(doc.markdown, doc.language);
@@ -997,8 +1009,10 @@ async function eraseDocument(doc: FlowDocument) {
         const decoded = await readTextImport(file, file.name);
         binary = decoded === null;
         if (decoded !== null) {
-          const plainText = /\.txt$/i.test(file.name) && !languageForFile(file.name);
-          markdown = plainText ? formatPlainTextAsMarkdown(decoded, { atDocumentStart: true }) : decoded;
+          const plainText = !languageForFile(file.name) && !isMarkdownFile(file.name) &&
+            (/\.txt$/i.test(file.name) || file.type === 'text/plain');
+          const mixedMarkdown = isMarkdownFile(file.name) && normalizeMixedContent(decoded) !== decoded;
+          markdown = plainText || mixedMarkdown ? formatPlainTextAsMarkdown(decoded, { atDocumentStart: true }) : decoded;
         }
       }
       const now = Date.now();

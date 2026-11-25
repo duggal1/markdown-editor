@@ -8,11 +8,17 @@ const original = readFileSync(new URL('../src/lib/autoMarkdown.ts', import.meta.
 const js = ts.transpileModule(original, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
+const codeModule = { exports: {} };
+const codeSource = readFileSync(new URL('../src/lib/code.ts', import.meta.url), 'utf8');
+runInNewContext(ts.transpileModule(codeSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, {
+  module: codeModule, exports: codeModule.exports,
+  require: name => { if (name === './htmlPreview') return { looksLikeHtml: () => false }; throw new Error(name); },
+});
 const module = { exports: {} };
 runInNewContext(js, {
   module, exports: module.exports,
   require: (name) => {
-    if (name === './code') return { detectRawCode: () => null };
+    if (name === './code') return codeModule.exports;
     throw new Error('Unexpected module: ' + name);
   },
 });
@@ -131,5 +137,61 @@ assert.match(app, /aria-busy=\{autoFormatting\}/, 'Formatting must show a visibl
 assert.match(action, /WORKER_THRESHOLD = 50_000/);
 assert.match(action, /new Worker\(/, 'Long document formatting should not block the editor.');
 assert.match(worker, /formatMarkdownDocument\(event\.data\.source, event\.data\.options\)/);
+
+
+const drizzle = [
+  'Batch API',
+  'These methods are available on the Drizzle Postgres driver (drizzle-orm/postgres).',
+  '',
+  'Method\tUse it to\tOn failure',
+  'batch\tCommit together\tRolls back the batch',
+  'pipeline\tSend queries on one connection\tOther queries can commit',
+  'Batch',
+  'db.batch() runs all statements in one transaction. If the insert fails, PostgreSQL rolls back the stock update.',
+  '',
+  "const sku = 'usb-c-cable';",
+  'const quantity = 20;',
+  'const response = await db.batch([',
+  '  db.update(products)',
+  '    .set({ stock: 20 })',
+  '    .where(eq(products.sku, sku))',
+  '    .returning({ stock: products.stock }),',
+  '  db.insert(stockReceipts).values({ id: "receipt-1042", sku, quantity }),',
+  ']);',
+  'console.log(response[0]); // result',
+  '',
+  'The driver sends the batch in one round trip and returns results in input order.',
+  '',
+  'Pipeline',
+  'db.pipeline() sends queries back-to-back on one connection.',
+  '',
+  'const [usb, hdmi] = await db.pipeline([',
+  '  db.$count(products),',
+  ']);',
+  "if (usb.status === 'rejected') console.error(usb.reason);",
+  '',
+  'Each query returns a settled result in input order.',
+].join('\n');
+const { detectRawCode } = codeModule.exports;
+const { shouldAutoFormatPaste } = module.exports;
+assert.equal(detectRawCode(drizzle), null, 'Mixed docs are not standalone JavaScript');
+assert.equal(shouldAutoFormatPaste(drizzle), true);
+const converted = format(drizzle);
+assert.match(converted, /^# Batch API\n/);
+assert.match(converted, /\| Method \| Use it to \| On failure \|\n\| --- \| --- \| --- \|/);
+assert.match(converted, /^## Pipeline$/m);
+const snippets = [...converted.matchAll(/\x60{3}javascript\n([\s\S]*?)\n\x60{3}/g)].map(match => match[1]);
+assert.equal(snippets.length, 2, 'Only two code blocks, not surrounding documentation');
+assert.equal(snippets[0], drizzle.slice(drizzle.indexOf('const sku'), drizzle.indexOf('\n\nThe driver')));
+assert.equal(snippets[1], drizzle.slice(drizzle.indexOf('const [usb'), drizzle.indexOf('\n\nEach query')));
+assert.equal(detectRawCode(converted), null);
+assert.equal(format(converted), converted, 'Mixed-document normalization is idempotent');
+const standalone = 'const quantity = 20;\nconsole.log(quantity);';
+assert.equal(detectRawCode(standalone), 'javascript');
+assert.equal(format(standalone), standalone);
+assert.equal(shouldAutoFormatPaste(standalone), false);
+assert.equal(detectRawCode('import SwiftUI\nstruct Home: View {\n var body: some View { Text("Hello") }\n}'), 'swift');
+assert.equal(detectRawCode('def hello():\n    print("Hi")\n'), 'python');
+assert.equal(detectRawCode('SELECT id FROM products;'), 'sql');
 
 console.log('Auto Markdown regression cases passed.');
