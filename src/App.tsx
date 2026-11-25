@@ -6,6 +6,7 @@ import type { EditorView } from '@codemirror/view';
 import MarkdownEditor, { formatEditor } from './components/MarkdownEditor';
 import { setTaskChecked, taskMarkerEdit } from './lib/taskList';
 import WorkspaceTree from './components/WorkspaceTree';
+import { rankDocuments, restoreRecent, touchRecent } from './lib/workspaceRecency';
 import { FlowMark, Icon, SuppliedIcon } from './components/Icons';
 import { ACCENT_THEMES, applyAccentTheme, parseAccentTheme, type AccentTheme } from './lib/accentTheme';
 import { downloadMarkdown } from './lib/document';
@@ -267,7 +268,7 @@ export default function App() {
       activeIdRef.current = first.id;
       setActiveId(first.id);
       setWorkspaceId(chosenWorkspace.id);
-      setRecentIds(Array.isArray(prefs.recentIds) ? prefs.recentIds.filter(id => live.current.has(id)) : [first.id]);
+      setRecentIds(restoreRecent(prefs.recentIds, first.id, new Set(live.current.keys())));
       setTheme(prefs.theme === 'dark' || prefs.theme === 'light' ? prefs.theme
         : 'dark');
       setAccentTheme(parseAccentTheme(prefs.accentTheme));
@@ -485,6 +486,7 @@ export default function App() {
       ...current, markdown: value, title, titleAuto: autoTitle, updatedAt: Date.now(),
     };
     scheduleSave(next);
+    setRecentIds(ids => touchRecent(ids, id));
     if (id === activeIdRef.current) window.dispatchEvent(new CustomEvent('flow-outline-change', { detail: id }));
     // Coalesce edits to one preview update per animation frame, never after an idle delay.
     if (id === activeIdRef.current && modeRef.current !== 'write') {
@@ -584,7 +586,7 @@ export default function App() {
       });
       return changed ? next : current;
     });
-    setRecentIds(current => [id, ...current.filter(item => item !== id)].slice(0, 30));
+    setRecentIds(current => touchRecent(current, id));
     setPreviewText(doc.markdown);
     setSaveState('idle');
     if (window.innerWidth < 800) setSidebarOpen(false);
@@ -1181,14 +1183,14 @@ async function eraseDocument(doc: FlowDocument) {
     });
   }
   const matching = useMemo(() => {
-    if (!query.trim()) return [...docs].sort((a, b) => b.updatedAt - a.updatedAt);
+    if (!query.trim()) return rankDocuments(docs, recentIds);
     const byId = new Map(docs.map(doc => [doc.id, doc]));
     // The worker returns relevance ranking. Do not sort by modification time.
     return searchResults.flatMap(hit => {
       const doc = byId.get(hit.id);
       return doc ? [doc] : [];
     });
-  }, [docs, query, searchResults]);
+  }, [docs, query, searchResults, recentIds]);
   useEffect(() => {
     const requestId = ++searchRequest.current;
     const text = query.trim();
