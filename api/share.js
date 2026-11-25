@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { del, get, head, issueSignedToken, presignUrl, put, setTtl } from '@vercel/blob';
+import { del, get, head, issueSignedToken, presignUrl, put, setTtl } from '../server/storage.js';
 
 // Vercel Functions have a 4.5 MB body limit. Large pages go directly from
 // browser to private Blob storage using individually signed, retryable parts.
@@ -7,14 +7,15 @@ const ID_PATTERN = /^[A-Za-z0-9_-]{16}$/;
 const KEY_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
 const MAX_MARKDOWN_BYTES = 100 * 1024 * 1024;
-const PART_BYTES = 5 * 1024 * 1024;
+const LEGACY_PART = 5 * 1024 * 1024;
+const PART_BYTES = (process.env.FLOW_STORAGE_BACKEND === 'postgres' || (process.env.DATABASE_URL && !process.env.BLOB_READ_WRITE_TOKEN && !(process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID))) ? 2 * 1024 * 1024 : LEGACY_PART;
 const LEGACY_MARKDOWN_BYTES = 240_000;
 const MAX_REQUEST_BYTES = 300_000;
 const pathFor = id => 'shares/' + id + '.json';
 const sessionFor = (id, version) => 'shares/' + id + '/sessions/' + version + '.json';
 const partFor = (id, version, index) =>
   'shares/' + id + '/versions/' + version + '/' + String(index).padStart(2, '0') + '.bin';
-const partCount = bytes => Math.max(1, Math.ceil(bytes / PART_BYTES));
+const partCount = (bytes, partBytes = PART_BYTES) => Math.max(1, Math.ceil(bytes / partBytes));
 
 function reply(res, code, body) {
   res.status(code).json(body);
@@ -32,7 +33,7 @@ function metadata(value) {
       !Number.isSafeInteger(value.bytes) || value.bytes < 0 || value.bytes > MAX_MARKDOWN_BYTES ||
       typeof value.checksum !== 'string' || !HASH_PATTERN.test(value.checksum)) return null;
   return { title: value.title.trim() || 'Untitled', language: value.language || undefined,
-    bytes: value.bytes, checksum: value.checksum, count: partCount(value.bytes) };
+    bytes: value.bytes, checksum: value.checksum, count: partCount(value.bytes), partBytes: PART_BYTES };
 }
 function legacyPayload(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value) ||
@@ -73,15 +74,15 @@ async function signedUrls(paths, operation) {
   const token = await issueSignedToken({
     pathname: '*', operations: [operation], validUntil: until, ...options,
   });
-  return Promise.all(paths.map(async pathname => {
-    const { presignedUrl } = await presignUrl(token, {
+  return (await Promise.all(paths.map(async pathname => {
+    const signed = await presignUrl(token, {
       operation, pathname, access: 'private', validUntil: until,
       ...(operation === 'put' ? {
         ...options, addRandomSuffix: false, allowOverwrite: false, ttlDays: 30,
       } : {}),
     });
-    return presignedUrl;
-  }));
+    return signed.presignedUrls || [signed.presignedUrl];
+  }))).flat();
 }
 async function startUpload(id, ownerHash, info, baseRevision) {
   const version = randomBytes(12).toString('base64url');
@@ -92,17 +93,17 @@ async function startUpload(id, ownerHash, info, baseRevision) {
   ]);
   return { id, version, urls, chunkBytes: PART_BYTES };
 }
-async function verifiedParts(id, version, bytes, count) {
+async function verifiedParts(id, version, bytes, count, partBytes) {
   const paths = partPaths(id, version, count);
   const parts = await Promise.all(paths.map(path => head(path).catch(() => null)));
-  if (parts.some((part, index) => !part || part.size !== Math.min(PART_BYTES, Math.max(0, bytes - index * PART_BYTES)))) return null;
+  if (parts.some((part, index) => !part || part.size !== Math.min(partBytes, Math.max(0, bytes - index * partBytes)))) return null;
   return paths;
 }
 async function clearUploadTtl(paths) {
   await Promise.all(paths.map(path => setTtl(path, { ttlDays: null })));
 }
 async function retireVersion(id, version, count) {
-  if (!ID_PATTERN.test(version) || !Number.isSafeInteger(count) || count < 1 || count > 20) return;
+  if (!ID_PATTERN.test(version) || !Number.isSafeInteger(count) || count < 1 || count > 50) return;
   // Keep the previous revision available for in-flight readers, but reclaim it.
   await Promise.allSettled(partPaths(id, version, count).map(path =>
     setTtl(path, { ttlDays: 1 })));
@@ -116,7 +117,7 @@ export default async function handler(req, res) {
     res.setHeader('Allow', 'GET, POST, PUT, DELETE');
     return reply(res, 405, { error: 'Method not allowed' });
   }
-  if (!process.env.BLOB_READ_WRITE_TOKEN && !(process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID)) {
+  if (!process.env.DATABASE_URL && !process.env.BLOB_READ_WRITE_TOKEN && !(process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID)) {
     return reply(res, 503, { error: 'Cloud sharing is unavailable' });
   }
   try {
@@ -135,14 +136,14 @@ export default async function handler(req, res) {
           return reply(res, 404, { error: 'Share not found' });
         const { title, language, updatedAt } = backup.meta;
         if (!backup.bytes) return reply(res, 200, { title, language, updatedAt, markdown: '' });
-        const paths = Array.from({ length: Math.ceil(backup.bytes / PART_BYTES) },
+        const paths = Array.from({ length: Math.ceil(backup.bytes / (backup.partBytes || LEGACY_PART)) },
           (_, i) => shared.backupRoot + '/parts/' + backup.version + '/' + i + '.bin');
         return reply(res, 200, { title, language, updatedAt, bytes: backup.bytes,
           checksum: backup.checksum, urls: await signedUrls(paths, 'get') });
       }
       if (shared.format === 2) {
         if (!ID_PATTERN.test(shared.version) || !Number.isSafeInteger(shared.count) ||
-            shared.count !== partCount(shared.bytes) || shared.bytes > MAX_MARKDOWN_BYTES) {
+            shared.count !== partCount(shared.bytes, shared.partBytes || LEGACY_PART) || shared.bytes > MAX_MARKDOWN_BYTES) {
           return reply(res, 500, { error: 'Invalid cloud document' });
         }
         const urls = await signedUrls(partPaths(id, shared.version, shared.count), 'get');
@@ -233,7 +234,7 @@ export default async function handler(req, res) {
           (current.version || null) !== session.baseRevision) {
         return reply(res, 409, { error: 'Upload expired or page changed; retry the upload' });
       }
-      const paths = await verifiedParts(id, version, session.bytes, session.count);
+      const paths = await verifiedParts(id, version, session.bytes, session.count, session.partBytes || LEGACY_PART);
       if (!paths) return reply(res, 409, { error: 'Upload incomplete; retry missing chunks' });
       await clearUploadTtl(paths);
       const metadataBlob = await head(pathFor(id));
@@ -241,7 +242,7 @@ export default async function handler(req, res) {
       await save(pathFor(id), {
         format: 2, status: 'active', ownerHash: current.ownerHash,
         title: session.title, language: session.language, bytes: session.bytes,
-        checksum: session.checksum, count: session.count, version, updatedAt,
+        checksum: session.checksum, count: session.count, partBytes: session.partBytes || LEGACY_PART, version, updatedAt,
       }, { allowOverwrite: true, ifMatch: metadataBlob.etag });
       await del(sessionFor(id, version)).catch(() => {});
       if (current.format === 2 && current.version && current.version !== version) {

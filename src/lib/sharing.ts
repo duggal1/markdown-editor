@@ -70,9 +70,9 @@ function uploadTicket(value: unknown, expectedBytes: number) {
     urls?: unknown; chunkBytes?: number } | null;
   if (!data || typeof data.id !== 'string' || !ID.test(data.id) ||
       typeof data.version !== 'string' || !ID.test(data.version) ||
-      data.chunkBytes !== PART_BYTES || !Array.isArray(data.urls) ||
-      data.urls.length !== Math.max(1, Math.ceil(expectedBytes / PART_BYTES)) ||
-      !data.urls.every(url => typeof url === 'string' && url.startsWith('https://'))) {
+      typeof data.chunkBytes !== 'number' || ![PART_BYTES, 2 * 1024 * 1024].includes(data.chunkBytes) || !Array.isArray(data.urls) ||
+      data.urls.length !== Math.max(1, Math.ceil(expectedBytes / data.chunkBytes)) ||
+      !data.urls.every(url => typeof url === 'string' && (url.startsWith('https://') || url.startsWith('/api/storage?ticket=')))) {
     throw new Error('Cloud returned an invalid upload session');
   }
   return data as { id: string; secret?: string; version: string; urls: string[]; chunkBytes: number };
@@ -134,8 +134,8 @@ async function uploadVersion(
   await Promise.all(Array.from({ length: Math.min(PARALLEL_UPLOADS, ticket.urls.length) }, async () => {
     while (cursor < ticket.urls.length) {
       const index = cursor++;
-      const start = index * PART_BYTES;
-      const end = Math.min(bytes.byteLength, start + PART_BYTES);
+      const start = index * ticket.chunkBytes;
+      const end = Math.min(bytes.byteLength, start + ticket.chunkBytes);
       const body = new Blob([bytes.slice(start, end).buffer], { type: 'application/octet-stream' });
       await uploadChunk(ticket.urls[index], body, index);
       finished++;

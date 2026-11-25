@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { once } from 'node:events';
-import { del, get, head, put } from '@vercel/blob';
+import { del, get, head, put } from '../server/storage.js';
 
 // HTML sites are intentionally separate from Markdown shares. A 10 MB site is
 // uploaded in bounded chunks so Vercel's request body limit is never exceeded.
@@ -122,7 +122,7 @@ export default async function handler(req, res) {
     res.setHeader('Allow', 'GET, POST, PUT, DELETE');
     return respond(res, 405, { error: 'Method not allowed' });
   }
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+  if (!process.env.BLOB_READ_WRITE_TOKEN && !process.env.DATABASE_URL) {
     return respond(res, 503, { error: 'Cloud storage is not configured' });
   }
   try {
