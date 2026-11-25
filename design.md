@@ -1,6 +1,9 @@
 # DESIGN.md — Flow HTML runtime
 
-Read this before changing the HTML player, glass controls, or iPhone preview.
+Read this before changing Flow's interface, HTML player, glass controls, or device previews.
+
+## Default visual direction: borderless first
+Start every new UI design with zero decorative borders. Distinguish components through neutral surface tones, spacing, typography, shape and contrast, not outlines or inset strokes masquerading as borders. Dark appearance hover moves toward darker surfaces; light appearance hover moves toward lighter surfaces. Use restrained rounding and brief, reversible transitions. Preserve meaningful keyboard focus indicators, accessibility, and borders that are necessary to the actual authored content. Apply this direction to new designs by default; do not restyle unrelated existing surfaces without an explicit request.
 
 ## The screen is the product
 
@@ -122,8 +125,7 @@ Hex literals in preview text, inline code, tables and source blocks display real
 Desktop, iPhone and iPad are independent device modes. The iPad uses a representative 11-inch CSS viewport of 820 × 1180 (portrait) or 1180 × 820 (landscape), with a 12px matte frame and uniform fit-to-window scaling. The iframe layout dimensions remain unscaled for responsive media queries. This is not Safari/DPR emulation. Tablet scrollbars hide chrome without disabling scrolling. The existing phone SVG geometry is unchanged. The HTML source is never restyled by the player glass.
 
 ## SVG and compact sharing correction
-SVG pages and SVG snippets render artwork only in a transparent, script-disabled image iframe. Source belongs in the editor, not beneath the preview. Preserve explicit fills, strokes and embedded CSS; supply theme-aware currentColor only when no authored color overrides it. No checkerboard, white backing card or code header. Keep non-SVG code rendering unchanged. The share dialog uses a title-aligned globe, text-only Copy link, fixed-width crossfade to a check and Copied, and dotted underline for Stop sharing on hover/focus. Desktop Split gets restrained additional inline padding; keep mobile and Write geometry intact. Tables retain their full grid with a darker neutral surface and quieter borders.
-
+SVG pages and SVG snippets render artwork only in a transparent, script-disabled image iframe. Source belongs in the editor, not beneath the preview. Preserve explicit fills, strokes and embedded CSS; supply theme-aware currentColor only when no authored color overrides it. No checkerboard, white backing card or code header. Keep non-SVG code rendering unchanged. The share dialog uses a title-aligned globe, text-only Copy link, fixed-width crossfade to a check and Copied, and dotted underline for Stop sharing on hover/focus. Desktop Split gets restrained additional inline padding; keep mobile and Write geometry intact. Markdown tables use the borderless-first direction: no outer stroke, row dividers, column rules or simulated borders. A compact 10px rounded surface and distinct header/alternating row tones provide hierarchy. Dark hover is darker than either resting row tone; light hover is lighter than either resting row tone. Preserve semantic table markup, alignment, text contrast, inline code and mobile horizontal scrolling. The approved change is limited to Markdown preview tables, including shared read-only pages; PDF output and authored HTML are untouched.
 
 ## SVG inspector
 Standalone and embedded SVG previews have a compact neutral toolbar: intrinsic pixel size, 25–400% preview zoom, independent white/black/transparent/workspace backgrounds, and local PNG download at 1×–3×. Authored paint literals appear above the artwork; editable workspace swatches use the existing HSV/alpha picker. Done commits exact matching source ranges as one undoable edit; shared previews stay read-only. No external conversion service, decorative borders or source code under the artwork. PNG exports use image-mode SVG, preserve aspect ratio and cap allocations at 8192 pixels per axis / 32 megapixels. Unresolved dynamic colors and external resources are not guessed.
