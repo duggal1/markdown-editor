@@ -26,3 +26,16 @@ export function hsvToHex(h: number, s: number, v: number, alpha?: number): strin
   const byte = (n: number) => Math.round(Math.max(0, Math.min(1, n)) * 255).toString(16).padStart(2, '0');
   return '#' + [f(5), f(3), f(1), ...(alpha === undefined ? [] : [alpha])].map(byte).join('');
 }
+
+
+export type HexOccurrence = { text: string; from: number };
+export function hexOccurrences(source: string, base = 0): HexOccurrence[] {
+  return Array.from(source.matchAll(new RegExp(hexPattern.source, hexPattern.flags)),
+    match => ({ text: match[0], from: base + match.index! }));
+}
+export function mapHexOccurrences(display: string, raw: string, base: number): HexOccurrence[] {
+  const rendered = hexOccurrences(display);
+  const original = hexOccurrences(raw, base);
+  return rendered.length === original.length && rendered.every((item, i) => item.text === original[i].text)
+    ? original : rendered.map(item => ({ ...item, from: -1 }));
+}

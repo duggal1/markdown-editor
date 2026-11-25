@@ -76,6 +76,20 @@ assert.equal(applyAccentTheme('blue'), 'blue');
 assert.match(decodeURIComponent(faviconLink.href), /#2563eb/);
 assert.doesNotMatch(css, /data-background='blue'/);
 assert.match(app, /\(\['dark', 'light'\] as const\)\.map/);
+const previewColors = read('src/lib/previewColors.ts');
+assert.match(preview, /\[rehypePreviewColors, charOffset\]/);
+assert.match(preview, /attachPreviewColorPicker\(root/);
+assert.match(app, /onEditColor=\{onEditColor\}/);
+assert.match(app, /view\.state\.doc\.toString\(\) !== expected/);
+const hexMapping = { exports: {} };
+runInNewContext(ts.transpileModule(read('src/lib/hexColor.ts'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText, { module: hexMapping, exports: hexMapping.exports });
+const { mapHexOccurrences } = hexMapping.exports;
+assert.equal(mapHexOccurrences('#FF8A30', '#FF8A30', 30)[0].from, 30);
+assert.equal(mapHexOccurrences('#abc #abc', '#abc #abc', 10)[1].from, 15);
+assert.equal(mapHexOccurrences('#abc', '#def', 10)[0].from, -1);
+assert.match(previewColors, /expected = expected\.slice/);
 const outline = read('src/components/PageOutline.tsx');
 assert.doesNotMatch(app, /id="outline-dialog"|onClick=\{openOutline\}/);
 assert.doesNotMatch(css, /#outline-dialog/);
@@ -105,7 +119,7 @@ const { navigationEase, navigationDuration, navigateScroll, cancelNavigation } =
 assert.equal(navigationEase(0), 0);
 assert.equal(navigationEase(1), 1);
 assert.equal(navigationEase(.5), .5);
-assert.ok(navigationDuration(10000, 500) <= 560);
+assert.ok(navigationDuration(10000, 500) <= 980);
 function advance(dt) {
   time += dt;
   const callbacks = [...frames.values()];
@@ -123,12 +137,12 @@ const stopped = scroll.scrollTop;
 advance(500);
 assert.equal(scroll.scrollTop, stopped);
 navigateScroll(scroll, 900, true);
-for (let i = 0; i < 60; i++) advance(1000 / 90);
+for (let i = 0; i < 100; i++) advance(1000 / 90);
 assert.equal(scroll.scrollTop, 900);
 assert.equal(frames.size, 0);
 navigateScroll(scroll, 9000, true, true);
 assert.equal(scroll.scrollTop, 8375);
-for (let i = 0; i < 60; i++) advance(1000 / 60);
+for (let i = 0; i < 100; i++) advance(1000 / 60);
 assert.equal(scroll.scrollTop, 9000);
 navigateScroll(scroll, 0, true);
 advance(16);

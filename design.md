@@ -112,3 +112,7 @@ The isolated player maintains app-relative routes without reloading the iframe o
 
 ## Outline motion
 The left rail and heading panel use reversible opacity/transform transitions with a shared decelerating curve. A single sliding row highlight follows hover and keyboard focus; no animated geometry or blur. Explicit heading navigation uses refresh-rate-aware time-based easing, cancels on direct interaction, and retains immediate source synchronization. Very distant virtualized jumps seek near the destination before easing the final travel. Native wheel and touch scrolling stay native. Reduced-motion disables transitions and animated jumps.
+
+
+## Preview colors and dark dialogs
+Hex literals in preview text, inline code, tables and source blocks display their actual swatches; editable literals map to exact source offsets and share the custom HSV/alpha picker with CodeMirror. A stale preview must never change a different literal. Shared public pages remain read-only. Settings and Share use a near-black #080808 surface, #111111 controls, compact spacing and regular-weight type. Explicit heading scroll uses a longer quintic ease with bounded travel for extreme distances.

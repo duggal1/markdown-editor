@@ -6,7 +6,7 @@ export function navigationEase(progress: number): number {
   return t * t * t * (t * (t * 6 - 15) + 10);
 }
 export function navigationDuration(distance: number, viewport: number): number {
-  return Math.max(220, Math.min(560, 220 + 135 * Math.sqrt(Math.abs(distance) / Math.max(1, viewport))));
+  return Math.max(360, Math.min(980, 360 + 190 * Math.sqrt(Math.abs(distance) / Math.max(1, viewport))));
 }
 
 type Motion = { frame: number; target: number };
@@ -34,7 +34,7 @@ export function navigateScroll(scroll: HTMLElement, top: number, smooth = false,
   const viewport = Math.max(1, scroll.clientHeight);
   // Don't render hundreds of offscreen virtual windows just to cross a large
   // file. Seek close to the target, then ease the final visible travel.
-  if (bounded && Math.abs(target - from) > viewport * 3) {
+  if (bounded && Math.abs(target - from) > viewport * 12) {
     from = target - Math.sign(target - from) * viewport * 1.25;
     scroll.scrollTop = from;
   }

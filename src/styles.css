@@ -2551,9 +2551,9 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 
 /* Share is a single access row and URL action, not a stack of nested cards. */
 :root:not([data-theme='light']) {
-  --flow-dialog-surface:#171717;
-  --flow-dialog-field:#202020;
-  --flow-dialog-hover:#2b2b2b;
+  --flow-dialog-surface:#080808;
+  --flow-dialog-field:#111111;
+  --flow-dialog-hover:#191919;
   --flow-dialog-text:#f5f5f5;
   --flow-dialog-muted:#a3a3a3;
 }
@@ -2566,14 +2566,14 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .flow-accent-palette button { background:transparent; position:relative; }
 .flow-accent-palette button[aria-pressed='true'] { background:transparent; }
 .flow-accent-palette button[aria-pressed='true'] .flow-settings-swatch { outline:1px solid var(--flow-dialog-text); outline-offset:3px; }
-#share-dialog.flow-dialog { width:min(392px,calc(100vw - 24px)); border:0; background:var(--flow-dialog-surface); border-radius:12px; }
+#share-dialog.flow-dialog { width:min(350px,calc(100vw - 24px)); border:0; background:var(--flow-dialog-surface); border-radius:10px; }
 #share-dialog .flow-dialog-header { padding:0 12px 0 16px; height:44px; min-height:44px; }
 #share-dialog .flow-dialog-body { padding:4px 16px 12px; }
 #share-dialog .flow-dialog-footer { display:flex; align-items:center; justify-content:space-between; padding:0 16px 14px; gap:8px; }
 .share-access { display:flex; align-items:center; gap:10px; margin:0 0 16px; }
 .share-access > .phosphor-icon { flex:none; color:var(--flow-dialog-muted); }
 .share-access-text { min-width:0; }
-.share-access-text strong { font-size:13px; font-weight:500; color:var(--flow-dialog-text); }
+.share-access-text strong { font-size:13px; font-weight:400; color:var(--flow-dialog-text); }
 .share-access-text p { margin:3px 0 0; font-size:12px; line-height:1.4; color:var(--flow-dialog-muted); }
 .share-url-row { display:flex; align-items:center; gap:7px; padding:3px 3px 3px 9px; min-width:0; background:var(--flow-dialog-field); border-radius:8px; }
 .share-url-row > .phosphor-icon { flex:none; color:var(--flow-dialog-muted); }
@@ -2583,7 +2583,7 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .share-copy { flex:none; min-width:88px; background:var(--flow-dialog-text); color:var(--flow-dialog-surface); }
 .share-copy:hover:not(:disabled) { opacity:.85; }
 .share-create { width:100%; height:32px; background:var(--flow-dialog-text); color:var(--flow-dialog-surface); }
-.share-create:disabled { opacity:.65; }
+.share-create:disabled { opacity:1; background:var(--flow-dialog-field); color:var(--flow-dialog-muted); cursor:not-allowed; }
 .share-done { background:var(--flow-dialog-hover); color:var(--flow-dialog-text); }
 .share-done:hover:not(:disabled) { filter:brightness(1.12); }
 .share-revoke { padding-inline:0; background:transparent; color:var(--flow-dialog-muted); font-weight:400; }
@@ -2675,3 +2675,24 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 @media(prefers-reduced-motion:reduce) {
   .page-outline-panel,.page-outline-mark,.page-outline-hover,.page-outline-item,.page-outline-item span { transition:none; }
 }
+
+/* Quiet, compact Settings and Share surfaces. */
+#settings-dialog.flow-dialog { width:min(320px,calc(100vw - 24px)); border-radius:10px; }
+#settings-dialog .flow-dialog-heading h2,#share-dialog .flow-dialog-heading h2 { font-weight:400; }
+#settings-dialog .flow-dialog-header,#share-dialog .flow-dialog-header { height:38px; min-height:38px; }
+#settings-dialog .flow-dialog-body { padding:5px 14px 12px; }
+#settings-dialog .flow-dialog-footer { padding:0 14px 12px; }
+#settings-dialog .flow-appearance { background:var(--flow-dialog-field); border-radius:7px; }
+#settings-dialog .flow-appearance-highlight { background:var(--flow-dialog-hover); border-radius:5px; }
+#settings-dialog .flow-appearance button { height:27px; border-radius:5px; }
+#settings-dialog .flow-accent-palette button { height:28px; }
+#settings-dialog .flow-settings-swatch { max-width:18px; border-radius:5px; }
+#settings-dialog .flow-accent-palette button[aria-pressed='true'] .flow-settings-swatch { outline-offset:2px; }
+#settings-dialog .flow-dialog-done,#share-dialog .share-done { height:27px; min-height:27px; padding:0 11px; border-radius:6px; background:var(--flow-dialog-field); }
+#settings-dialog .flow-dialog-done:hover,#share-dialog .share-done:hover { background:var(--flow-dialog-hover); }
+.private-workspace .topbar .settings-trigger { border-radius:6px; transition:background-color 180ms cubic-bezier(.22,1,.36,1),color 180ms cubic-bezier(.22,1,.36,1); }
+.private-workspace .topbar .settings-trigger:hover { color:var(--strong); background:var(--hover); }
+#settings-dialog[open],#share-dialog[open] { animation:flow-modal-enter 240ms cubic-bezier(.22,1,.36,1) both; }
+.share-copy,.share-create,.share-done,.share-revoke { transition:background-color 180ms cubic-bezier(.22,1,.36,1),color 180ms cubic-bezier(.22,1,.36,1),opacity 180ms cubic-bezier(.22,1,.36,1); }
+@media(prefers-reduced-motion:reduce) { #settings-dialog[open],#share-dialog[open] { animation:none; } }
+@media(max-width:800px) { #settings-dialog .flow-dialog-done,#share-dialog .share-done { min-height:34px; } }
