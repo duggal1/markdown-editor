@@ -1,6 +1,9 @@
 import { createContext, memo, useContext, useDeferredValue, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { ReactNode } from 'react';
-import { svgPreviewDocument } from '../lib/svgPreview';
+import { SvgInspector } from './SvgInspector';
+import { cancelNavigation, navigateScroll } from '../lib/scrollMotion';
+import { rehypePreviewColors } from '../lib/previewColors';
+import { hexOccurrences } from '../lib/hexColor';
 import { htmlPreviewDocument } from '../lib/htmlPreview';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -8,8 +11,8 @@ import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import hljs from 'highlight.js';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Icon } from './Icons';
-import { detectRawCode } from '../lib/code';
+import { Icon, type IconName } from './Icons';
+import { detectRawCode, repairMixedCode } from '../lib/code';
 import { cachedPreview, immediatePreview, preparePreview, type PreparedPreview } from '../lib/previewPipeline';
 
 const safeMarkdownHtml = {
@@ -35,13 +38,17 @@ const safeMarkdownHtml = {
   },
 };
 const ThemeContext = createContext<'light' | 'dark'>('light');
+const SvgEditContext = createContext<((source: string, next: string, line: number) => boolean) | null>(null);
 const LineContext = createContext(0);
+const SourceLineMapContext = createContext<readonly number[] | undefined>(undefined);
 const TaskLineContext = createContext<number | null>(null);
 const TaskToggleContext = createContext<((line: number, checked: boolean) => void) | null>(null);
-type SourceNode = { position?: { start?: { line?: number } } };
+type SourceNode = { position?: { start?: { line?: number; offset?: number }; end?: { offset?: number } } };
 function sourceLine(node?: SourceNode): number {
   const offset = useContext(LineContext);
-  return offset + (node?.position?.start?.line || 1);
+  const map = useContext(SourceLineMapContext);
+  const line = node?.position?.start?.line || 1;
+  return map?.[line - 1] ?? offset + line;
 }
 type BlockProps = { children?: ReactNode; node?: SourceNode; className?: string };
 function TaskCheckbox({ type, checked }: React.InputHTMLAttributes<HTMLInputElement>) {
@@ -53,23 +60,25 @@ function TaskCheckbox({ type, checked }: React.InputHTMLAttributes<HTMLInputElem
     aria-label={checked ? 'Mark task incomplete' : 'Mark task complete'}
     disabled={!onToggle} onChange={event => onToggle?.(line, event.currentTarget.checked)} />;
 }
-type PositionEvent = CustomEvent<{ line: number; total: number; kind: 'scroll' | 'cursor' }>;
-function locatePreview(scroll: HTMLDivElement, line: number, kind: 'scroll' | 'cursor',
+type PositionEvent = CustomEvent<{ line: number; total: number; kind: 'scroll' | 'cursor' | 'jump' }>;
+function locatePreview(scroll: HTMLDivElement, line: number, kind: 'scroll' | 'cursor' | 'jump',
   section?: HTMLElement) {
   // The virtual preview can have hundreds of anchors. Only examine the
   // requested mounted section instead of querying every visible chunk.
   const anchored = (section || scroll).querySelectorAll<HTMLElement>('[data-source-line]');
+  if (line <= 1) { navigateScroll(scroll, 0, kind === 'jump', Boolean(section)); return; }
   if (!anchored.length) {
     if (line <= 1) scroll.scrollTop = 0;
     return;
   }
-  let current = anchored[0];
-  let next: HTMLElement | null = null;
-  for (let i = 0; i < anchored.length; i++) {
-    const at = Number(anchored[i].dataset.sourceLine || 1);
-    if (at > line) { next = anchored[i]; break; }
-    current = anchored[i];
+  let lo = 0, hi = anchored.length - 1;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (Number(anchored[mid].dataset.sourceLine || 1) <= line) lo = mid;
+    else hi = mid - 1;
   }
+  const current = anchored[lo];
+  const next = anchored[lo + 1] || null;
   const start = Number(current.dataset.sourceLine || 1);
   const scrollTop = scroll.scrollTop;
   const scrollY = scroll.getBoundingClientRect().top;
@@ -81,9 +90,9 @@ function locatePreview(scroll: HTMLDivElement, line: number, kind: 'scroll' | 'c
   const target = top + (nextTop - top) * fraction;
   if (kind === 'cursor' && target >= scroll.scrollTop + scroll.clientHeight * 0.12 &&
     target <= scroll.scrollTop + scroll.clientHeight * 0.78) return;
-  const destination = Math.max(0, target - scroll.clientHeight * (kind === 'cursor' ? 0.30 : 0.12));
+  const destination = Math.max(0, target - (kind === 'cursor' ? scroll.clientHeight * 0.30 : 12));
   // Avoid a subpixel scroll write and layout invalidation every frame.
-  if (Math.abs(destination - scrollTop) > 2) scroll.scrollTop = destination;
+  if (Math.abs(destination - scrollTop) > 2 || kind !== 'jump') navigateScroll(scroll, destination, kind === 'jump', Boolean(section));
 }
 
 const aliases: Record<string, string> = {
@@ -141,16 +150,15 @@ function HtmlCanvas({ source, embedded = false, scrollRef }: {
   scrollRef?: RefObject<HTMLDivElement | null>;
 }) {
   const [rendered, setRendered] = useState(source);
-  const latest = useRef(source);
   const iframe = useRef<HTMLIFrameElement>(null);
   const progress = useRef(0);
-  latest.current = source;
   useEffect(() => {
-    const interval = window.setInterval(() => {
-      setRendered(current => current === latest.current ? current : latest.current);
-    }, 125);
-    return () => window.clearInterval(interval);
-  }, []);
+    // Recreating a large WebGL document during every keystroke resets its GPU
+    // context. Render once after edits settle, without polling 10 MB strings.
+    const delay = source.length > 250_000 ? 1000 : source.length > 60_000 ? 350 : 125;
+    const timer = window.setTimeout(() => setRendered(source), delay);
+    return () => clearTimeout(timer);
+  }, [source]);
   const documentHtml = useMemo(() => htmlPreviewDocument(rendered), [rendered]);
   useEffect(() => {
     const parent = scrollRef?.current;
@@ -163,21 +171,87 @@ function HtmlCanvas({ source, embedded = false, scrollRef }: {
       }, '*');
     };
     parent.addEventListener('flow-preview-position', onPosition);
+    parent.dispatchEvent(new Event('flow-preview-ready'));
     return () => parent.removeEventListener('flow-preview-position', onPosition);
   }, [scrollRef]);
   if (!documentHtml) return embedded ? null
     : <div className="html-preview-unavailable">Paste a valid HTML document to preview it.</div>;
   return <div className={embedded ? 'html-embedded-preview' : 'html-document-preview'}>
     <iframe ref={iframe} title={embedded ? 'HTML code preview' : 'HTML document preview'}
-      sandbox="allow-scripts" srcDoc={documentHtml} referrerPolicy="no-referrer"
+      sandbox="allow-scripts allow-pointer-lock allow-forms allow-downloads" srcDoc={documentHtml} referrerPolicy="no-referrer"
       onLoad={() => iframe.current?.contentWindow?.postMessage({
         type: 'flow-html-scroll', progress: progress.current,
       }, '*')} />
   </div>;
 }
+function isSvgCode(code: string, language: string) {
+  return language.toLowerCase() === 'svg' ||
+    (!language || /^(xml|html)$/i.test(language)) && detectRawCode(code) === 'svg';
+}
+// Highlighted source is already escaped. Wrap the exact text range without
+// destroying the existing syntax markup, even across highlight spans.
+function colorCodeHtml(value: string, html: string): string {
+  const matches = hexOccurrences(value);
+  if (!matches.length) return html;
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT);
+  const nodes: { node: Text; start: number; end: number }[] = [];
+  let cursor = 0;
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const node = n as Text;
+    nodes.push({ node, start: cursor, end: cursor + node.length });
+    cursor += node.length;
+  }
+  let index = nodes.length - 1;
+  for (const item of matches.reverse()) {
+    const end = item.from + item.text.length;
+    while (index >= 0 && nodes[index].start >= end) index--;
+    const last = nodes[index];
+    while (index >= 0 && nodes[index].start > item.from) index--;
+    const first = nodes[index];
+    if (!first || !last || first.end <= item.from || last.end < end) continue;
+    const range = document.createRange();
+    try {
+      range.setStart(first.node, item.from - first.start);
+      range.setEnd(last.node, end - last.start);
+      const span = document.createElement('span');
+      span.className = 'flow-preview-hex';
+      const swatch = document.createElement('span');
+      swatch.className = 'flow-preview-swatch';
+      swatch.setAttribute('aria-hidden', 'true');
+      swatch.style.cssText = 'display:inline-block;width:.8em;height:.8em;margin-right:4px;vertical-align:-.04em;border-radius:3px;box-shadow:inset 0 0 0 1px #8888';
+      swatch.style.backgroundColor = item.text;
+      span.append(swatch, range.extractContents());
+      range.insertNode(span);
+    } catch { /* Retain the escaped source if a range cannot be decorated. */ }
+  }
+  return template.innerHTML;
+}
+/** SVG is artwork, never an accompanying source viewer. The editor retains its source. */
+function SvgCanvas({ source, line = 1 }: { source: string; line?: number }) {
+  const theme = useContext(ThemeContext);
+  const edit = useContext(SvgEditContext);
+  return <SvgInspector source={source} theme={theme} onEdit={edit ? (next) => edit(source, next, line) : undefined} />;
+}
+const snippetLanguages: Record<string, { label: string; icon: IconName }> = {
+  javascript: { label: 'JavaScript', icon: 'fileJs' }, jsx: { label: 'JSX', icon: 'fileJs' },
+  typescript: { label: 'TypeScript', icon: 'fileTs' }, tsx: { label: 'TSX', icon: 'fileTs' },
+  html: { label: 'HTML', icon: 'fileHtml' }, sql: { label: 'SQL', icon: 'database' },
+  css: { label: 'CSS', icon: 'code' }, json: { label: 'JSON', icon: 'code' },
+  python: { label: 'Python', icon: 'code' }, bash: { label: 'Bash', icon: 'terminal' },
+  swift: { label: 'Swift', icon: 'code' }, rust: { label: 'Rust', icon: 'code' },
+  go: { label: 'Go', icon: 'code' }, xml: { label: 'XML', icon: 'code' },
+  markdown: { label: 'Markdown', icon: 'file' }, yaml: { label: 'YAML', icon: 'file' },
+};
+function CodeLanguageLabel({ rawLanguage }: { rawLanguage: string }) {
+  const raw = rawLanguage.toLowerCase();
+  const key = raw === 'html' || raw === 'jsx' || raw === 'tsx' ? raw : aliases[raw] || raw;
+  const meta = snippetLanguages[key] || { label: raw ? raw[0].toUpperCase()+raw.slice(1) : 'Code', icon: 'code' as const };
+  return <span className="code-language"><Icon name={meta.icon} size={15} /><span>{meta.label}</span></span>;
+}
 function VirtualCodeBlock({ code, rawLanguage }: { code: string; rawLanguage: string }) {
   const ref = useRef<HTMLPreElement>(null);
-  const theme = useContext(ThemeContext);
   const language = aliases[rawLanguage.toLowerCase()] || rawLanguage.toLowerCase();
   const lines = useMemo(() => code.split('\n'), [code]);
   const { copied, copy } = useCopy(code);
@@ -187,46 +261,43 @@ function VirtualCodeBlock({ code, rawLanguage }: { code: string; rawLanguage: st
     estimateSize: () => 22,
     overscan: 12,
   });
-  const svgDocument = useMemo(() => rawLanguage.toLowerCase() === 'svg' && code.length < 150000
-    ? svgPreviewDocument(code, theme) : '', [code, rawLanguage, theme]);
   return <div className="code-block virtual-code-block">
-    <div className="code-header"><span className="code-language"><span className="language-dot" />{rawLanguage || 'code'}</span>
+    <div className="code-header"><CodeLanguageLabel rawLanguage={rawLanguage} />
       <button type="button" className="code-copy" onClick={() => { void copy(); }}>
         <Icon name={copied ? 'check' : 'copy'} size={13} />{copied ? 'Copied' : 'Copy'}
       </button>
     </div>
-    {svgDocument && <div className="svg-preview"><iframe title="SVG preview" sandbox="" srcDoc={svgDocument} loading="lazy" /></div>}
     {rawLanguage.toLowerCase() === 'html' && <HtmlCanvas source={code} embedded />}
     <pre ref={ref} className="code-content virtual-code-scroll" tabIndex={0}>
       <code className="virtual-code-canvas" style={{ height: virtualizer.getTotalSize() }}>
         {virtualizer.getVirtualItems().map(item => <span key={item.key} className="virtual-code-row"
           style={{ transform: 'translateY(' + item.start + 'px)' }}>
           <span className="code-row-number" aria-hidden="true">{item.index + 1}</span>
-          <span className="virtual-code-text" dangerouslySetInnerHTML={{ __html: highlight(lines[item.index], language) || ' ' }} />
+          <span className="virtual-code-text" dangerouslySetInnerHTML={{ __html: colorCodeHtml(lines[item.index], highlight(lines[item.index], language)) || ' ' }} />
         </span>)}
       </code>
     </pre>
   </div>;
 }
-function CodeBlock({ code, rawLanguage }: { code: string; rawLanguage: string }) {
-  const theme = useContext(ThemeContext);
+function CodeBlock({ code, rawLanguage, line }: { code: string; rawLanguage: string; line?: number }) {
+  if (isSvgCode(code, rawLanguage)) return <SvgCanvas source={code} line={line} />;
+  return <SourceCodeBlock code={code} rawLanguage={rawLanguage} />;
+}
+function SourceCodeBlock({ code, rawLanguage }: { code: string; rawLanguage: string }) {
   const { copied, copy } = useCopy(code);
   const language = aliases[rawLanguage.toLowerCase()] || rawLanguage.toLowerCase();
   const big = code.length > 20000;
-  const highlighted = useMemo(() => big ? '' : highlight(code, language, 20000), [code, language, big]);
+  const highlighted = useMemo(() => big ? '' : colorCodeHtml(code, highlight(code, language, 20000)), [code, language, big]);
   const rows = useMemo(() => big ? 0 : code.split('\n').length, [code, big]);
-  const svgDocument = useMemo(() => rawLanguage.toLowerCase() === 'svg' && !big
-    ? svgPreviewDocument(code, theme) : '', [code, rawLanguage, big, theme]);
   // Large code is a fixed-height, line-virtualized source viewer instead of thousands of DOM nodes.
   if (big) return <VirtualCodeBlock code={code} rawLanguage={rawLanguage} />;
   return <div className="code-block">
     <div className="code-header">
-      <span className="code-language"><span className="language-dot" />{rawLanguage || 'code'}</span>
+      <CodeLanguageLabel rawLanguage={rawLanguage} />
       <button type="button" className="code-copy" onClick={() => { void copy(); }} aria-label={copied ? 'Copied' : 'Copy code'}>
         <Icon name={copied ? 'check' : 'copy'} size={13} />{copied ? 'Copied' : 'Copy'}
       </button>
     </div>
-    {svgDocument && <div className="svg-preview"><iframe title="SVG preview" sandbox="" srcDoc={svgDocument} loading="lazy" /></div>}
     {rawLanguage.toLowerCase() === 'html' && <HtmlCanvas source={code} embedded />}
     <pre className="code-content" tabIndex={0}>
       {rows <= 400 && <span className="code-gutter" aria-hidden="true">
@@ -262,17 +333,61 @@ const components = {
     if (!child || typeof child !== 'object' || !('props' in child)) return <pre data-source-line={line}>{children}</pre>;
     const props = child.props as { className?: string; children?: unknown };
     const language = /language-([\w+#.-]+)/.exec(props.className ?? '')?.[1] ?? '';
-    return <div data-source-line={line}><CodeBlock code={String(props.children ?? '').replace(/\n$/, '')} rawLanguage={language} /></div>;
+    const code = String(props.children ?? '').replace(/\n$/, '');
+    return <div data-source-line={line}><CodeBlock code={code} rawLanguage={language} line={line} /></div>;
   },
   a: ({ children, href }: { children?: ReactNode; href?: string }) =>
     <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
   input: (props: React.InputHTMLAttributes<HTMLInputElement>) => <TaskCheckbox {...props} />,
   img: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img {...props} loading="lazy" alt={props.alt || ''} />,
 };
-const MarkdownChunk = memo(function MarkdownChunk({ markdown, lineOffset = 0 }: { markdown: string; lineOffset?: number }) {
-  return <LineContext.Provider value={lineOffset}><ReactMarkdown remarkPlugins={[remarkGfm]}
-    rehypePlugins={[rehypeRaw, [rehypeSanitize, safeMarkdownHtml]]}
-    components={components}>{markdown}</ReactMarkdown></LineContext.Provider>;
+// Send complete raw SVG blocks through the isolated SVG renderer instead of
+// stripping masks, filters, styles and references with Markdown's HTML sanitizer.
+type SvgMarkdownNode = {
+  type: string; value?: string; lang?: string; children?: SvgMarkdownNode[];
+  position?: { start: { offset?: number; line: number }; end: { offset?: number; line: number } };
+};
+function remarkSvgBlocks() {
+  return (tree: SvgMarkdownNode, file: { value: unknown }) => {
+    const source = String(file.value);
+    const children = tree.children;
+    if (!children) return;
+    // CommonMark HTML blocks can end at a blank line even inside an SVG.
+    // Recover the complete original block by source offsets, including nested
+    // svg elements, while leaving inline markup and fenced code alone.
+    for (let i = 0; i < children.length; i++) {
+      const node = children[i];
+      const from = node.position?.start.offset;
+      if (node.type !== 'html' || from === undefined || !/^<svg(?:\s|\/?>)/i.test(source.slice(from))) continue;
+      const tags = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\/?svg\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+      tags.lastIndex = from;
+      let depth = 0;
+      let end = from;
+      let match: RegExpExecArray | null;
+      while ((match = tags.exec(source))) {
+        const tag = match[0];
+        if (tag.startsWith('<!--') || tag.startsWith('<![')) continue;
+        if (tag.startsWith('</')) depth--;
+        else if (!/\/>$/.test(tag)) depth++;
+        if (depth === 0) { end = tags.lastIndex; break; }
+      }
+      if (end <= from) continue;
+      let last = i;
+      while (last + 1 < children.length && (children[last + 1].position?.start.offset ?? Infinity) < end) last++;
+      // Don't discard text sharing the closing SVG's source line.
+      const tail = children[last].position?.end.offset ?? end;
+      if (tail > end && source.slice(end, tail).trim()) continue;
+      children.splice(i, last - i + 1, {
+        type: 'code', lang: 'svg', value: source.slice(from, end),
+        position: node.position ? { start: node.position.start, end: { offset: end, line: node.position.end.line } } : undefined,
+      });
+    }
+  };
+}
+const MarkdownChunk = memo(function MarkdownChunk({ markdown, lineOffset = 0, sourceLines }: { markdown: string; lineOffset?: number; sourceLines?: readonly number[] }) {
+  return <LineContext.Provider value={lineOffset}><SourceLineMapContext.Provider value={sourceLines}><ReactMarkdown remarkPlugins={[remarkGfm, remarkSvgBlocks]}
+    rehypePlugins={[rehypeRaw, [rehypeSanitize, safeMarkdownHtml], rehypePreviewColors]}
+    components={components}>{markdown}</ReactMarkdown></SourceLineMapContext.Provider></LineContext.Provider>;
 });
 function VirtualMarkdown({ markdown, scrollRef }: {
   markdown: string; scrollRef: RefObject<HTMLDivElement | null>;
@@ -313,7 +428,10 @@ function VirtualMarkdown({ markdown, scrollRef }: {
       pending = null;
       if (!scroll || !latest) return;
       const { line, total, kind } = latest;
-      if (line >= total - 1) {
+      if (settle !== null) { cancelAnimationFrame(settle); settle = null; }
+      if (line <= 1) { navigateScroll(scroll, 0, kind === 'jump', true); return; }
+      if (line >= total) {
+        if (kind === 'jump') { navigateScroll(scroll, scroll.scrollHeight, true, true); return; }
         virtualizer.scrollToIndex(chunks.length - 1, { align: 'end' });
         if (settle !== null) cancelAnimationFrame(settle);
         settle = requestAnimationFrame(() => {
@@ -335,11 +453,8 @@ function VirtualMarkdown({ markdown, scrollRef }: {
         locatePreview(scroll, line, kind, section);
         return;
       }
-      // Jump to the nearest virtual chunk immediately, then land on its
-      // exact source anchor after React mounts it. One frame was insufficient
-      // during heavy Markdown rendering, leaving the preview behind.
-      virtualizer.scrollToIndex(index, { align: 'start' });
-      if (settle !== null) cancelAnimationFrame(settle);
+      // Explicit navigation eases to an estimated virtual offset, then aligns
+      // the measured heading once mounted. Ordinary sync stays immediate.
       let attempts = 0;
       const settleWhenMounted = () => {
         settle = null;
@@ -360,7 +475,19 @@ function VirtualMarkdown({ markdown, scrollRef }: {
           settle = requestAnimationFrame(settleWhenMounted);
         }
       };
-      settle = requestAnimationFrame(settleWhenMounted);
+      const estimated = kind === 'jump' ? virtualizer.getOffsetForIndex(index, 'start')?.[0] : undefined;
+      if (estimated !== undefined) {
+        navigateScroll(scroll, estimated, true, true, () => {
+          if (latest?.line !== line) return;
+          // Measurement may shift the estimate while traversing virtual chunks.
+          if (!scroll.querySelector(selector)) virtualizer.scrollToIndex(index, { align: 'start' });
+          settle = requestAnimationFrame(settleWhenMounted);
+        });
+      } else {
+        cancelNavigation(scroll);
+        virtualizer.scrollToIndex(index, { align: 'start' });
+        settle = requestAnimationFrame(settleWhenMounted);
+      }
     }
     function onPosition(event: Event) {
       latest = (event as PositionEvent).detail;
@@ -377,9 +504,19 @@ function VirtualMarkdown({ markdown, scrollRef }: {
         pending = requestAnimationFrame(sync);
       }
     }
+    function cancelSync() {
+      latest = null;
+      cancelNavigation(scroll);
+      if (pending !== null) { cancelAnimationFrame(pending); pending = null; }
+      if (settle !== null) { cancelAnimationFrame(settle); settle = null; }
+    }
     scroll.addEventListener('flow-preview-position', onPosition);
+    scroll.addEventListener('flow-preview-user-scroll', cancelSync);
+    scroll.dispatchEvent(new Event('flow-preview-ready'));
     return () => {
       scroll.removeEventListener('flow-preview-position', onPosition);
+      scroll.removeEventListener('flow-preview-user-scroll', cancelSync);
+      cancelNavigation(scroll);
       if (pending !== null) cancelAnimationFrame(pending);
       if (settle !== null) cancelAnimationFrame(settle);
     };
@@ -399,36 +536,39 @@ function VirtualMarkdown({ markdown, scrollRef }: {
           className={'virtual-markdown-section' +
             (prepared.continuations[item.index] ? ' continues-list' : '') +
             (prepared.continuations[item.index + 1] ? ' followed-by-list' : '')}>
-          <MarkdownChunk markdown={chunks[item.index]} lineOffset={firstLines[item.index] - 1} />
+          <MarkdownChunk markdown={chunks[item.index]} lineOffset={firstLines[item.index] - 1} sourceLines={prepared.sourceLineMaps?.[item.index]} />
         </div>)}
       </div>}
     </div>
   </article>;
 }
-function MarkdownPreview({ markdown, sourceLanguage, scrollRef, theme, onToggleTask = null }: {
+function MarkdownPreview({ markdown, sourceLanguage, scrollRef, theme, onToggleTask = null, onSvgEdit = null }: {
   markdown: string; sourceLanguage?: string | null;
   scrollRef: RefObject<HTMLDivElement | null>;
   theme: 'light' | 'dark';
   onToggleTask?: ((line: number, checked: boolean) => void) | null;
+  onSvgEdit?: ((source: string, next: string, line: number) => boolean) | null;
 }) {
   const deferred = useDeferredValue(markdown);
   const value = markdown.length <= 18000 ? markdown : deferred;
-  const detected = useMemo(() => sourceLanguage && sourceLanguage !== 'markdown'
+  const detected = useMemo(() => detectRawCode(value) === 'svg' ? 'svg' : sourceLanguage && sourceLanguage !== 'markdown'
     ? sourceLanguage : detectRawCode(value), [value, sourceLanguage]);
   const html = detected === 'html';
+  const svg = detected === 'svg';
   const virtual = !detected && value.length > 18000;
+  const repaired = useMemo(() => !detected && !virtual ? repairMixedCode(value) : { markdown: value }, [value, detected, virtual]);
   useEffect(() => {
     const scroll = scrollRef.current;
-    if (!scroll || virtual || html) return;
+    if (!scroll || virtual || html || svg) return;
     const onPosition = (event: Event) => {
       const { line, total, kind } = (event as PositionEvent).detail;
-      if (line >= total - 1) {
-        scroll.scrollTop = scroll.scrollHeight - scroll.clientHeight;
-        return;
-      }
       const code = scroll.querySelector<HTMLElement>('.virtual-code-scroll');
       if (detected && code) {
-        code.scrollTop = Math.max(0, (line - 1) * 22 - code.clientHeight * 0.28);
+        code.scrollTop = line >= total ? code.scrollHeight : Math.max(0, (line - 1) * 22 - (kind === 'cursor' ? code.clientHeight * .28 : 0));
+        return;
+      }
+      if (line >= total && total > 1) {
+        navigateScroll(scroll, scroll.scrollHeight, kind === 'jump');
         return;
       }
       if (detected) {
@@ -440,10 +580,19 @@ function MarkdownPreview({ markdown, sourceLanguage, scrollRef, theme, onToggleT
       locatePreview(scroll, line, kind);
     };
     scroll.addEventListener('flow-preview-position', onPosition);
-    return () => scroll.removeEventListener('flow-preview-position', onPosition);
-  }, [detected, scrollRef, virtual, html, value]);
+    scroll.dispatchEvent(new Event('flow-preview-ready'));
+    const cancel = () => cancelNavigation(scroll);
+    scroll.addEventListener('flow-preview-user-scroll', cancel);
+    return () => {
+      scroll.removeEventListener('flow-preview-position', onPosition);
+      scroll.removeEventListener('flow-preview-user-scroll', cancel);
+      cancelNavigation(scroll);
+    };
+  }, [detected, scrollRef, virtual, html, svg, value]);
   const body = !value.trim()
     ? <article className="markdown-preview"><p className="empty-preview">Nothing to preview.</p></article>
+    : svg
+      ? <article className="markdown-preview preview-is-svg"><SvgCanvas source={value} /></article>
     : html
       ? <HtmlCanvas source={value} scrollRef={scrollRef} />
     : detected
@@ -452,9 +601,9 @@ function MarkdownPreview({ markdown, sourceLanguage, scrollRef, theme, onToggleT
         </article>
       : virtual
         ? <VirtualMarkdown markdown={value} scrollRef={scrollRef} />
-        : <article className="markdown-preview"><MarkdownChunk markdown={value} /></article>;
+        : <article className="markdown-preview"><MarkdownChunk markdown={repaired.markdown} sourceLines={repaired.sourceLines} /></article>;
   return <TaskToggleContext.Provider value={onToggleTask}>
-    <ThemeContext.Provider value={theme}>{body}</ThemeContext.Provider>
+    <ThemeContext.Provider value={theme}><SvgEditContext.Provider value={onSvgEdit}>{body}</SvgEditContext.Provider></ThemeContext.Provider>
   </TaskToggleContext.Provider>;
 }
 export default memo(MarkdownPreview);

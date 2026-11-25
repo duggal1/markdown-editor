@@ -1,47 +1,70 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type PointerEvent } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ChangeEvent, type DragEvent, type PointerEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { createPortal } from 'react-dom';
 import NumberFlow from '@number-flow/react';
 import type { EditorView } from '@codemirror/view';
-import MarkdownEditor, { formatEditor, type Format } from './components/MarkdownEditor';
+import MarkdownEditor, { formatEditor } from './components/MarkdownEditor';
 import { setTaskChecked, taskMarkerEdit } from './lib/taskList';
 import WorkspaceTree from './components/WorkspaceTree';
-import { FlowMark, Icon, type IconName } from './components/Icons';
+import { FlowMark, Icon, SuppliedIcon } from './components/Icons';
 import { ACCENT_THEMES, applyAccentTheme, parseAccentTheme, type AccentTheme } from './lib/accentTheme';
 import { downloadMarkdown } from './lib/document';
 import ShareDialog from './components/ShareDialog';
+import HtmlSiteDialog from './components/HtmlSiteDialog';
 import DialogFrame from './components/DialogFrame';
+import { backupStatus, enableBackup, getRecoveryKey, recoverWithKey, resumeBackup } from './lib/backup';
 import { queueSharedSync, readShareRecord, revokeCloudShare } from './lib/sharing';
-import { detectRawCode, isMarkdownFile, languageForFile } from './lib/code';
+import { isHtmlPage, localHtmlUrl, publishHtml, queueSiteSync, readSiteRecord, revokeHtml,
+  siteUrl, verifyHostedHtml } from './lib/siteHosting';
+import { detectRawCode, isMarkdownFile, languageForFile, normalizeMixedContent } from './lib/code';
 import { svgPreviewDocument } from './lib/svgPreview';
+import { locateSvgSource } from './lib/svgPalette';
 import { readTextImport } from './lib/textImport';
 import { formatPlainTextAsMarkdown, MAX_MANUAL_FORMAT_CHARS } from './lib/autoMarkdown';
-import { formatMarkdownAction } from './lib/autoMarkdownAction';
+import { repairLanguage } from './lib/codeRepair';
+import { repairCodeAction } from './lib/codeRepairAction';
 import { inferTitle, isUntitledTitle } from './lib/title';
+import { editorPosition, previewPosition, restoreEditorPosition } from './lib/scrollPosition';
+import { cancelNavigation } from './lib/scrollMotion';
+import PageOutline from './components/PageOutline';
+import BootShell from './components/BootShell';
+import TokenCounter from './components/TokenCounter';
+import { localSaveDelay } from './lib/saveSchedule';
 import type { SearchHit } from './lib/searchIndex';
 import {
-  clearRecovery, loadWorkspace, readPrefs, removeDoc, removeFolder, removeWorkspace,
-  saveDoc, saveFolder, savePrefs, saveRecovery, saveWorkspace, uid, wordCount,
+  clearRecovery, loadWorkspace, readPrefs, removeDoc, removeFolder, removeWorkspaceTree,
+  saveDoc, saveFolder, savePrefs, saveRecovery, uid,
   type FlowDocument, type Folder, type Mode, type Theme, type Workspace,
 } from './lib/store';
 
 const MarkdownPreview = lazy(() => import('./components/MarkdownPreview'));
+
+type TreeActions = Pick<ComponentProps<typeof WorkspaceTree>,
+  'onOpen' | 'onNewDocument' | 'onNewFolder' | 'onRenameFolder' | 'onRenameDocument' |
+  'onDuplicateDocument' | 'onMovePage' | 'onDeleteFolder' | 'onDeleteDocument'>;
+// Keep callback identities stable for the memoized tree, but dispatch to the
+// latest committed closures (workspace, folders and delete state can change).
+function useTreeActions(actions: TreeActions): TreeActions {
+  const latest = useRef(actions);
+  useLayoutEffect(() => { latest.current = actions; }, [actions]);
+  return useMemo<TreeActions>(() => ({
+    onOpen: (...args) => latest.current.onOpen(...args),
+    onNewDocument: (...args) => latest.current.onNewDocument(...args),
+    onNewFolder: (...args) => latest.current.onNewFolder(...args),
+    onRenameFolder: (...args) => latest.current.onRenameFolder(...args),
+    onRenameDocument: (...args) => latest.current.onRenameDocument(...args),
+    onDuplicateDocument: (...args) => latest.current.onDuplicateDocument(...args),
+    onMovePage: (...args) => latest.current.onMovePage(...args),
+    onDeleteFolder: (...args) => latest.current.onDeleteFolder(...args),
+    onDeleteDocument: (...args) => latest.current.onDeleteDocument(...args),
+  }), []);
+}
 
 // Warm the preview's module on idle without blocking the editor or changing
 // mobile layout. This removes a cold-import pause on the first preview.
 function warmPreviewModule() {
   void import('./components/MarkdownPreview');
 }
-const FORMATS: { name: Format; icon?: IconName; label: string; shortcut?: string }[] = [
-  { name: 'heading', label: 'Heading', shortcut: '#' },
-  { name: 'bold', icon: 'bold', label: 'Bold' },
-  { name: 'italic', icon: 'italic', label: 'Italic', shortcut: '⌘I' },
-  { name: 'link', icon: 'link', label: 'Link', shortcut: '⌘⇧K' },
-  { name: 'bullet', icon: 'list', label: 'List', shortcut: '-' },
-  { name: 'todo', icon: 'todo', label: 'Task', shortcut: '[ ]' },
-  { name: 'quote', icon: 'quote', label: 'Quote' },
-  { name: 'code', icon: 'code', label: 'Code', shortcut: '⌘E' },
-];
 
 function TerminalLoader({ loading }: { loading: boolean }) {
   return loading ? <span className="pixel-save-loader" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /></span> : null;
@@ -85,8 +108,6 @@ export default function App() {
   const [activeId, setActiveId] = useState('');
   const activeIdRef = useRef('');
   const [workspaceId, setWorkspaceId] = useState('');
-  const [expandedIds, setExpandedIds] = useState<string[]>([]);
-  const [newWorkspaceId, setNewWorkspaceId] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>('dark');
   const [accentTheme, setAccentTheme] = useState<AccentTheme>(() => parseAccentTheme(readPrefs().accentTheme));
   const [mode, setMode] = useState<Mode>('write');
@@ -101,38 +122,60 @@ export default function App() {
   const [searchResults, setSearchResults] = useState<SearchHit[]>([]);
   const [searchPending, setSearchPending] = useState(false);
   const [previewText, setPreviewText] = useState('');
-  const [words, setWords] = useState(0);
+  const readTokenSource = useCallback((id: string) => live.current.get(id), []);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [saveDuration, setSaveDuration] = useState(0);
   const saveStarted = useRef(new Map<string, number>());
   const [notice, setNotice] = useState('');
+  const [cloudState, setCloudState] = useState(backupStatus);
+  useEffect(() => {
+    const listener = () => setCloudState(backupStatus());
+    window.addEventListener('flow-backup-status', listener);
+    return () => window.removeEventListener('flow-backup-status', listener);
+  }, []);
   const [exportMenu, setExportMenu] = useState<{ top: number; right: number } | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
-  const [accentMenu, setAccentMenu] = useState<{ top: number; right: number } | null>(null);
+  const [htmlSurfaceTone, setHtmlSurfaceTone] = useState<'dark' | 'light'>('dark');
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [pdfExporting, setPdfExporting] = useState(false);
   const [autoFormatting, setAutoFormatting] = useState(false);
   const autoFormatInFlight = useRef(false);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<{ kind: 'document' | 'workspace'; id: string; title: string; count?: number } | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const deletionInFlight = useRef(false);
+  const deletionsInFlight = useRef(new Set<string>());
   const importInFlight = useRef(false);
   const [assetView, setAssetView] = useState<{ id: string; url: string } | null>(null);
   const editorRef = useRef<EditorView | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const titleRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const accentButtonRef = useRef<HTMLButtonElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
+  // The isolated HTML iframe sends only a contrast hint. Never read DOM across
+  // origins or let unrelated frames override the preview pop-out appearance.
+  useEffect(() => {
+    const onTone = (event: MessageEvent) => {
+      if (event.data?.type !== 'flow-runtime-theme') return;
+      if (event.data.theme !== 'dark' && event.data.theme !== 'light') return;
+      const frame = previewScrollRef.current?.querySelector<HTMLIFrameElement>('.html-document-preview iframe');
+      if (event.source === frame?.contentWindow) setHtmlSurfaceTone(event.data.theme);
+    };
+    window.addEventListener('message', onTone);
+    return () => window.removeEventListener('message', onTone);
+  }, []);
   const editorAreaRef = useRef<HTMLElement>(null);
-  const targetLine = useRef<{ line: number; total: number; kind: 'scroll' | 'cursor'; id: string } | null>(null);
+  const targetLine = useRef<{ line: number; total: number; kind: 'scroll' | 'cursor' | 'jump'; id: string } | null>(null);
   const syncFrame = useRef<number | null>(null);
   const splitFrame = useRef<number | null>(null);
   const splitNext = useRef<number>(50);
   const lastSyncLine = useRef(-1);
+  const scrollOwner = useRef<'editor' | 'preview' | 'transition'>('editor');
+  const modeRestore = useRef<{ id: string; line: number; total: number; smooth?: boolean } | null>(null);
+  const cancelHeadingMotion = useCallback(() => {
+    cancelNavigation(editorRef.current?.scrollDOM);
+    cancelNavigation(previewScrollRef.current);
+  }, []);
   const workerRef = useRef<Worker | null>(null);
   const searchRequest = useRef(0);
   const saveTimers = useRef(new Map<string, number>());
+  const dirtySince = useRef(new Map<string, number>());
   const saveQueue = useRef(new Map<string, Promise<void>>());
   const visualTimers = useRef(new Map<string, number>());
   const previewFrame = useRef<number | null>(null);
@@ -169,19 +212,14 @@ export default function App() {
   useEffect(() => {
     let alive = true;
     let worker: Worker | null = null;
+    let startupFrame = 0;
+    let startupTimer = 0;
     try {
       worker = new Worker(new URL('./workers/search.ts', import.meta.url), { type: 'module' });
-      worker.onmessage = (event: MessageEvent<
-        | { type: 'result'; requestId: number; hits: SearchHit[] }
-        | { type: 'metrics'; id: string; updatedAt: number; words: number }
-      >) => {
+      worker.onmessage = (event: MessageEvent<{ type: 'result'; requestId: number; hits: SearchHit[] }>) => {
         if (event.data.type === 'result' && event.data.requestId === searchRequest.current) {
           setSearchResults(event.data.hits);
           setSearchPending(false);
-        } else if (event.data.type === 'metrics') {
-          const current = live.current.get(event.data.id);
-          if (current && activeIdRef.current === event.data.id &&
-            current.updatedAt === event.data.updatedAt) setWords(event.data.words);
         }
       };
       workerRef.current = worker;
@@ -190,7 +228,19 @@ export default function App() {
       if (!alive) return;
       // Upgrade older default "Untitled" pages once. Named pages and
       // imported filenames are never silently renamed.
-      const restored = data.documents.map(doc => {
+      const restored = data.documents.map(original => {
+        let doc = original;
+        // Recover old inferred-code pages, never explicit source-file imports.
+        if (!doc.asset && doc.markdown.length < 180_000 &&
+          (!doc.fileName || isMarkdownFile(doc.fileName) || !languageForFile(doc.fileName)) &&
+          normalizeMixedContent(doc.markdown) !== doc.markdown) {
+          const markdown = formatPlainTextAsMarkdown(doc.markdown, { atDocumentStart: true });
+          if (markdown !== doc.markdown) {
+            doc = { ...doc, markdown, language: undefined, updatedAt: Date.now() };
+            if (doc.titleAuto && !doc.fileName) doc.title = inferTitle(markdown);
+            void saveDoc(doc).catch(() => setNotice('Could not save recovered Markdown structure.'));
+          }
+        }
         if (doc.asset || doc.fileName || !doc.markdown.trim() ||
             (!doc.titleAuto && !isUntitledTitle(doc.title))) return doc;
         const title = inferTitle(doc.markdown, doc.language);
@@ -200,8 +250,6 @@ export default function App() {
         return updated;
       });
       live.current = new Map(restored.map(doc => [doc.id, doc]));
-      // Retry only previously authorized cloud shares that changed while offline.
-      restored.forEach(queueSharedSync);
       const prefs = readPrefs();
       const first = restored.find(doc => doc.id === prefs.activeDocumentId) || restored[0];
       const chosenWorkspace = data.workspaces.find(ws => ws.id === prefs.activeWorkspaceId) ||
@@ -215,9 +263,7 @@ export default function App() {
       setSplitPercent(width);
       setStoredSplitPercent(width);
       splitNext.current = width;
-      setExpandedIds(Array.isArray(prefs.expandedWorkspaceIds)
-        ? prefs.expandedWorkspaceIds.filter(id => data.workspaces.some(ws => ws.id === id))
-        : data.workspaces.map(ws => ws.id));
+      // Never restore stale collapsed preferences on a new visit.
       activeIdRef.current = first.id;
       setActiveId(first.id);
       setWorkspaceId(chosenWorkspace.id);
@@ -226,20 +272,36 @@ export default function App() {
         : 'dark');
       setAccentTheme(parseAccentTheme(prefs.accentTheme));
       // Never restore a desktop-open drawer over the entire phone editor.
-      setSidebarOpen(window.matchMedia('(max-width: 800px)').matches ? false : prefs.sidebarOpen !== false);
+      setSidebarOpen(!window.matchMedia('(max-width: 800px)').matches);
       modeRef.current = restoredMode;
       setMode(restoredMode);
       setPreviewText(first.markdown);
-      setWords(first.markdown.length < 25000 ? wordCount(first.markdown) : 0);
-      worker?.postMessage({ type: 'index', documents: restored.map(({ id, workspaceId, title, markdown, updatedAt }) => ({ id, workspaceId, title, markdown, updatedAt })) });
-      if (first.markdown.length >= 25000) worker?.postMessage({ type: 'metrics', document: { id: first.id, markdown: first.markdown, updatedAt: first.updatedAt } });
+      // Yield a frame before cloning the entire workspace into the search worker
+      // or doing per-document cloud reconciliation. Use the current live map,
+      // not a stale startup snapshot, if an edit occurs before the callback.
+      startupFrame = requestAnimationFrame(() => {
+        startupTimer = window.setTimeout(() => {
+          if (!alive) return;
+          performance.mark('flow:workspace-ready');
+          if (performance.getEntriesByName('flow:boot-start', 'mark').length) {
+            performance.measure('flow:workspace-startup', 'flow:boot-start', 'flow:workspace-ready');
+          }
+          const current = [...live.current.values()];
+          worker?.postMessage({ type: 'index', documents: current.map(({ id, workspaceId, title, markdown, updatedAt }) => ({ id, workspaceId, title, markdown, updatedAt })) });
+          current.forEach(queueSharedSync);
+          current.forEach(doc => queueSiteSync(doc));
+        }, 0);
+      });
       setLoaded(true);
-    }).catch(() => { if (alive) { setSaveState('error'); setNotice('Local storage could not be opened.'); } });
+    }).catch(() => { if (alive) { setSaveState('error'); setNotice('Workspace could not be recovered. Existing data was not changed. Reload to retry.'); } });
     return () => {
       alive = false;
+      cancelAnimationFrame(startupFrame);
+      clearTimeout(startupTimer);
       worker?.terminate();
       workerRef.current = null;
       for (const timer of saveTimers.current.values()) clearTimeout(timer);
+      dirtySince.current.clear();
       for (const timer of visualTimers.current.values()) clearTimeout(timer);
       if (previewFrame.current !== null) cancelAnimationFrame(previewFrame.current);
       if (previewTimer.current !== null) clearTimeout(previewTimer.current);
@@ -249,8 +311,9 @@ export default function App() {
   }, []);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
+    delete document.documentElement.dataset.background;
     const color = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-    if (color) color.content = theme === 'dark' ? '#0A0A0A' : '#F4F4F4';
+    if (color) color.content = theme === 'dark' ? '#050505' : '#F4F4F4';
   }, [theme]);
   useEffect(() => { applyAccentTheme(accentTheme); }, [accentTheme]);
   useEffect(() => {
@@ -302,13 +365,14 @@ export default function App() {
   useEffect(() => {
     if (!loaded) return;
     savePrefs({ theme, accentTheme, mode, sidebarOpen, activeDocumentId: activeId,
-      activeWorkspaceId: workspaceId, recentIds, expandedWorkspaceIds: expandedIds,
+      activeWorkspaceId: workspaceId, recentIds,
       splitPercent: storedSplitPercent });
-  }, [loaded, theme, accentTheme, mode, sidebarOpen, activeId, workspaceId, recentIds, expandedIds, storedSplitPercent]);
+  }, [loaded, theme, accentTheme, mode, sidebarOpen, activeId, workspaceId, recentIds, storedSplitPercent]);
 
   const flush = useCallback((id: string) => {
     const timer = saveTimers.current.get(id);
     if (timer !== undefined) { clearTimeout(timer); saveTimers.current.delete(id); }
+    dirtySince.current.delete(id);
     const doc = live.current.get(id);
     if (!doc) return;
     const previous = saveQueue.current.get(id) || Promise.resolve();
@@ -317,7 +381,11 @@ export default function App() {
     void next.then(() => {
       if (saveQueue.current.get(id) === next) saveQueue.current.delete(id);
       const latest = live.current.get(id);
-      if (latest && latest.updatedAt === doc.updatedAt) {
+      if (latest === doc) {
+        // Only synchronize a locally committed revision; do not inspect share
+        // records or schedule cloud work on every editor keystroke.
+        queueSharedSync(doc);
+        queueSiteSync(doc);
         if (activeIdRef.current === id) {
           const started = saveStarted.current.get(id);
           if (started !== undefined) setSaveDuration(Math.max(1, Math.round(performance.now() - started)));
@@ -347,13 +415,16 @@ export default function App() {
 
   const scheduleSave = useCallback((doc: FlowDocument) => {
     live.current.set(doc.id, doc);
-    queueSharedSync(doc);
-    saveStarted.current.set(doc.id, performance.now());
+    if (doc.id === activeIdRef.current) window.dispatchEvent(new CustomEvent('flow-token-source', { detail: doc.id }));
+    const now = performance.now();
+    const firstDirty = dirtySince.current.get(doc.id) ?? now;
+    dirtySince.current.set(doc.id, firstDirty);
+    saveStarted.current.set(doc.id, now);
     setSaveDuration(0);
     setSaveState('saving');
     const old = saveTimers.current.get(doc.id);
     if (old !== undefined) clearTimeout(old);
-    saveTimers.current.set(doc.id, window.setTimeout(() => flush(doc.id), doc.markdown.length > 100000 ? 900 : 340));
+    saveTimers.current.set(doc.id, window.setTimeout(() => flush(doc.id), localSaveDelay(doc.markdown.length, now - firstDirty)));
     const visual = visualTimers.current.get(doc.id);
     if (visual !== undefined) clearTimeout(visual);
     visualTimers.current.set(doc.id, window.setTimeout(() => {
@@ -364,7 +435,7 @@ export default function App() {
           id: latest.id, workspaceId: latest.workspaceId, title: latest.title,
           markdown: latest.markdown, updatedAt: latest.updatedAt,
         } });
-      } else if (activeIdRef.current === latest.id) setWords(wordCount(latest.markdown));
+      }
       visualTimers.current.delete(doc.id);
     }, doc.markdown.length > 100000 ? 700 : 430));
   }, [flush]);
@@ -392,7 +463,6 @@ export default function App() {
       setDocs(items => items.map(item => item.id === doc.id ? next : item));
       if (activeIdRef.current === doc.id) {
         setPreviewText(value);
-        setWords(wordCount(value));
       }
     }).catch(() => {
       if (!cancelled) setNotice('Could not decode this Markdown file. The original is preserved.');
@@ -415,6 +485,7 @@ export default function App() {
       ...current, markdown: value, title, titleAuto: autoTitle, updatedAt: Date.now(),
     };
     scheduleSave(next);
+    if (id === activeIdRef.current) window.dispatchEvent(new CustomEvent('flow-outline-change', { detail: id }));
     // Coalesce edits to one preview update per animation frame, never after an idle delay.
     if (id === activeIdRef.current && modeRef.current !== 'write') {
       pendingPreview.current = { id, markdown: value };
@@ -437,6 +508,21 @@ export default function App() {
       setDocs(items => items.map(item => item.id === next.id ? next : item));
     }
   }, [scheduleSave]);
+
+  const onSvgEdit = useCallback((source: string, next: string, line: number): boolean => {
+    const id = activeIdRef.current;
+    const current = live.current.get(id);
+    if (!current || current.asset) return false;
+    const view = editorRef.current;
+    const text = view?.state.doc.toString() ?? current.markdown;
+    const from = locateSvgSource(text, source, line);
+    if (from < 0) return false;
+    if (view) view.dispatch({ changes: { from, to: from + source.length, insert: next }, userEvent: 'input' });
+    const updated = view?.state.doc.toString() ?? text.slice(0, from) + next + text.slice(from + source.length);
+    onEditorChange(updated, id);
+    setPreviewText(updated);
+    return true;
+  }, [onEditorChange]);
 
   const onToggleTask = useCallback((lineNumber: number, checked: boolean) => {
     const id = activeIdRef.current;
@@ -482,32 +568,40 @@ export default function App() {
     if (previewTimer.current !== null) { clearTimeout(previewTimer.current); previewTimer.current = null; }
     if (previewFrame.current !== null) { cancelAnimationFrame(previewFrame.current); previewFrame.current = null; }
     setActiveId(id);
+    cancelHeadingMotion();
     targetLine.current = null;
     lastSyncLine.current = -1;
-    setExpandedIds(ids => ids.includes(doc.workspaceId) ? ids : [...ids, doc.workspaceId]);
+    scrollOwner.current = 'editor';
+    modeRestore.current = null;
+    if (previewScrollRef.current) previewScrollRef.current.scrollTop = 0;
     setWorkspaceId(doc.workspaceId);
-    setDocs(current => current.map(item => live.current.get(item.id) || item));
+    setDocs(current => {
+      let changed = false;
+      const next = current.map(item => {
+        const latest = live.current.get(item.id) || item;
+        if (latest !== item) changed = true;
+        return latest;
+      });
+      return changed ? next : current;
+    });
     setRecentIds(current => [id, ...current.filter(item => item !== id)].slice(0, 30));
     setPreviewText(doc.markdown);
-    setWords(doc.markdown.length < 25000 ? wordCount(doc.markdown) : 0);
-    if (doc.markdown.length >= 25000) workerRef.current?.postMessage({ type: 'metrics', document: { id: doc.id, markdown: doc.markdown, updatedAt: doc.updatedAt } });
     setSaveState('idle');
     if (window.innerWidth < 800) setSidebarOpen(false);
-  }, [flush]);
+  }, [flush, cancelHeadingMotion]);
 
-  const makeDocument = useCallback((targetWorkspace?: string, targetFolder?: string) => {
+  const makeDocument = useCallback((targetWorkspace?: string, targetFolder?: string, parentId?: string) => {
     if (!workspaces.length) return;
     const target = targetWorkspace || workspaceId || workspaces[0].id;
     const stamp = Date.now();
     const doc: FlowDocument = {
-      id: uid(), workspaceId: target, folderId: targetFolder, title: 'Untitled', titleAuto: true,
+      id: uid(), workspaceId: target, folderId: targetFolder, parentId, title: 'Untitled', titleAuto: true,
       markdown: '', createdAt: stamp, updatedAt: stamp,
     };
     live.current.set(doc.id, doc);
     setDocs(current => [doc, ...current]);
     // A page created from a collapsed workspace must be visible in its tree.
     // Keep the existing folder assignment and show the containing workspace.
-    setExpandedIds(ids => ids.includes(target) ? ids : [...ids, target]);
     // Clear any filtered tree so the new page cannot be hidden by search.
     setQuery('');
     selectDocument(doc.id);
@@ -515,62 +609,94 @@ export default function App() {
     window.requestAnimationFrame(() => editorRef.current?.focus());
   }, [selectDocument, workspaceId, workspaces]);
 
-  async function eraseDocument(doc: FlowDocument) {
-    // Shared pages must be revoked before local deletion, or the link would remain online.
-    const shared = readShareRecord(doc.id);
-    if (shared) {
-      try { await revokeCloudShare(doc.id, shared); }
-      catch { setNotice('Could not revoke the share link. Stop sharing before deleting this page.'); return; }
-    }
-    // Delete immediately in the UI. Cancel pending writes so a stale save
-    // cannot recreate a deleted file after its IndexedDB record is removed.
+    function duplicateDocument(id: string) {
+    const original = live.current.get(id);
+    if (!original || original.asset) return;
+    const stamp = Date.now();
+    const source = id === activeIdRef.current ? editorRef.current?.state.doc.toString() ?? original.markdown : original.markdown;
+    const doc: FlowDocument = { ...original, id: uid(), markdown: source, title: original.title + ' (copy)',
+      titleAuto: false, fileName: undefined, createdAt: stamp, updatedAt: stamp };
+    live.current.set(doc.id, doc);
+    setDocs(items => [doc, ...items]);
+    setQuery('');
+    selectDocument(doc.id);
+    void saveDoc(doc).catch(() => { setSaveState('error'); setNotice('Could not save duplicate.'); });
+  }
+
+
+async function eraseDocument(doc: FlowDocument) {
+    // Remove the row instantly. Cloud revocation and IndexedDB writes are
+    // asynchronous; restore the original page if any required operation fails.
+    const pendingSave = saveQueue.current.get(doc.id);
     const saveTimer = saveTimers.current.get(doc.id);
     if (saveTimer !== undefined) clearTimeout(saveTimer);
     saveTimers.current.delete(doc.id);
+    dirtySince.current.delete(doc.id);
     const visualTimer = visualTimers.current.get(doc.id);
     if (visualTimer !== undefined) clearTimeout(visualTimer);
     visualTimers.current.delete(doc.id);
-    const pendingSave = saveQueue.current.get(doc.id);
+    const shared = readShareRecord(doc.id);
+    const hosted = Boolean(readSiteRecord(doc.id));
+    const wasActive = activeIdRef.current === doc.id;
     const remaining = [...live.current.values()].filter(item => item.id !== doc.id);
     live.current.delete(doc.id);
     workerRef.current?.postMessage({ type: 'remove', id: doc.id });
     setDocs(remaining);
-    setRecentIds(current => current.filter(id => id !== doc.id));
-    if (activeIdRef.current === doc.id) {
-      const other = remaining[0];
-      if (other) selectDocument(other.id);
-      else makeDocument(doc.workspaceId);
-    }
+    setRecentIds(ids => ids.filter(id => id !== doc.id));
+    if (wasActive && remaining.length) selectDocument(remaining[0].id);
     try {
-      if (pendingSave) await pendingSave.catch(() => {});
+      // Parallelize independent cloud revocations, but do not pretend a
+      // deleted local document has revoked public links until both succeed.
+      await Promise.all([
+        pendingSave?.catch(() => {}),
+        shared ? revokeCloudShare(doc.id, shared) : Promise.resolve(),
+        hosted ? revokeHtml(doc.id) : Promise.resolve(),
+      ]);
       await removeDoc(doc.id);
+      // Deleting a page does not delete its subpages. Missing parents are also
+      // rendered as roots if a save is interrupted.
+      for (const child of live.current.values()) if (child.parentId === doc.id) {
+        const moved = { ...child, parentId: doc.parentId, updatedAt: Date.now() };
+        scheduleSave(moved);
+      }
+      setDocs([...live.current.values()]);
+      if (wasActive && !remaining.length) makeDocument(doc.workspaceId);
     } catch {
-      // Failed deletion should not silently lose access to the original.
       live.current.set(doc.id, doc);
-      setDocs(items => [...items, doc]);
+      setDocs([...live.current.values()]);
       workerRef.current?.postMessage({ type: 'upsert', document: {
         id: doc.id, workspaceId: doc.workspaceId, title: doc.title,
         markdown: doc.markdown, updatedAt: doc.updatedAt,
       } });
-      setNotice("Couldn't delete the page. It's still here.");
+      if (wasActive) selectDocument(doc.id);
+      setNotice('Deletion could not finish. The page has been restored. Check its share links.');
     }
   }
-  function toggleWorkspace(id: string) {
-    setExpandedIds(ids => ids.includes(id) ? ids.filter(item => item !== id) : [...ids, id]);
+  async function turnOnBackup() {
+    try {
+      await enableBackup();
+      resumeBackup({ workspaces, folders, documents: [...live.current.values()] });
+      setCloudState(backupStatus());
+    } catch { setNotice('Cloud backup could not be enabled. Local files are unchanged.'); }
   }
-  function createWorkspace() {
-    const ws: Workspace = { id: uid(), name: 'New workspace', createdAt: Date.now() };
-    setWorkspaces(items => [...items, ws]);
-    setWorkspaceId(ws.id);
-    setExpandedIds(ids => [...ids, ws.id]);
-    setNewWorkspaceId(ws.id);
-    void saveWorkspace(ws).catch(() => setNotice('Workspace could not be saved.'));
+  async function copyRecoveryKey() {
+    try {
+      await navigator.clipboard.writeText(await getRecoveryKey());
+      setNotice('Recovery key copied. Save it privately; it grants access to your backups.');
+    } catch { setNotice('Could not copy the recovery key.'); }
+  }
+  async function recoverCloudWorkspace() {
+    const key = window.prompt('Enter your private Flow backup recovery key.');
+    if (!key?.trim()) return;
+    try {
+      await recoverWithKey(key);
+      window.location.reload();
+    } catch { setNotice('Could not recover the backup. Check your key and connection.'); }
   }
   function createFolder(targetWorkspace: string) {
     if (!workspaces.some(ws => ws.id === targetWorkspace)) return;
     const folder: Folder = { id: uid(), workspaceId: targetWorkspace, name: 'New folder', createdAt: Date.now() };
     setFolders(items => [...items, folder]);
-    setExpandedIds(ids => ids.includes(targetWorkspace) ? ids : [...ids, targetWorkspace]);
     setNewFolderId(folder.id);
     void saveFolder(folder).catch(() => setNotice('Folder could not be saved.'));
   }
@@ -592,6 +718,7 @@ export default function App() {
         const timer = saveTimers.current.get(doc.id);
         if (timer !== undefined) clearTimeout(timer);
         saveTimers.current.delete(doc.id);
+    dirtySince.current.delete(doc.id);
         await saveQueue.current.get(doc.id)?.catch(() => {});
         const current = live.current.get(doc.id);
         if (!current) continue;
@@ -604,13 +731,39 @@ export default function App() {
       setDocs(items => items.map(doc => live.current.get(doc.id) || doc));
     } catch { setNotice('Folder could not be removed. Your documents were kept.'); }
   }
-  function renameWorkspace(id: string, name: string) {
-    const old = workspaces.find(item => item.id === id);
-    if (!old || name === old.name) { setNewWorkspaceId(null); return; }
-    const next = { ...old, name };
-    setWorkspaces(items => items.map(item => item.id === id ? next : item));
-    setNewWorkspaceId(null);
-    void saveWorkspace(next).catch(() => setNotice('Workspace rename could not be saved.'));
+  function movePage(id: string, parentId?: string, folderId?: string) {
+    const original = live.current.get(id);
+    if (!original) return;
+    const parent = parentId ? live.current.get(parentId) : undefined;
+    if (parentId && (!parent || parent.asset)) return;
+    const visited = new Set([id]);
+    let ancestor = parent;
+    while (ancestor) {
+      if (visited.has(ancestor.id)) { setNotice('A page cannot contain itself or its ancestors.'); return; }
+      visited.add(ancestor.id);
+      ancestor = ancestor.parentId ? live.current.get(ancestor.parentId) : undefined;
+    }
+    const folder = folderId ? folders.find(item => item.id === folderId) : undefined;
+    if (folderId && !folder) return;
+    const targetWorkspace = parent?.workspaceId || folder?.workspaceId || original.workspaceId;
+    const targetFolder = parent ? parent.folderId : folder?.id;
+    if (original.parentId === parentId && original.folderId === targetFolder && original.workspaceId === targetWorkspace) return;
+    const descendants = [id];
+    const seen = new Set(descendants);
+    for (let index = 0; index < descendants.length; index++) {
+      for (const child of live.current.values()) if (child.parentId === descendants[index] && !seen.has(child.id)) {
+        seen.add(child.id); descendants.push(child.id);
+      }
+    }
+    for (const childId of descendants) {
+      const doc = live.current.get(childId);
+      if (!doc) continue;
+      const updated = { ...doc, workspaceId: targetWorkspace, folderId: targetFolder,
+        parentId: childId === id ? parentId : doc.parentId, updatedAt: Date.now() };
+      scheduleSave(updated);
+    }
+    if (seen.has(activeIdRef.current)) setWorkspaceId(targetWorkspace);
+    setDocs([...live.current.values()]);
   }
   function renameDocument(id: string, name: string) {
     const old = live.current.get(id);
@@ -628,51 +781,83 @@ export default function App() {
     if (workspaces.length < 2) return;
     const ws = workspaces.find(item => item.id === id);
     if (!ws) return;
+    const previousActive = activeIdRef.current;
+    const previousWorkspaces = workspaces;
+    const previousFolders = folders;
     const remainingWorkspaces = workspaces.filter(item => item.id !== id);
     const deletedDocs = [...live.current.values()].filter(doc => doc.workspaceId === id);
     const otherDocs = [...live.current.values()].filter(doc => doc.workspaceId !== id);
-    // Preserve document data if a storage deletion fails; do not silently drop files.
-    try {
-      // Do not orphan shared links by deleting a workspace containing hosted pages.
-      for (const doc of deletedDocs) {
-        const shared = readShareRecord(doc.id);
-        if (shared) await revokeCloudShare(doc.id, shared);
-      }
-      for (const doc of deletedDocs) await removeDoc(doc.id);
-      for (const folder of folders.filter(item => item.workspaceId === id)) await removeFolder(folder.id);
-      await removeWorkspace(id);
-    } catch {
-      setNotice('Could not delete the workspace completely. Refresh to reconcile your files.');
-      return;
-    }
+    const deletedFolders = folders.filter(item => item.workspaceId === id);
+    const pendingWrites: Promise<unknown>[] = [];
     for (const doc of deletedDocs) {
+      const timer = saveTimers.current.get(doc.id);
+      if (timer !== undefined) clearTimeout(timer);
+      saveTimers.current.delete(doc.id);
+    dirtySince.current.delete(doc.id);
+      const visual = visualTimers.current.get(doc.id);
+      if (visual !== undefined) clearTimeout(visual);
+      visualTimers.current.delete(doc.id);
+      const pending = saveQueue.current.get(doc.id);
+      if (pending) pendingWrites.push(pending.catch(() => {}));
       live.current.delete(doc.id);
       workerRef.current?.postMessage({ type: 'remove', id: doc.id });
     }
+    // UI removal is immediate even for workspaces with hundreds of pages.
     setWorkspaces(remainingWorkspaces);
     setFolders(items => items.filter(folder => folder.workspaceId !== id));
-    setExpandedIds(ids => ids.filter(item => item !== id));
     setDocs(otherDocs);
     setRecentIds(ids => ids.filter(docId => live.current.has(docId)));
-    if (activeIdRef.current && !live.current.has(activeIdRef.current)) {
+    if (previousActive && !live.current.has(previousActive)) {
       if (otherDocs.length) selectDocument(otherDocs[0].id);
-      else makeDocument(remainingWorkspaces[0].id);
+      else setActiveId('');
     } else if (workspaceId === id) setWorkspaceId(remainingWorkspaces[0].id);
-  }
-  async function confirmDelete() {
-    if (!pendingDelete || deletionInFlight.current) return;
-    deletionInFlight.current = true;
-    setDeleting(true);
+
     try {
-      if (pendingDelete.kind === 'workspace') await eraseWorkspace(pendingDelete.id);
+      await Promise.all(pendingWrites);
+      // Keep public links from surviving workspace deletion. Bound concurrency
+      // so hundreds of files do not create hundreds of network requests at once.
+      const revocations: Array<() => Promise<unknown>> = [];
+      for (const doc of deletedDocs) {
+        const shared = readShareRecord(doc.id);
+        if (shared) revocations.push(() => revokeCloudShare(doc.id, shared));
+        if (readSiteRecord(doc.id)) revocations.push(() => revokeHtml(doc.id));
+      }
+      let cursor = 0;
+      await Promise.all(Array.from({ length: Math.min(4, revocations.length) }, async () => {
+        while (cursor < revocations.length) await revocations[cursor++]();
+      }));
+      await removeWorkspaceTree(id, deletedDocs.map(doc => doc.id),
+        deletedFolders.map(folder => folder.id));
+      if (!otherDocs.length) makeDocument(remainingWorkspaces[0].id);
+    } catch {
+      // Keep the documents if revocation or the atomic IndexedDB transaction
+      // fails. No partial local workspace deletion should be acknowledged.
+      for (const doc of deletedDocs) {
+        live.current.set(doc.id, doc);
+        workerRef.current?.postMessage({ type: 'upsert', document: {
+          id: doc.id, workspaceId: doc.workspaceId, title: doc.title,
+          markdown: doc.markdown, updatedAt: doc.updatedAt,
+        } });
+      }
+      setWorkspaces(previousWorkspaces);
+      setFolders(previousFolders);
+      setDocs([...live.current.values()]);
+      if (previousActive && live.current.has(previousActive)) selectDocument(previousActive);
+      setNotice('Workspace deletion could not finish. Its files were restored; check public share links.');
+    }
+  }
+  async function deleteTarget(target: { kind: 'document' | 'workspace'; id: string }) {
+    const operationKey = target.kind + ':' + target.id;
+    if (deletionsInFlight.current.has(operationKey)) return;
+    deletionsInFlight.current.add(operationKey);
+    try {
+      if (target.kind === 'workspace') await eraseWorkspace(target.id);
       else {
-        const doc = live.current.get(pendingDelete.id);
+        const doc = live.current.get(target.id);
         if (doc) await eraseDocument(doc);
       }
-      setPendingDelete(null);
     } finally {
-      deletionInFlight.current = false;
-      setDeleting(false);
+      deletionsInFlight.current.delete(operationKey);
     }
   }
   function toggleExport(event: React.MouseEvent<HTMLButtonElement>) {
@@ -701,54 +886,6 @@ export default function App() {
       document.removeEventListener('keydown', dismiss);
     };
   }, [exportMenu]);
-
-  function toggleAccentMenu(event: React.MouseEvent<HTMLButtonElement>) {
-    const bounds = event.currentTarget.getBoundingClientRect();
-    setExportMenu(null);
-    setAccentMenu(current => current ? null : {
-      top: Math.max(8, Math.min(bounds.bottom + 8, window.innerHeight - 335)),
-      right: Math.max(8, window.innerWidth - bounds.right),
-    });
-    requestAnimationFrame(() => {
-      document.querySelector<HTMLButtonElement>(
-        '.accent-theme-menu [role="menuitemradio"][aria-checked="true"]',
-      )?.focus();
-    });
-  }
-  useEffect(() => {
-    if (!accentMenu) return;
-    const outside = (event: globalThis.PointerEvent) => {
-      const target = event.target;
-      if (target instanceof Element && !target.closest('.accent-theme-menu,.accent-theme-trigger')) {
-        setAccentMenu(null);
-      }
-    };
-    const dismiss = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setAccentMenu(null);
-        accentButtonRef.current?.focus();
-      }
-    };
-    document.addEventListener('pointerdown', outside);
-    document.addEventListener('keydown', dismiss);
-    return () => {
-      document.removeEventListener('pointerdown', outside);
-      document.removeEventListener('keydown', dismiss);
-    };
-  }, [accentMenu]);
-
-  function onAccentMenuKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-    if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
-    const options = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>(
-      '[role="menuitemradio"]',
-    ));
-    if (!options.length) return;
-    event.preventDefault();
-    const selected = options.indexOf(document.activeElement as HTMLButtonElement);
-    const next = event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1
-      : (selected + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
-    options[next].focus();
-  }
 
   async function exportPdf(doc: FlowDocument) {
     setExportMenu(null);
@@ -861,11 +998,19 @@ export default function App() {
       return;
     }
 
+    const currentLanguage = repairLanguage(
+      originalDocument.sliceString(0, 8192),
+      current.language || languageForFile(current.fileName || ''),
+    );
+    if (!currentLanguage) {
+      setNotice('Deterministic code repair currently supports HTML and Python.');
+      return;
+    }
     autoFormatInFlight.current = true;
     setAutoFormatting(true);
-    setNotice('Formatting Markdown…');
+    setNotice('Checking ' + currentLanguage.toUpperCase() + ' source…');
     try {
-      const formatted = await formatMarkdownAction(source, { atDocumentStart: !selected && from === 0, selection: selected });
+      const formatted = await repairCodeAction(source, currentLanguage);
       // The user can type or change pages while a large worker is running.
       // Never overwrite a newer CodeMirror document with stale formatting.
       if (editorRef.current !== view || activeIdRef.current !== current.id ||
@@ -874,7 +1019,7 @@ export default function App() {
         return;
       }
       if (formatted === source) {
-        setNotice('Already formatted. No changes needed.');
+        setNotice('No recognizable paste artifacts. Source unchanged.');
         return;
       }
       // One replacement transaction ensures Cmd/Ctrl+Z reverts the entire action.
@@ -886,11 +1031,10 @@ export default function App() {
           : { anchor: from, head: from + formatted.length },
       });
       if (modeRef.current !== 'preview') view.focus();
-      setNotice(range.empty ? 'Markdown formatted · Undo to revert' :
-        'Selection formatted · Undo to revert');
+      setNotice(currentLanguage.toUpperCase() + ' paste artifacts removed · Undo to revert');
     } catch (error) {
-      console.error('Auto Markdown failed', error);
-      setNotice('Could not format Markdown. Your text was not changed.');
+      console.error('Source formatting failed', error);
+      setNotice('Could not process source. Your text was not changed.');
     } finally {
       autoFormatInFlight.current = false;
       setAutoFormatting(false);
@@ -912,9 +1056,10 @@ export default function App() {
     async function importOne(file: File) {
       if (file.size > 50 * 1024 * 1024) throw new Error(file.name + ' exceeds the 50 MB limit');
       const supportedImage = /^image\/(png|jpeg|gif|webp|avif|bmp|x-icon|vnd\.microsoft\.icon|svg\+xml)$/i.test(file.type);
-      const image = supportedImage || /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i.test(file.name);
+      const svg = file.type === 'image/svg+xml' || /\.svg$/i.test(file.name);
+      const image = !svg && (supportedImage || /\.(png|jpe?g|gif|webp|avif|bmp|ico)$/i.test(file.name));
       const pdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
-      const recognizedText = file.type.startsWith('text/') ||
+      const recognizedText = svg || file.type.startsWith('text/') ||
         /^(application\/(?:json|javascript|xml|x-javascript|x-yaml|yaml|toml|graphql))$/i.test(file.type) ||
         Boolean(languageForFile(file.name)) || isMarkdownFile(file.name) ||
         /\.(txt|csv|tsv|log|ini|cfg|env|gitignore|editorconfig)$/i.test(file.name);
@@ -928,8 +1073,10 @@ export default function App() {
         const decoded = await readTextImport(file, file.name);
         binary = decoded === null;
         if (decoded !== null) {
-          const plainText = /\.txt$/i.test(file.name) && !languageForFile(file.name);
-          markdown = plainText ? formatPlainTextAsMarkdown(decoded, { atDocumentStart: true }) : decoded;
+          const plainText = !languageForFile(file.name) && !isMarkdownFile(file.name) &&
+            (/\.txt$/i.test(file.name) || file.type === 'text/plain');
+          const mixedMarkdown = isMarkdownFile(file.name) && normalizeMixedContent(decoded) !== decoded;
+          markdown = plainText || mixedMarkdown ? formatPlainTextAsMarkdown(decoded, { atDocumentStart: true }) : decoded;
         }
       }
       const now = Date.now();
@@ -940,7 +1087,7 @@ export default function App() {
         // A successfully imported PDF becomes editable Markdown, not a binary attachment.
         fileName: pdf ? file.name.replace(/\\.pdf$/i, '.md') : file.name, fileType,
         language: fileType === 'text' && !isMarkdownFile(file.name) && !pdf
-          ? languageForFile(file.name) || detectRawCode(markdown) || undefined : undefined,
+          ? (svg ? 'svg' : languageForFile(file.name)) || detectRawCode(markdown) || undefined : undefined,
         asset: image || binary ? file : undefined,
         titleAuto: false, createdAt: now, updatedAt: now,
       };
@@ -974,7 +1121,6 @@ export default function App() {
       if (imported.length) {
         setQuery('');
         selectDocument(imported[0].id);
-        setExpandedIds(ids => ids.includes(targetWorkspace) ? ids : [...ids, targetWorkspace]);
       }
       setSaveState(errors.length ? 'error' : 'saved');
     } finally {
@@ -997,6 +1143,43 @@ export default function App() {
     void importFiles(Array.from(event.dataTransfer.files));
   }
   const active = live.current.get(activeId) || docs.find(doc => doc.id === activeId);
+  const activeFileLanguage = active?.language || languageForFile(active?.fileName || '');
+  const activeRepairLanguage = useMemo(() => active && !active.asset
+    ? repairLanguage(active.markdown.slice(0, 8192), activeFileLanguage) : null, [active, activeFileLanguage]);
+  const formatActionLabel = activeRepairLanguage === 'html' ? 'Auto HTML Fix'
+    : 'Auto Python Fix';
+  const activeHtml = useMemo(() => isHtmlPage(active), [active]);
+  useEffect(() => { setHtmlSurfaceTone('dark'); }, [activeId]);
+  // HTML previews are automatically hosted; Markdown stays local unless shared.
+  useEffect(() => {
+    if (!loaded || mode === 'write' || !activeHtml || !active) return;
+    void publishHtml(active).catch(() => { /* Publish status appears in the HTML dialog. */ });
+  }, [loaded, mode, activeId, activeHtml]);
+
+  function openFullHtml() {
+    const doc = live.current.get(activeIdRef.current);
+    if (!isHtmlPage(doc)) return;
+    const tab = window.open('about:blank', '_blank');
+    if (!tab) { setNotice('Your browser blocked the HTML preview tab. Allow popups and retry.'); return; }
+    tab.opener = null;
+    flush(doc!.id);
+    void (async () => {
+      await (saveQueue.current.get(doc!.id) || saveDoc(doc!));
+      const current = readSiteRecord(doc!.id);
+      const ready = current?.syncedVersion === doc!.updatedAt &&
+        await verifyHostedHtml(current.id).catch(() => false);
+      // Public and local previews now share one player. Prefer the canonical
+      // shareable URL once the remote snapshot has actually committed.
+      if (ready && current) tab.location.replace(siteUrl(current.id));
+      else {
+        tab.location.replace(localHtmlUrl(doc!.id));
+        void publishHtml(doc!).catch(() => { /* Local HTML remains available. */ });
+      }
+    })().catch(() => {
+      tab.close();
+      setNotice('Could not save HTML before opening the full preview.');
+    });
+  }
   const matching = useMemo(() => {
     if (!query.trim()) return [...docs].sort((a, b) => b.updatedAt - a.updatedAt);
     const byId = new Map(docs.map(doc => [doc.id, doc]));
@@ -1052,12 +1235,7 @@ export default function App() {
         window.requestAnimationFrame(() => { searchRef.current?.focus(); searchRef.current?.select(); });
       } else if (key === 'p' && event.shiftKey) {
         event.preventDefault();
-        setMode(current => {
-          const next = current === 'preview' ? 'write' : 'preview';
-          modeRef.current = next;
-          if (next !== 'write') setPreviewText(live.current.get(activeIdRef.current)?.markdown || '');
-          return next;
-        });
+        changeMode(modeRef.current === 'preview' ? 'write' : 'preview');
       } else if ('biek'.includes(key) && key !== 'k' || key === 'k' && event.shiftKey) {
         const format = key === 'b' ? 'bold' : key === 'i' ? 'italic' : key === 'e' ? 'code' : 'link';
         event.preventDefault(); formatEditor(editorRef.current, format);
@@ -1065,7 +1243,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [flush]);
+  });
 
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
@@ -1091,11 +1269,12 @@ export default function App() {
     }));
   }, []);
   const onEditorPosition = useCallback((line: number, kind: 'scroll' | 'cursor', total: number) => {
-    if (modeRef.current === 'write') return;
+    if (scrollOwner.current !== 'editor' || modeRef.current === 'preview') return;
     // Ignore sub-pixel movement, not entire wrapped logical lines.
     if (kind === 'scroll' && Math.abs(line - lastSyncLine.current) < 0.015) return;
     lastSyncLine.current = line;
     targetLine.current = { line, total, kind, id: activeIdRef.current };
+    if (modeRef.current === 'write') return;
     if (kind === 'scroll') {
       // MarkdownEditor already throttles scrolling to one animation frame.
       // An additional frame here made the preview visibly trail long documents.
@@ -1108,17 +1287,80 @@ export default function App() {
       syncFrame.current = requestAnimationFrame(dispatchPreviewPosition);
     }
   }, [dispatchPreviewPosition]);
+  const restoreModePosition = useCallback(() => {
+    const target = modeRestore.current;
+    if (!target || target.id !== activeIdRef.current) return;
+    const view = editorRef.current;
+    if (view && modeRef.current !== 'preview') restoreEditorPosition(view, target.line, target.smooth,
+      target.smooth ? () => modeRestore.current === target : undefined);
+    if (modeRef.current !== 'write') {
+      targetLine.current = { ...target, kind: target.smooth ? 'jump' : 'scroll' };
+      dispatchPreviewPosition();
+    }
+  }, [dispatchPreviewPosition]);
+
   useEffect(() => {
-    if (mode === 'write') return;
+    const preview = previewScrollRef.current;
+    if (!preview) return;
+    let frame: number | null = null;
+    let readyFrame: number | null = null;
+    const onReady = () => {
+      if (modeRef.current === 'write') return;
+      if (readyFrame !== null) cancelAnimationFrame(readyFrame);
+      readyFrame = requestAnimationFrame(() => {
+        readyFrame = null;
+        if (modeRestore.current) restoreModePosition();
+        else if (scrollOwner.current === 'editor') dispatchPreviewPosition();
+      });
+    };
+    const claim = () => {
+      if (modeRef.current !== 'write') {
+        cancelHeadingMotion();
+        scrollOwner.current = 'preview';
+        modeRestore.current = null;
+        targetLine.current = null;
+        preview.dispatchEvent(new Event('flow-preview-user-scroll'));
+      }
+    };
+    const onScroll = (event: Event) => {
+      if (event.target !== preview && !(event.target instanceof HTMLElement && event.target.matches('.preview-is-code .virtual-code-scroll'))) return;
+      if (scrollOwner.current !== 'preview' || frame !== null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        const view = editorRef.current;
+        if (!view || scrollOwner.current !== 'preview' || modeRef.current === 'write') return;
+        const total = view.state.doc.lines;
+        const line = previewPosition(preview, total);
+        targetLine.current = { id: activeIdRef.current, line, total, kind: 'scroll' };
+        lastSyncLine.current = line;
+        if (modeRef.current === 'split') restoreEditorPosition(view, line);
+      });
+    };
+    preview.addEventListener('flow-preview-ready', onReady);
+    preview.addEventListener('wheel', claim, { passive: true });
+    preview.addEventListener('touchstart', claim, { passive: true });
+    preview.addEventListener('pointerdown', claim, { passive: true });
+    preview.addEventListener('keydown', claim);
+    preview.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    return () => {
+      preview.removeEventListener('flow-preview-ready', onReady);
+      preview.removeEventListener('wheel', claim);
+      preview.removeEventListener('touchstart', claim);
+      preview.removeEventListener('pointerdown', claim);
+      preview.removeEventListener('keydown', claim);
+      preview.removeEventListener('scroll', onScroll, true);
+      if (frame !== null) cancelAnimationFrame(frame);
+      if (readyFrame !== null) cancelAnimationFrame(readyFrame);
+    };
+  }, [loaded, restoreModePosition, dispatchPreviewPosition, cancelHeadingMotion]);
+
+  useEffect(() => {
     const frame = requestAnimationFrame(() => {
-      const view = editorRef.current;
-      if (!view || !activeId) return;
-      const target = targetLine.current;
-      const line = target?.id === activeId ? target.line : view.state.doc.lineAt(view.state.selection.main.head).number;
-      onEditorPosition(line, target?.kind || 'cursor', view.state.doc.lines);
+      if (modeRestore.current) restoreModePosition();
+      else if (mode !== 'write' && scrollOwner.current === 'editor') dispatchPreviewPosition();
     });
     return () => cancelAnimationFrame(frame);
-  }, [previewText, mode, activeId, onEditorPosition]);
+  }, [mode, activeId, previewText, restoreModePosition, dispatchPreviewPosition]);
   function startSplitDrag(event: PointerEvent<HTMLDivElement>) {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     event.preventDefault();
@@ -1147,20 +1389,55 @@ export default function App() {
     editorRef.current?.requestMeasure();
   }
   function changeMode(next: Mode) {
+    const previous = modeRef.current;
+    if (previous === next) return;
+    cancelHeadingMotion();
+    const view = editorRef.current;
+    const preview = previewScrollRef.current;
+    if (view) {
+      const total = view.state.doc.lines;
+      const line = scrollOwner.current === 'transition' && modeRestore.current
+        ? modeRestore.current.line
+        : previous === 'preview' || (previous === 'split' && scrollOwner.current === 'preview')
+          ? (preview ? previewPosition(preview, total) : targetLine.current?.line || 1)
+          : editorPosition(view);
+      const target = { id: activeIdRef.current, line, total };
+      modeRestore.current = target;
+      targetLine.current = { ...target, kind: 'scroll' };
+      scrollOwner.current = 'transition';
+    }
     modeRef.current = next;
-    if (next !== 'write') setPreviewText(live.current.get(activeIdRef.current)?.markdown || '');
+    if (next !== 'write') setPreviewText(view?.state.doc.toString() ?? live.current.get(activeIdRef.current)?.markdown ?? '');
     setMode(next);
-    if (compact && next === 'preview') editorRef.current?.contentDOM.blur();
-    if (!compact && next !== 'preview') window.requestAnimationFrame(() => editorRef.current?.focus());
+    if (next === 'preview') view?.contentDOM.blur();
   }
-  function changeTitle(value: string) {
-    const current = live.current.get(activeIdRef.current);
-    if (!current) return;
-    const next = { ...current, title: value, titleAuto: false, updatedAt: Date.now() };
-    scheduleSave(next);
-    setDocs(docs => docs.map(doc => doc.id === next.id ? next : doc));
+  const outlineSource = useCallback(() => editorRef.current?.state.doc.toString()
+    ?? live.current.get(activeIdRef.current)?.markdown ?? '', []);
+  const outlinePosition = useCallback(() => {
+    const view = editorRef.current;
+    if (!view) return 1;
+    if (modeRestore.current?.id === activeIdRef.current) return modeRestore.current.line;
+    return modeRef.current === 'preview' || (modeRef.current === 'split' && scrollOwner.current === 'preview')
+      ? previewScrollRef.current ? previewPosition(previewScrollRef.current, view.state.doc.lines) : 1
+      : editorPosition(view);
+  }, []);
+  function jumpToHeading(line: number) {
+    const view = editorRef.current;
+    if (!view || line < 1 || line > view.state.doc.lines) return;
+    cancelHeadingMotion();
+    const target = { id: activeIdRef.current, line, total: view.state.doc.lines, smooth: !motionOff };
+    modeRestore.current = target;
+    targetLine.current = { ...target, kind: target.smooth ? 'jump' : 'scroll' };
+    scrollOwner.current = 'transition';
+    requestAnimationFrame(restoreModePosition);
   }
-
+  function claimEditorScroll() {
+    cancelHeadingMotion();
+    scrollOwner.current = 'editor';
+    modeRestore.current = null;
+    targetLine.current = null;
+  }
+  useEffect(() => cancelHeadingMotion, [cancelHeadingMotion]);
   // A phone's Split mode shows two vertically stacked, independently scrolling panes.
   const presentationMode: Mode = mode;
   const gridColumns = presentationMode === 'split' ? `minmax(0, ${splitPercent}fr) minmax(0, ${100 - splitPercent}fr)`
@@ -1176,20 +1453,26 @@ export default function App() {
     whileTap: { scale: 0.985 },
     transition: { duration: 0.17, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
   };
-  if (!loaded) return <main className="boot"><FlowMark size={30} /><span>Opening workspace…</span></main>;
-  return <div className="flow-shell" onDragOver={event => event.preventDefault()} onDrop={onDrop}>
+  const treeActions = useTreeActions({
+    onOpen: selectDocument, onNewFolder: createFolder, onNewDocument: makeDocument,
+    onRenameFolder: renameFolder, onRenameDocument: renameDocument, onDuplicateDocument: duplicateDocument,
+    onMovePage: movePage, onDeleteFolder: id => { void eraseFolder(id); },
+    onDeleteDocument: id => { if (live.current.has(id)) void deleteTarget({ kind: 'document', id }); },
+  });
+  if (!loaded) return saveState === 'error' ? <main className="boot" role="alert"><FlowMark size={30} /><span>Workspace could not be opened. Reload to retry.</span></main> : <BootShell />;
+  return <div className="flow-shell private-workspace" onDragOver={event => event.preventDefault()} onDrop={onDrop}>
     <motion.aside className={'sidebar' + (sidebarOpen ? ' is-open' : '')}
-      initial={false} animate={{ width: sidebarOpen ? 256 : 0 }}
+      initial={false} animate={{ width: sidebarOpen ? 232 : 0 }}
       transition={motionOff ? { duration: 0 } : { duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
       aria-hidden={!sidebarOpen}
-      aria-label="Workspaces and pages">
+      aria-label="Private pages">
       <motion.div className="sidebar-inner" initial={false}
         animate={{ opacity: sidebarOpen ? 1 : 0, x: sidebarOpen ? 0 : -12,
           filter: motionOff || compact ? 'blur(0px)' : sidebarOpen ? 'blur(0px)' : 'blur(5px)' }}
         transition={motionOff ? { duration: 0 } : { duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
         style={{ pointerEvents: sidebarOpen ? 'auto' : 'none' }}>
         <div className="sidebar-brand">
-          <motion.div className="brand-lockup" initial={false} animate={{ opacity: sidebarOpen ? 1 : 0, x: sidebarOpen ? 0 : -8 }} transition={motionOff ? { duration: 0 } : { duration: 0.18 }}><span className="brand-mark"><FlowMark size={18} /></span><span>Flow<span className="brand-period">.</span></span></motion.div>
+          <motion.div className="brand-lockup" initial={false} animate={{ opacity: sidebarOpen ? 1 : 0, x: sidebarOpen ? 0 : -8 }} transition={motionOff ? { duration: 0 } : { duration: 0.18 }}><span className="brand-mark"><FlowMark size={18} /></span><span>Flow</span></motion.div>
         </div>
         <label className="search-field"><Icon name="search" size={16} />
           <input ref={searchRef} value={query}
@@ -1199,57 +1482,34 @@ export default function App() {
                 event.preventDefault(); selectDocument(matching[0].id); setQuery('');
               }
             }}
-            placeholder="Search all pages" aria-label="Search page names and content"
+            placeholder="Search" aria-label="Search page names and content"
             aria-keyshortcuts="Meta+K Control+K" />
           <kbd aria-hidden="true">{/Mac|iPhone|iPad/i.test(navigator.platform) ? '⌘K' : 'Ctrl K'}</kbd>
         </label>
+        <button type="button" className="private-new-page" onClick={() => makeDocument(workspaceId)}>
+          <Icon name="edit" size={17}/> New page <kbd>+</kbd>
+        </button>
         <WorkspaceTree
           workspaces={workspaces} documents={matching} folders={folders} newFolderId={newFolderId}
           activeId={activeId} activeWorkspaceId={workspaceId}
-          search={query} searchHits={searchResults} searchPending={searchPending} expandedIds={expandedIds}
-          newWorkspaceId={newWorkspaceId} reducedMotion={!!motionOff}
-          onToggle={toggleWorkspace}
-          onSelectWorkspace={setWorkspaceId}
-          onOpen={selectDocument}
-          onNewWorkspace={createWorkspace}
-          onNewFolder={createFolder}
-          onNewDocument={makeDocument}
-          onRenameFolder={renameFolder}
-          onRenameWorkspace={renameWorkspace}
-          onRenameDocument={renameDocument}
-          onMoveDocument={(id, targetWorkspace) => {
-            const original = live.current.get(id);
-            if (!original || (original.workspaceId === targetWorkspace && !original.folderId)) return;
-            const moved = { ...original, workspaceId: targetWorkspace, folderId: undefined, updatedAt: Date.now() };
-            scheduleSave(moved);
-            setDocs(items => items.map(doc => doc.id === id ? moved : doc));
-            setExpandedIds(ids => ids.includes(targetWorkspace) ? ids : [...ids, targetWorkspace]);
-            if (activeIdRef.current === id) setWorkspaceId(targetWorkspace);
-          }}
-          onMoveToFolder={(id, folderId) => {
-            const folder = folders.find(item => item.id === folderId);
-            const original = live.current.get(id);
-            if (!folder || !original) return;
-            if (original.workspaceId === folder.workspaceId && original.folderId === folder.id) return;
-            const moved = { ...original, workspaceId: folder.workspaceId, folderId: folder.id, updatedAt: Date.now() };
-            scheduleSave(moved);
-            setDocs(items => items.map(doc => doc.id === id ? moved : doc));
-            if (activeIdRef.current === id) setWorkspaceId(folder.workspaceId);
-          }}
-          onDeleteFolder={id => { void eraseFolder(id); }}
-          onDeleteWorkspace={id => {
-            const ws = workspaces.find(item => item.id === id);
-            if (ws) setPendingDelete({ kind: 'workspace', id, title: ws.name,
-              count: [...live.current.values()].filter(doc => doc.workspaceId === id).length });
-          }}
-          onDeleteDocument={id => {
-            const doc = live.current.get(id);
-            if (doc) void eraseDocument(doc);
-          }}
+          search={query} searchHits={searchResults} searchPending={searchPending}
+          {...treeActions}
         />
         <div className="sidebar-bottom">
           <a className="draw-sidebar-entry" href="/draw"><Icon name="edit" size={16} /> Draw screenshots</a>
-          <button className="sidebar-bottom-action" onClick={() => makeDocument(workspaceId)}><Icon name="plus" size={16} /> Add page</button>
+          {cloudState === 'off' ? <button className="sidebar-bottom-action" disabled={!loaded}
+            title="Privately back up every workspace and page to cloud storage. No public links are created."
+            onClick={() => { void turnOnBackup(); }}><Icon name="download" size={16} /> Enable cloud backup</button>
+            : <div className="sidebar-bottom-action" role="status" title="Private cloud backup; public sharing is separate">
+              <Icon name={cloudState === 'synced' ? 'check' : 'history'} size={16} />
+              {cloudState === 'synced' ? 'Cloud backup synced' : cloudState === 'error' ? 'Backup failed · retrying' : 'Backing up…'}
+            </div>}
+          {cloudState === 'off'
+            ? <button className="sidebar-bottom-action" onClick={() => { void recoverCloudWorkspace(); }}>
+                <Icon name="history" size={16} /> Restore cloud backup</button>
+            : <button className="sidebar-bottom-action" onClick={() => { void copyRecoveryKey(); }}
+                title="Keep this private key outside your browser to restore after clearing site data">
+                <Icon name="copy" size={16} /> Copy recovery key</button>}
           <button className="sidebar-bottom-action" onClick={() => { if (recentIds[1]) selectDocument(recentIds[1]); }} disabled={!recentIds[1]}><Icon name="history" size={16} /> Previous page</button>
         </div>
       </motion.div>
@@ -1260,23 +1520,9 @@ export default function App() {
         <div className="document-meta">
           <motion.button {...pressMotion} className="square-button sidebar-toggle" title={sidebarOpen ? 'Hide sidebar' : 'Open sidebar'} aria-label={sidebarOpen ? 'Hide sidebar' : 'Open sidebar'}
             onClick={() => setSidebarOpen(current => !current)}><Icon name="sidebar" size={18} /></motion.button>
-          <input ref={titleRef} className="document-title" aria-label="Page title" spellCheck={false}
-            value={active?.title || ''} onChange={event => changeTitle(event.target.value)} placeholder="Untitled" />
-          <motion.span className="save-indicator" data-save-state={saveState}
-            initial={false} aria-hidden={saveState === 'idle'}
-            animate={{ opacity: saveState === 'idle' ? 0 : 1, y: saveState === 'idle' ? -2 : 0 }}
-            transition={motionOff ? { duration: 0 } : { duration: 0.19, ease: [0.22, 1, 0.36, 1] }}
-            aria-label={saveState === 'saving' ? 'Saving page' : saveState === 'saved' ? 'Page saved in ' + saveDuration + ' milliseconds' : saveState === 'error' ? 'Save failed' : undefined}
-            role="status" aria-live="polite">
-            <span className="save-prefix" aria-hidden="true" />
-            <span className="save-label">{saveState === 'error' ? 'Not saved' : saveState === 'saving' ? 'Saving' : 'Saved'}</span>
-            {saveState === 'saving' && <TerminalLoader loading />}
-            <span className={'save-duration' + (saveDuration <= 0 ? ' is-empty' : '')}>in <NumberFlow value={saveDuration}
-              animated={!motionOff}
-              spinTiming={{ duration: 260, easing: 'ease-out' }}
-              transformTiming={{ duration: 260, easing: 'ease-out' }}
-              opacityTiming={{ duration: 160, easing: 'ease-out' }} /> ms</span>
-          </motion.span>
+          <span className="private-breadcrumb"><Icon name="file" size={15}/><span>{active?.title || 'Untitled'}</span></span>
+          <span className="private-visibility"><SuppliedIcon kind="lock" size={14}/>{active && (readShareRecord(active.id) || readSiteRecord(active.id)) ? 'Shared' : 'Private'}</span>
+
         </div>
         <div className="header-actions">
           <div className="mode-switch" role="group" aria-label="Editor mode">
@@ -1295,7 +1541,7 @@ export default function App() {
             transition={motionOff ? { duration: 0 } : { duration: 0.17, ease: [0.22, 1, 0.36, 1] }}>
             <Icon name="edit" size={15}/><span>Draw</span></motion.a>
           <motion.button {...pressMotion} type="button" className="share-button"
-            title="Share page" aria-label="Share page" disabled={!active || Boolean(active.asset)}
+            title={activeHtml ? 'Share interactive HTML' : 'Share page'} aria-label="Share page" disabled={!active || Boolean(active.asset)}
             onClick={() => setShareOpen(true)}><Icon name="link" size={15} /><span>Share</span></motion.button>
           <motion.button {...pressMotion} type="button" className="export-button"
             title="Export page" aria-label="Export page" aria-haspopup="menu"
@@ -1303,70 +1549,76 @@ export default function App() {
             onClick={toggleExport}>
             {pdfExporting ? <TerminalLoader loading /> : <Icon name="download" size={15} />} <span>{pdfExporting ? 'Exporting…' : 'Export'}</span>
           </motion.button>
-          <motion.button {...pressMotion} type="button" className="square-button theme-toggle" title={theme === 'light' ? 'Dark mode' : 'Light mode'} aria-label={theme === 'light' ? 'Dark mode' : 'Light mode'} onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')}>
-            <AnimatePresence initial={false} mode="wait"><motion.span key={theme} className="theme-icon" initial={motionOff ? false : { opacity: 0, rotate: -25 }} animate={{ opacity: 1, rotate: 0 }} exit={motionOff ? undefined : { opacity: 0, rotate: 25 }} transition={{ duration: motionOff ? 0 : 0.15 }}><Icon name={theme === 'light' ? 'moon' : 'sun'} size={17} /></motion.span></AnimatePresence>
-          </motion.button>
-          <button ref={accentButtonRef} type="button" className="accent-theme-trigger"
-            title={'Accent theme: ' + ACCENT_THEMES.find(option => option.id === accentTheme)?.label}
-            aria-label="Accent theme" aria-haspopup="menu" aria-expanded={Boolean(accentMenu)}
-            aria-controls={accentMenu ? 'accent-theme-menu' : undefined}
-            onClick={toggleAccentMenu}>
-            <span className="accent-theme-dot" aria-hidden="true" />
-            <span className="accent-theme-label">Theme</span>
-            <span className="accent-theme-chevron" aria-hidden="true"><Icon name="chevron" size={12} /></span>
-          </button>
+          <motion.button {...pressMotion} type="button" className="square-button theme-toggle settings-trigger"
+            title="Settings" aria-label="Settings" aria-haspopup="dialog" aria-expanded={settingsOpen}
+            onClick={() => setSettingsOpen(true)}><Icon name="sliders" size={17} /></motion.button>
           <input ref={fileRef} type="file" hidden multiple onChange={onFileSelected} aria-label="Import files" />
         </div>
       </header>
-      <div className="subbar">
-        <div className="formatting-actions" role="toolbar" aria-label="Markdown formatting">
-          {FORMATS.map(format => <motion.button key={format.name} type="button" whileTap={motionOff ? undefined : { scale: 0.985 }}
-            whileHover={motionOff || compact ? undefined : { y: -1 }}
-            transition={motionOff ? { duration: 0 } : { duration: 0.17, ease: [0.22, 1, 0.36, 1] }}
-            title={format.label + (format.shortcut ? ' · ' + format.shortcut : '')} aria-label={format.label}
-            onClick={() => { if (mode === 'preview') changeMode('write'); window.requestAnimationFrame(() => formatEditor(editorRef.current, format.name)); }}>
-            {format.icon ? <Icon name={format.icon} size={16} /> : format.name === 'heading' ? <span className="format-heading">H<span>1</span></span>
-              : <span className={format.name === 'bold' ? 'format-bold' : 'format-italic'}>{format.name === 'bold' ? 'B' : 'I'}</span>}
-          </motion.button>)}
-          <span className="format-divider" />
-          <motion.button type="button" {...pressMotion} className="auto-markdown-button"
-            title="Auto Markdown · format selected text or this page"
-            aria-label="Auto Markdown" aria-busy={autoFormatting}
-            disabled={Boolean(active?.asset) || autoFormatting}
-            onMouseDown={event => event.preventDefault()}
-            onClick={() => { void autoFormatDocument(); }}>
-            {autoFormatting ? <TerminalLoader loading /> : <Icon name="format" size={16} />}
-            <span>{autoFormatting ? 'Formatting…' : 'Auto Markdown'}</span>
-          </motion.button>
+      <div className="subbar private-page-toolbar">
+        <div className="formatting-actions" role="toolbar" aria-label="Page actions">
+          {activeRepairLanguage && <motion.button type="button" {...pressMotion} className="code-fix-action"
+            title={formatActionLabel} aria-label={formatActionLabel} aria-busy={autoFormatting} disabled={autoFormatting}
+            onMouseDown={event => event.preventDefault()} onClick={() => { void autoFormatDocument(); }}>
+            {autoFormatting ? <TerminalLoader loading /> : <Icon name="format" size={16}/>}
+            <span>{autoFormatting ? 'Checking…' : formatActionLabel}</span>
+          </motion.button>}
           <motion.button type="button" {...pressMotion} className="copy-all-button"
             title="Copy the entire page" aria-label="Copy all" disabled={!active || Boolean(active.asset)}
             onClick={() => { void copyAll(); }}>
-            <Icon name="copy" size={16} /> <span>Copy all</span>
+            <Icon name="copy" size={14} /> <span>Copy all</span>
           </motion.button>
-          <motion.button {...pressMotion} title="Import files" aria-label="Import files" onClick={() => fileRef.current?.click()}><Icon name="upload" size={16} /></motion.button>
+          <motion.button {...pressMotion} className="import-action" title="Import files" aria-label="Import files" onClick={() => fileRef.current?.click()}><Icon name="upload" size={14} /><span>Upload</span></motion.button>
         </div>
-        <span className="word-stat">{active?.fileType === 'image' ? 'Image' : active?.fileType === 'binary' ? 'File' : `${words.toLocaleString()} words`}</span>
+        <motion.span className="save-indicator" data-save-state={saveState}
+            initial={false} aria-hidden={saveState === 'idle'}
+            animate={{ opacity: saveState === 'idle' ? 0 : 1, y: saveState === 'idle' ? -2 : 0 }}
+            transition={motionOff ? { duration: 0 } : { duration: 0.19, ease: [0.22, 1, 0.36, 1] }}
+            aria-label={saveState === 'saving' ? 'Saving page' : saveState === 'saved' ? 'Page saved in ' + saveDuration + ' milliseconds' : saveState === 'error' ? 'Save failed' : undefined}
+            role="status" aria-live="polite">
+            <span className="save-prefix" aria-hidden="true" />
+            <span className="save-label">{saveState === 'error' ? 'Not saved' : saveState === 'saving' ? 'Saving' : 'Saved'}</span>
+            {saveState === 'saving' && <TerminalLoader loading />}
+            <span className={'save-duration' + (saveDuration <= 0 ? ' is-empty' : '')}>in <NumberFlow value={saveDuration}
+              animated={!motionOff}
+              spinTiming={{ duration: 260, easing: 'ease-out' }}
+              transformTiming={{ duration: 260, easing: 'ease-out' }}
+              opacityTiming={{ duration: 160, easing: 'ease-out' }} /> ms</span>
+          </motion.span>
+        <TokenCounter key={activeId} documentId={activeId} readSource={readTokenSource} />
       </div>
       <motion.main ref={editorAreaRef} className={'editor-area mode-' + mode + (compact ? ' compact' : '') + (resizingSplit ? ' is-resizing' : '')} aria-label="Flow Markdown workspace"
         initial={false} animate={{ gridTemplateColumns: compact ? 'minmax(0, 1fr)' : gridColumns,
           gridTemplateRows: compact ? mobileGridRows : 'minmax(0, 1fr)' }}
-        transition={motionOff || resizingSplit ? { duration: 0 } : { duration: 0.29, ease: [0.22, 1, 0.36, 1] }}
-        onAnimationComplete={() => editorRef.current?.requestMeasure()}>
-        <section className="editor-pane" aria-label="Write Markdown">
+        transition={motionOff || resizingSplit || compact || Math.max(active?.markdown.length ?? 0, previewText.length) > 80000 ? { duration: 0 } : { duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+        onAnimationComplete={() => { editorRef.current?.requestMeasure(); restoreModePosition(); }}>
+        <section className="editor-pane" aria-label="Write Markdown"
+          onPointerDownCapture={claimEditorScroll}
+          onWheelCapture={claimEditorScroll}
+          onTouchStartCapture={claimEditorScroll}
+          onKeyDownCapture={claimEditorScroll}>
           {active?.asset ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} theme={theme} /> : active && <MarkdownEditor key={active.id} documentId={active.id} initialText={active.markdown}
-            viewRef={editorRef} onChange={onEditorChange} onPosition={onEditorPosition} />}
+            fileLanguage={activeFileLanguage} viewRef={editorRef} onChange={onEditorChange} onPosition={onEditorPosition} />}
         </section>
-        <section className="preview-pane" aria-label="Markdown preview">
-          <motion.div ref={previewScrollRef} className="preview-scroll" initial={false}
+        <section className="preview-pane" data-glass={activeHtml ? htmlSurfaceTone : undefined}
+          aria-label="Markdown preview">
+          {activeHtml && presentationMode !== 'write' &&
+            <button type="button" className="html-preview-popout"
+              aria-label="Open full HTML in a new tab" title="Open full HTML in a new tab"
+              onClick={openFullHtml}><Icon name="arrowUpRight" size={15} /> <span>Full HTML</span></button>}
+          <motion.div ref={previewScrollRef} className="preview-scroll" tabIndex={presentationMode === 'write' ? -1 : 0} aria-label="Scrollable preview" initial={false}
             animate={{ opacity: presentationMode === 'write' ? 0 : 1 }}
             transition={motionOff ? { duration: 0 } : { duration: 0.2, delay: presentationMode === 'write' ? 0 : 0.035 }}>
             <Suspense fallback={<div className="preview-loading">Rendering…</div>}>
               {presentationMode !== 'write' && (active?.asset
                 ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} theme={theme} />
-                : <MarkdownPreview key={active?.id || 'preview'} markdown={previewText} sourceLanguage={active?.language} scrollRef={previewScrollRef} theme={theme} onToggleTask={onToggleTask} />)}
+                : <MarkdownPreview key={active?.id || 'preview'} markdown={previewText} sourceLanguage={active?.language} scrollRef={previewScrollRef} theme={theme} onToggleTask={onToggleTask} onSvgEdit={onSvgEdit} />)}
             </Suspense>
           </motion.div>
         </section>
+        {active && !active.asset && !activeHtml && (!activeFileLanguage || activeFileLanguage === 'markdown') &&
+          <PageOutline key={active.id} documentId={active.id} getSource={outlineSource}
+            getPosition={outlinePosition} onJump={jumpToHeading} />}
         {mode === 'split' && !compact && <div className="split-resizer" role="separator" tabIndex={0}
           aria-label="Resize editor and preview" aria-orientation="vertical"
           aria-valuemin={22} aria-valuemax={78} aria-valuenow={Math.round(splitPercent)}
@@ -1387,29 +1639,6 @@ export default function App() {
           }}><span className="split-grip" /></div>}
       </motion.main>
       {createPortal(<AnimatePresence initial={false}>
-        {accentMenu && <motion.div id="accent-theme-menu" role="menu"
-          aria-label="Accent color theme" className="accent-theme-menu"
-          style={{ top: accentMenu.top, right: accentMenu.right }}
-          onKeyDown={onAccentMenuKeyDown}
-          initial={motionOff ? false : { opacity: 0, y: -4, scale: 0.985 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={motionOff ? undefined : { opacity: 0, y: -3, scale: 0.99 }}
-          transition={{ duration: motionOff ? 0 : 0.15, ease: [0.22, 1, 0.36, 1] }}>
-          <div className="accent-theme-menu-title">Accent color</div>
-          {ACCENT_THEMES.map(option => <button key={option.id}
-            type="button" role="menuitemradio" aria-checked={option.id === accentTheme}
-            className="accent-theme-option"
-            onClick={() => {
-              setAccentTheme(option.id);
-              setAccentMenu(null);
-              accentButtonRef.current?.focus();
-            }}>
-            <span className="accent-theme-swatch" aria-hidden="true"
-              style={{ backgroundColor: `var(--palette-${option.id}-600)` }} />
-            <span>{option.label}</span>
-            {option.id === accentTheme && <span className="accent-theme-check"><Icon name="check" size={14} /></span>}
-          </button>)}
-        </motion.div>}
         {exportMenu && <motion.div role="menu" aria-label="Export page as"
           className="flow-export-menu" style={{ top: exportMenu.top, right: exportMenu.right }}
           initial={motionOff ? false : { opacity: 0, y: -5, scale: 0.985 }}
@@ -1429,30 +1658,42 @@ export default function App() {
             }}><Icon name="download" size={15}/><span>Export as PDF</span><small>.pdf</small></button>
         </motion.div>}
       </AnimatePresence>, document.body)}
-      {shareOpen && active && <ShareDialog key={active.id} documentId={active.id}
-        title={live.current.get(active.id)?.title || active.title}
-        getCurrent={() => live.current.get(activeIdRef.current) || null}
-        onClose={() => setShareOpen(false)} />}
-      {pendingDelete && <DialogFrame id="delete-dialog"
-        title={`Delete ${pendingDelete.kind === 'document' ? 'page' : 'workspace'}?`}
-        icon="trash" describedBy="delete-dialog-description"
-        busy={deleting} onClose={() => setPendingDelete(null)}
-        footer={<>
-          <button type="button" className="flow-dialog-button flow-dialog-neutral"
-            data-dialog-initial-focus disabled={deleting}
-            onClick={() => setPendingDelete(null)}>Cancel</button>
-          <button type="button" className="flow-dialog-button flow-dialog-destructive"
-            disabled={deleting} onClick={() => { void confirmDelete(); }}>
-            {deleting && <TerminalLoader loading />}{deleting ? 'Deleting…' : 'Delete'}
-          </button>
-        </>}>
-        <p id="delete-dialog-description" className="flow-dialog-copy flow-dialog-delete-copy">
-          <strong>{pendingDelete.title}</strong>
-          {pendingDelete.kind === 'workspace'
-            ? ` and its ${pendingDelete.count || 0} page${pendingDelete.count === 1 ? '' : 's'} will be permanently removed from this browser.`
-            : ' will be permanently removed from this browser.'}
-          {' '}This cannot be undone.
-        </p>
+      {shareOpen && active && (activeHtml || Boolean(readSiteRecord(active.id))
+        ? <HtmlSiteDialog key={active.id} documentId={active.id}
+            title={live.current.get(active.id)?.title || active.title}
+            getCurrent={() => live.current.get(activeIdRef.current) || null}
+            onClose={() => setShareOpen(false)} />
+        : <ShareDialog key={active.id} documentId={active.id}
+            title={live.current.get(active.id)?.title || active.title}
+            getCurrent={() => live.current.get(activeIdRef.current) || null}
+            onClose={() => setShareOpen(false)} />)}
+      {settingsOpen && <DialogFrame id="settings-dialog" title="Settings" icon="settings"
+        describedBy="settings-description" onClose={() => setSettingsOpen(false)} footer={<button type="button" className="flow-dialog-button flow-dialog-done" onClick={() => setSettingsOpen(false)}>Done</button>}>
+        <p id="settings-description" className="flow-dialog-copy settings-sr-only">Appearance is saved automatically on this device.</p>
+        <section className="flow-settings-section">
+          <h3>Appearance</h3>
+          <div className="flow-appearance" role="group" aria-label="Appearance">
+            {(['dark', 'light'] as const).map(option => {
+              const selected = theme === option;
+              return <button key={option} type="button" data-dialog-initial-focus={selected ? '' : undefined}
+                aria-pressed={selected} onClick={() => setTheme(option)}>
+                {selected && <motion.span layoutId="settings-appearance" className="flow-appearance-highlight"
+                  transition={{ duration: motionOff ? 0 : .18, ease: [0.22, 1, 0.36, 1] }} />}
+                <span className={'flow-appearance-chip tone-' + option} aria-hidden="true" />
+                <span>{option === 'dark' ? 'Dark' : 'Light'}</span>
+              </button>;
+            })}
+          </div>
+        </section>
+        <section className="flow-settings-section">
+          <div className="flow-settings-label"><h3>Accent color</h3><span>{ACCENT_THEMES.find(option => option.id === accentTheme)?.label}</span></div>
+          <div className="flow-accent-palette" role="group" aria-label="Accent color">
+            {ACCENT_THEMES.map(option => <button key={option.id} type="button" title={option.label}
+              aria-label={option.label} aria-pressed={option.id === accentTheme} onClick={() => setAccentTheme(option.id)}>
+              <span className="flow-settings-swatch" style={{ backgroundColor: `var(--palette-${option.id}-600)` }} />
+            </button>)}
+          </div>
+        </section>
       </DialogFrame>}
       <AnimatePresence initial={false}>
         {notice && <motion.div key={notice} role="status" className="notice" aria-live="polite"

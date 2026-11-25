@@ -1,7 +1,7 @@
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
-import { detectRawCode } from './code';
+import { detectRawCode, repairMixedCode } from './code';
 import hljs from 'highlight.js/lib/common';
 import swift from 'highlight.js/lib/languages/swift';
 import rust from 'highlight.js/lib/languages/rust';
@@ -9,7 +9,7 @@ import type { TDocumentDefinitions } from 'pdfmake/interfaces';
 
 /**
  * An actual vector/text PDF, not a canvas screenshot of the editor.
- * 595pt A4 page, 58pt outer measure, one grayscale typographic system.
+ * 595pt A4 page, 48pt horizontal measure, one grayscale typographic system.
  * Parsing and rendering run only after the user chooses Export PDF.
  */
 hljs.registerLanguage('swift', swift);
@@ -31,10 +31,12 @@ type MdNode = {
 type PdfPart = string | Record<string, unknown>;
 type PdfBlock = Record<string, unknown>;
 export type PdfImageAssets = ReadonlyMap<string, string>;
-const BLACK = '#181818';
-const BODY = '#303030';
+export type PdfDensity = 'balanced' | 'compact';
+export const PDF_PAGE_MARGINS = { balanced: [48, 48, 48, 42], compact: [48, 40, 48, 38] } as const;
+const BLACK = '#101010';
+const BODY = '#252525';
 const MUTED = '#656565';
-const LINK = '#B45309';
+const LINK = '#205D9B';
 const CODE_COLORS: Record<string, string> = {
   keyword: '#8B3F91', built_in: '#8B3F91', literal: '#8B3F91',
   string: '#167B58', number: '#AD6019', comment: '#76808A',
@@ -45,8 +47,8 @@ const CODE_COLORS: Record<string, string> = {
 };
 const LIGHT = '#E5E5E5';
 const PAPER = '#FFFFFF';
-const WASH = '#F6F6F6';
-const contentWidth = 595.28 - 116;
+const WASH = '#F4F4F4';
+const contentWidth = 595.28 - 96;
 
 function safeUrl(url: string | undefined): string | undefined {
   if (!url) return undefined;
@@ -160,8 +162,8 @@ function blocks(nodes: MdNode[], images: PdfImageAssets, inList = false): PdfBlo
         text: inline(node.children),
         style: 'h' + level,
         headlineLevel: level,
-        margin: level === 1 ? [0, 10, 0, 19] :
-          level === 2 ? [0, 24, 0, 11] : [0, 17, 0, 8],
+        margin: level === 1 ? [0, 4, 0, 14] :
+          level === 2 ? [0, 18, 0, 8] : [0, 12, 0, 6],
       });
     } else if (node.type === 'paragraph') {
       const children = node.children || [];
@@ -170,7 +172,7 @@ function blocks(nodes: MdNode[], images: PdfImageAssets, inList = false): PdfBlo
       } else {
         out.push({
           text: inline(children), style: 'body',
-          margin: inList ? [0, 0, 0, 4] : [0, 0, 0, 12],
+          margin: inList ? [0, 0, 0, 4] : [0, 0, 0, 9],
         });
       }
     } else if (node.type === 'list') {
@@ -195,13 +197,13 @@ function blocks(nodes: MdNode[], images: PdfImageAssets, inList = false): PdfBlo
       const label = (node.lang || '').trim().slice(0, 24);
       const raw = node.value || '';
       const content = [
-        ...(label ? [{ text: label.toUpperCase(), style: 'codeLabel', margin: [0, 0, 0, 8] }] : []),
+        ...(label ? [{ text: label, style: 'codeLabel', margin: [0, 0, 0, 8] }] : []),
         { text: highlightedCode(raw, label), style: 'code', wordBreak: 'break-all' },
       ];
       out.push({
         table: { widths: ['*'], body: [[{
           stack: content, fillColor: WASH,
-          margin: [10, 9, 10, 9],
+          margin: [8, 7, 8, 7],
         }]] },
         layout: {
           hLineWidth: () => 0,
@@ -245,7 +247,7 @@ function blocks(nodes: MdNode[], images: PdfImageAssets, inList = false): PdfBlo
         }));
       if (body.length) out.push({
         table: {
-          headerRows: 1, dontBreakRows: true,
+          headerRows: 1, dontBreakRows: false,
           widths: Array.from({ length: columnCount }, () => '*'),
           body,
         },
@@ -253,8 +255,8 @@ function blocks(nodes: MdNode[], images: PdfImageAssets, inList = false): PdfBlo
           hLineWidth: (i: number) => i === 0 ? 0 : 0.65,
           vLineWidth: () => 0,
           hLineColor: () => '#DDDDDD',
-          paddingTop: () => 8, paddingBottom: () => 8,
-          paddingLeft: () => 9, paddingRight: () => 9,
+          paddingTop: () => 6, paddingBottom: () => 6,
+          paddingLeft: () => 7, paddingRight: () => 7,
         },
         margin: [0, 7, 0, 17],
       });
@@ -263,11 +265,11 @@ function blocks(nodes: MdNode[], images: PdfImageAssets, inList = false): PdfBlo
     } else if (node.type === 'html') {
       const readable = (node.value || '').replace(/<\s*br\s*\/?>/gi, '\n')
         .replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-      if (readable) out.push({ text: readable, style: 'body', margin: [0, 0, 0, 12] });
+      if (readable) out.push({ text: readable, style: 'body', margin: [0, 0, 0, 9] });
     } else if (node.children) {
       out.push(...blocks(node.children, images, inList));
     } else if (node.value) {
-      out.push({ text: node.value, style: 'body', margin: [0, 0, 0, 12] });
+      out.push({ text: node.value, style: 'body', margin: [0, 0, 0, 9] });
     }
   }
   return out;
@@ -283,7 +285,7 @@ export function parsePdfMarkdown(markdown: string): MdNode {
   const source = language && withoutFrontmatter.length < 2_000_000
     ? '\x60\x60\x60' + language + '\n' + withoutFrontmatter.replace(/\n$/, '') +
       '\n\x60\x60\x60'
-    : withoutFrontmatter;
+    : repairMixedCode(withoutFrontmatter).markdown;
   return unified().use(remarkParse).use(remarkGfm).parse(source) as unknown as MdNode;
 }
 
@@ -304,13 +306,13 @@ export function pdfImageUrlsFromTree(root: MdNode): string[] {
 }
 
 export function buildPdfDefinition(
-  markdown: string, title: string, images: PdfImageAssets = new Map(),
+  markdown: string, title: string, images: PdfImageAssets = new Map(), density: PdfDensity = 'balanced',
 ): TDocumentDefinitions {
-  return buildPdfDefinitionFromTree(parsePdfMarkdown(markdown), title, images);
+  return buildPdfDefinitionFromTree(parsePdfMarkdown(markdown), title, images, density);
 }
 
 export function buildPdfDefinitionFromTree(
-  root: MdNode, title: string, images: PdfImageAssets = new Map(),
+  root: MdNode, title: string, images: PdfImageAssets = new Map(), density: PdfDensity = 'balanced',
 ): TDocumentDefinitions {
   const safeTitle = (title || 'Untitled').trim().slice(0, 160) || 'Untitled';
   const nodes = root.children || [];
@@ -323,38 +325,53 @@ export function buildPdfDefinitionFromTree(
   content.push(...blocks(nodes, images));
   if (!content.length) content.push({ text: safeTitle, style: 'h1' });
 
+  const compact = density === 'compact';
+  // Scale only vertical whitespace, not font size, horizontal measure, image
+  // dimensions, or source. This includes nested lists and code cell stacks.
+  const tighten = (value: unknown): void => {
+    if (Array.isArray(value)) { value.forEach(tighten); return; }
+    if (!value || typeof value !== 'object') return;
+    const node = value as Record<string, unknown>;
+    if (Array.isArray(node.margin) && node.margin.length === 4) {
+      const [l,t,r,b] = node.margin as number[];
+      const scale = compact ? .68 : .88;
+      node.margin = [l, Math.round(t * scale * 10) / 10, r, Math.round(b * scale * 10) / 10];
+    }
+    Object.values(node).forEach(tighten);
+  };
+  tighten(content);
   const definition = {
     info: { title: safeTitle, creator: 'Flow', producer: 'Flow PDF Export' },
     pageSize: 'A4', pageOrientation: 'portrait',
-    pageMargins: [58, 68, 58, 64],
+    pageMargins: [...PDF_PAGE_MARGINS[density]],
     content,
     defaultStyle: {
-      font: 'Roboto', fontSize: 10.4, color: BODY,
-      lineHeight: 1.48,
+      font: 'Roboto', fontSize: 10.5, color: BODY,
+      lineHeight: compact ? 1.28 : 1.36,
     },
     styles: {
-      h1: { fontSize: 25, bold: true, color: BLACK, lineHeight: 1.13 },
+      h1: { fontSize: 27, bold: true, color: BLACK, lineHeight: 1.13 },
       h2: { fontSize: 16, bold: true, color: BLACK, lineHeight: 1.21 },
-      h3: { fontSize: 12.4, bold: true, color: BLACK, lineHeight: 1.30 },
+      h3: { fontSize: 12, bold: true, color: BLACK, lineHeight: 1.30 },
       h4: { fontSize: 11.1, bold: true, color: BLACK, lineHeight: 1.32 },
       h5: { fontSize: 10.5, bold: true, color: BLACK, lineHeight: 1.36 },
       h6: { fontSize: 10.3, bold: true, color: MUTED, lineHeight: 1.36 },
-      body: { fontSize: 10.4, color: BODY, lineHeight: 1.48 },
-      list: { fontSize: 10.4, color: BODY, lineHeight: 1.45 },
-      code: { fontSize: 8.8, color: BLACK, lineHeight: 1.35 },
+      body: { fontSize: 10.5, color: BODY, lineHeight: compact ? 1.28 : 1.36 },
+      list: { fontSize: 10.5, color: BODY, lineHeight: compact ? 1.30 : 1.38 },
+      code: { fontSize: 9, color: BLACK, lineHeight: compact ? 1.24 : 1.30 },
       codeLabel: { fontSize: 8.1, bold: true, color: MUTED, characterSpacing: 0.5 },
       tableHead: { fontSize: 9.1, bold: true, color: BLACK, lineHeight: 1.3 },
-      tableCell: { fontSize: 9.1, color: BODY, lineHeight: 1.32 },
+      tableCell: { fontSize: 9.1, color: BODY, lineHeight: compact ? 1.26 : 1.32 },
     },
     header: (page: number) => page === 1 ? { text: '' } : {
       text: safeTitle, color: '#969696', fontSize: 8.2,
-      alignment: 'right', margin: [58, 31, 58, 0],
+      alignment: 'right', margin: [48, 22, 48, 0],
     },
     footer: (page: number, total: number) => ({
-      margin: [58, 0, 58, 0],
+      margin: [48, 0, 48, 0],
       stack: [
         { canvas: [{ type: 'line', x1: 0, y1: 0, x2: contentWidth, y2: 0,
-          lineWidth: 0.5, lineColor: LIGHT }], margin: [0, 0, 0, 10] },
+          lineWidth: 0.5, lineColor: LIGHT }], margin: [0, 0, 0, 6] },
         {
           columns: [
             { text: safeTitle, fontSize: 8, color: MUTED, width: '*' },

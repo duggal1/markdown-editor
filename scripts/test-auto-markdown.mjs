@@ -8,11 +8,17 @@ const original = readFileSync(new URL('../src/lib/autoMarkdown.ts', import.meta.
 const js = ts.transpileModule(original, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
+const codeModule = { exports: {} };
+const codeSource = readFileSync(new URL('../src/lib/code.ts', import.meta.url), 'utf8');
+runInNewContext(ts.transpileModule(codeSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, {
+  module: codeModule, exports: codeModule.exports,
+  require: name => { if (name === './htmlPreview') return { looksLikeHtml: () => false }; throw new Error(name); },
+});
 const module = { exports: {} };
 runInNewContext(js, {
   module, exports: module.exports,
   require: (name) => {
-    if (name === './code') return { detectRawCode: () => null };
+    if (name === './code') return codeModule.exports;
     throw new Error('Unexpected module: ' + name);
   },
 });
@@ -120,7 +126,8 @@ assert.equal(formatMarkdownDocument(longFormatted), longFormatted);
 const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
 const action = readFileSync(new URL('../src/lib/autoMarkdownAction.ts', import.meta.url), 'utf8');
 const worker = readFileSync(new URL('../src/workers/autoMarkdown.ts', import.meta.url), 'utf8');
-assert.match(app, /await formatMarkdownAction\(source, \{ atDocumentStart: !selected && from === 0, selection: selected \}\)/);
+assert.doesNotMatch(app, /className="auto-markdown-button"/);
+assert.match(readFileSync(new URL('../src/components/MarkdownEditor.tsx', import.meta.url), 'utf8'), /shouldAutoFormatPaste\(text\)/);
 assert.match(app, /onMouseDown=\{event => event.preventDefault\(\)\}/, 'Toolbar must preserve editor selection when clicked.');
 assert.match(app, /lineAt\(range.from\).from/, 'Selection formatting must work on complete Markdown lines.');
 assert.match(app, /range.to === endLineStart/, 'A selection ending at the next line start must not alter that line.');
@@ -131,4 +138,84 @@ assert.match(action, /WORKER_THRESHOLD = 50_000/);
 assert.match(action, /new Worker\(/, 'Long document formatting should not block the editor.');
 assert.match(worker, /formatMarkdownDocument\(event\.data\.source, event\.data\.options\)/);
 
+
+const drizzle = [
+  'Batch API',
+  'These methods are available on the Drizzle Postgres driver (drizzle-orm/postgres).',
+  '',
+  'Method\tUse it to\tOn failure',
+  'batch\tCommit together\tRolls back the batch',
+  'pipeline\tSend queries on one connection\tOther queries can commit',
+  'Batch',
+  'db.batch() runs all statements in one transaction. If the insert fails, PostgreSQL rolls back the stock update.',
+  '',
+  "const sku = 'usb-c-cable';",
+  'const quantity = 20;',
+  'const response = await db.batch([',
+  '  db.update(products)',
+  '    .set({ stock: 20 })',
+  '    .where(eq(products.sku, sku))',
+  '    .returning({ stock: products.stock }),',
+  '  db.insert(stockReceipts).values({ id: "receipt-1042", sku, quantity }),',
+  ']);',
+  'console.log(response[0]); // result',
+  '',
+  'The driver sends the batch in one round trip and returns results in input order.',
+  '',
+  'Pipeline',
+  'db.pipeline() sends queries back-to-back on one connection.',
+  '',
+  'const [usb, hdmi] = await db.pipeline([',
+  '  db.$count(products),',
+  ']);',
+  "if (usb.status === 'rejected') console.error(usb.reason);",
+  '',
+  'Each query returns a settled result in input order.',
+].join('\n');
+const { detectRawCode } = codeModule.exports;
+const { shouldAutoFormatPaste } = module.exports;
+assert.equal(detectRawCode(drizzle), null, 'Mixed docs are not standalone JavaScript');
+assert.equal(shouldAutoFormatPaste(drizzle), true);
+const converted = format(drizzle);
+assert.match(converted, /^# Batch API\n/);
+assert.match(converted, /\| Method \| Use it to \| On failure \|\n\| --- \| --- \| --- \|/);
+assert.match(converted, /^## Pipeline$/m);
+const snippets = [...converted.matchAll(/\x60{3}javascript\n([\s\S]*?)\n\x60{3}/g)].map(match => match[1]);
+assert.equal(snippets.length, 2, 'Only two code blocks, not surrounding documentation');
+assert.equal(snippets[0], drizzle.slice(drizzle.indexOf('const sku'), drizzle.indexOf('\n\nThe driver')));
+assert.equal(snippets[1], drizzle.slice(drizzle.indexOf('const [usb'), drizzle.indexOf('\n\nEach query')));
+assert.equal(detectRawCode(converted), null);
+assert.equal(format(converted), converted, 'Mixed-document normalization is idempotent');
+const standalone = 'const quantity = 20;\nconsole.log(quantity);';
+assert.equal(detectRawCode(standalone), 'javascript');
+assert.equal(format(standalone), standalone);
+assert.equal(shouldAutoFormatPaste(standalone), false);
+assert.equal(detectRawCode('import SwiftUI\nstruct Home: View {\n var body: some View { Text("Hello") }\n}'), 'swift');
+assert.equal(detectRawCode('def hello():\n    print("Hi")\n'), 'python');
+assert.equal(detectRawCode('SELECT id FROM products;'), 'sql');
+
 console.log('Auto Markdown regression cases passed.');
+{
+const { repairMixedCode } = codeModule.exports;
+const fence = '\x60\x60\x60';
+const isolation = [ 'const [page, total] = await db.batch([', '  db.select().from(products).orderBy(products.sku).limit(25),', '  db.$count(products),', "], { isolation: 'repeatable read', readOnly: true });" ];
+const metrics = [ 'const response = await db.batch([', 'db.$count(products),', 'db.$count(stockReceipts),', "], { metrics: 'us' });", 'console.log(response.metrics.total, response.metrics.roundTrips);' ];
+const bulk = [ 'const updated = await db.bulkUpdate(products, [', "  { sku: 'usb-c-hub', name: 'USB-C Hub', stock: 40 },", "  { sku: 'usb-c-adapter', name: 'USB-C Adapter', stock: 75 },", "  { sku: 'usb-c-charger', name: 'USB-C Charger', stock: 12 },", '], { by: products.sku });', 'console.log(updated.rowCount); // 2 when the charger SKU is missing' ];
+const broken = ['# Batch API','','## Isolation','','Use isolation to control which changes from other transactions each query can see.','',fence+'sql',...isolation.slice(0,-1),fence,'',isolation.at(-1),'','Set readOnly: true to run a read-only transaction.','','## Metrics','','Set metrics to measure the batch.','',...metrics,'','Use metrics: true for fractional milliseconds.','','## bulkUpdate','',fence+'javascript',...bulk.slice(0,4),fence,'',...bulk.slice(4),'','Unmatched keys are skipped.'].join('\n');
+const normalized = repairMixedCode(broken).markdown;
+const actualBlocks = [...normalized.matchAll(/\x60{3}javascript\n([\s\S]*?)\n\x60{3}/g)].map(m=>m[1]);
+assert.equal(actualBlocks.length,3);
+assert.equal(actualBlocks[0],isolation.join('\n'));
+assert.equal(actualBlocks[1],metrics.join('\n'));
+assert.equal(actualBlocks[2],bulk.join('\n'));
+assert.ok(normalized.includes('Set readOnly: true to run a read-only transaction.'));
+assert.ok(normalized.includes('Unmatched keys are skipped.'));
+assert.equal(repairMixedCode(normalized).markdown,normalized);
+const correctSql = '# SQL\n\n'+fence+'sql\nSELECT id FROM products;\n'+fence+'\n\nUse the result.';
+assert.equal(repairMixedCode(correctSql).markdown,correctSql);
+const intentionalPartial = '# Example\n\n'+fence+'javascript\nconst data = [\n'+fence+'\n\nThis is intentionally incomplete.';
+assert.equal(repairMixedCode(intentionalPartial).markdown,intentionalPartial);
+const ordinary = '# Docs\n\nUse db.batch() to run statements.\n\n- const example = 42;\n\nA normal sentence.';
+assert.equal(repairMixedCode(ordinary).markdown,ordinary);
+assert.equal(repairMixedCode('# Prose\n\nconst text is a reserved word in this explanation.').markdown,'# Prose\n\nconst text is a reserved word in this explanation.');
+}

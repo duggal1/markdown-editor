@@ -1,10 +1,12 @@
 import { previewParts } from './previewChunks';
+import { repairMixedCode } from './code';
 
 export type PreparedPreview = {
   source: string;
   chunks: string[];
   firstLines: number[];
   continuations: boolean[];
+  sourceLineMaps?: number[][];
 };
 
 /**
@@ -17,22 +19,27 @@ export type PreparedPreview = {
 const preparedCache = new Map<string, PreparedPreview>();
 const MAX_ENTRIES = 4;
 const MAX_SOURCE_CHARS = 2_000_000;
+const pendingSources = new Map<string, Promise<PreparedPreview>>();
 
 export function buildPreviewSections(source: string): PreparedPreview {
-  const parts = previewParts(source);
+  const repaired = repairMixedCode(source);
+  const parts = previewParts(repaired.markdown);
+  const sourceLineMaps: number[][] | undefined = repaired.sourceLines ? [] : undefined;
   const chunks: string[] = [];
   const firstLines: number[] = [];
   const continuations: boolean[] = [];
   let line = 1;
   for (const part of parts) {
     chunks.push(part.markdown);
-    firstLines.push(line);
+    const startLine = line;
+    firstLines.push(repaired.sourceLines?.[line - 1] ?? line);
     continuations.push(part.continuesList);
     for (let i = 0; i < part.markdown.length; i++) {
       if (part.markdown.charCodeAt(i) === 10) line++;
     }
+    if (sourceLineMaps && repaired.sourceLines) sourceLineMaps.push(repaired.sourceLines.slice(startLine - 1, line));
   }
-  return { source, chunks, firstLines, continuations };
+  return { source, chunks, firstLines, continuations, sourceLineMaps };
 }
 
 export function cachedPreview(source: string): PreparedPreview | null {
@@ -72,14 +79,14 @@ function availableWorker(): Worker | null {
   try {
     const worker = new Worker(new URL('../workers/preview.ts', import.meta.url), { type: 'module' });
     worker.onmessage = (event: MessageEvent<{
-      requestId: number; chunks: string[]; firstLines: number[]; continuations: boolean[];
+      requestId: number; chunks: string[]; firstLines: number[]; continuations: boolean[]; sourceLineMaps?: number[][];
     }>) => {
       const request = inFlight.get(event.data.requestId);
       if (!request) return;
       inFlight.delete(event.data.requestId);
       // Source is held only by the promise closure, not copied back by worker.
       request.resolve({ source: '', chunks: event.data.chunks, firstLines: event.data.firstLines,
-        continuations: event.data.continuations });
+        continuations: event.data.continuations, sourceLineMaps: event.data.sourceLineMaps });
     };
     worker.onerror = () => {
       for (const task of inFlight.values()) task.reject(new Error('Preview worker unavailable'));
@@ -93,7 +100,15 @@ function availableWorker(): Worker | null {
 }
 
 /** Offload section splitting of large Markdown, falling back safely. */
-export async function preparePreview(source: string): Promise<PreparedPreview> {
+export function preparePreview(source: string): Promise<PreparedPreview> {
+  const existing = pendingSources.get(source);
+  if (existing) return existing;
+  const pending = prepare(source).finally(() => { pendingSources.delete(source); });
+  pendingSources.set(source, pending);
+  return pending;
+}
+
+async function prepare(source: string): Promise<PreparedPreview> {
   const cached = cachedPreview(source);
   if (cached) return cached;
   if (source.length < 80_000) return immediatePreview(source);

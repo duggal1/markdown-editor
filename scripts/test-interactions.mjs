@@ -19,7 +19,7 @@ assert.match(app, /filter: motionOff \|\| compact/, 'iOS sidebar must not run an
 assert.match(app, /window\.requestAnimationFrame\(measure\)/, 'Viewport resize should be batched');
 assert.match(draw, /hoverCapable = window\.matchMedia\('\(hover: hover\) and \(pointer: fine\)'\)/);
 assert.match(draw, /<motion\.button \{\.\.\.hoverMotion\} type="button" className="draw-button"/);
-assert.match(tree, /<motion\.button \{\.\.\.interaction\} type="button" className="filetree-add-page"/);
+assert.match(tree, /className="private-add-child"/);
 assert.match(css, /\.save-prefix\s*\{[\s\S]*?border-radius:1px; background:var\(--flow-accent\);/);
 assert.match(css, /\.save-indicator\[data-save-state='saving'\] \.save-label/);
 assert.match(css, /@media \(max-width:800px\)\s*\{\s*\.sidebar-inner \{ will-change:opacity,transform;/);
@@ -60,21 +60,142 @@ const main = read('src/main.tsx');
 const store = read('src/lib/store.ts');
 const accentSource = read('src/lib/accentTheme.ts');
 const accentModule = { exports: {} };
+const faviconLink = { rel: 'icon', href: '', type: '' };
+const faviconDocument = { documentElement: { dataset: {} }, querySelector: () => faviconLink };
 runInNewContext(ts.transpileModule(accentSource, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText, {
   module: accentModule,
   exports: accentModule.exports,
-  document: { documentElement: { dataset: {} } },
+  document: faviconDocument,
 });
 const { ACCENT_THEMES, DEFAULT_ACCENT, parseAccentTheme, applyAccentTheme } = accentModule.exports;
-assert.equal(ACCENT_THEMES.length, 8, 'Accent picker should expose eight curated options.');
-assert.equal(DEFAULT_ACCENT, 'orange', 'Orange remains the default theme.');
+assert.equal(ACCENT_THEMES.length, 9, 'Accent picker includes true blue alongside sky and indigo.');
+assert.equal(parseAccentTheme('blue'), 'blue');
+assert.equal(applyAccentTheme('blue'), 'blue');
+assert.match(decodeURIComponent(faviconLink.href), /#2563eb/);
+assert.doesNotMatch(css, /data-background='blue'/);
+assert.match(app, /\(\['dark', 'light'\] as const\)\.map/);
+const previewColors = read('src/lib/previewColors.ts');
+assert.match(preview, /rehypePlugins=\{\[rehypeRaw, \[rehypeSanitize, safeMarkdownHtml\], rehypePreviewColors\]\}/);
+assert.doesNotMatch(preview, /attachPreviewColorPicker|onEditColor/);
+assert.doesNotMatch(app, /onEditColor/);
+const hexMapping = { exports: {} };
+runInNewContext(ts.transpileModule(read('src/lib/hexColor.ts'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText, { module: hexMapping, exports: hexMapping.exports });
+const previewColorModule = { exports: {} };
+runInNewContext(ts.transpileModule(previewColors, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText, {
+  module: previewColorModule, exports: previewColorModule.exports,
+  require: () => hexMapping.exports,
+});
+const { createElement } = await import('react');
+const { renderToStaticMarkup } = await import('react-dom/server');
+const { default: ReactMarkdown } = await import('react-markdown');
+const { default: remarkGfm } = await import('remark-gfm');
+const { default: rehypeRaw } = await import('rehype-raw');
+const { default: rehypeSanitize } = await import('rehype-sanitize');
+const colorDocument = '# Colors\n\nOrange #FF8A30, repeat #FF8A30.\n\n| Ink | Shade | Base | Hot |\n| --- | --- | --- | --- |\n| Orange | #C2410C | #EA580C | #FB923C |\n| Sky | #0369A1 | #0284C7 | #38BDF8 |\n| Black | ' + String.fromCharCode(96) + '#000000' + String.fromCharCode(96) + ' | #abcd | #12345678 |\n';
+const renderedColors = renderToStaticMarkup(createElement(ReactMarkdown, {
+  remarkPlugins: [remarkGfm],
+  rehypePlugins: [rehypeRaw, rehypeSanitize, previewColorModule.exports.rehypePreviewColors],
+  children: colorDocument,
+}));
+for (const literal of ['#FF8A30', '#C2410C', '#EA580C', '#FB923C', '#0369A1', '#0284C7', '#38BDF8', '#000000', '#abcd', '#12345678']) {
+  assert.ok(renderedColors.includes('background-color:' + literal), 'Actual inline background required: ' + literal);
+}
+assert.equal((renderedColors.match(/class="flow-preview-swatch"/g) || []).length, 11);
+assert.equal((renderedColors.match(/background-color:#FF8A30/g) || []).length, 2);
+assert.doesNotMatch(renderedColors, /data-flow-from|role="button"|type="color"/);
+const outline = read('src/components/PageOutline.tsx');
+assert.doesNotMatch(app, /id="outline-dialog"|onClick=\{openOutline\}/);
+assert.doesNotMatch(css, /#outline-dialog/);
+assert.match(app, /<PageOutline[\s\S]*?onJump=\{jumpToHeading\}/);
+assert.match(css, /\.page-outline-rail\s*\{[\s\S]*?left:5px; top:50%; transform:translateY\(-50%\)/);
+assert.match(outline, /onPointerEnter=/);
+assert.match(outline, /onPointerLeave=\{leave\}/);
+assert.match(outline, /\{mounted && <div[\s\S]*?inert=\{!open\}/);
+assert.match(css, /\.page-outline-panel\[data-open='true'\]/);
+assert.match(css, /\.page-outline-hover\s*\{[\s\S]*?transition:transform 210ms/);
+assert.match(app, /cancelHeadingMotion\(\)/);
+const scrollModule = { exports: {} };
+let frameId = 0, time = 0;
+const frames = new Map();
+const scroll = { scrollTop: 0, scrollHeight: 10000, clientHeight: 500 };
+let reduced = false;
+runInNewContext(ts.transpileModule(read('src/lib/scrollMotion.ts'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText, {
+  module: scrollModule, exports: scrollModule.exports,
+  performance: { now: () => time },
+  window: { matchMedia: () => ({ matches: reduced }) },
+  requestAnimationFrame: callback => { frames.set(++frameId, callback); return frameId; },
+  cancelAnimationFrame: id => frames.delete(id),
+});
+const { navigationEase, navigationDuration, navigateScroll, cancelNavigation } = scrollModule.exports;
+assert.equal(navigationEase(0), 0);
+assert.equal(navigationEase(1), 1);
+assert.equal(navigationEase(.5), .5);
+assert.ok(navigationDuration(10000, 500) <= 980);
+function advance(dt) {
+  time += dt;
+  const callbacks = [...frames.values()];
+  frames.clear();
+  callbacks.forEach(cb => cb(time));
+}
+navigateScroll(scroll, 450, true);
+assert.equal(frames.size, 1);
+navigateScroll(scroll, 450, true);
+assert.equal(frames.size, 1);
+advance(100);
+assert.ok(scroll.scrollTop > 0 && scroll.scrollTop < 450);
+cancelNavigation(scroll);
+const stopped = scroll.scrollTop;
+advance(500);
+assert.equal(scroll.scrollTop, stopped);
+navigateScroll(scroll, 900, true);
+for (let i = 0; i < 100; i++) advance(1000 / 90);
+assert.equal(scroll.scrollTop, 900);
+assert.equal(frames.size, 0);
+navigateScroll(scroll, 9000, true, true);
+assert.equal(scroll.scrollTop, 8375);
+for (let i = 0; i < 100; i++) advance(1000 / 60);
+assert.equal(scroll.scrollTop, 9000);
+navigateScroll(scroll, 0, true);
+advance(16);
+navigateScroll(scroll, 300, false);
+assert.equal(scroll.scrollTop, 300);
+assert.equal(frames.size, 0);
+reduced = true;
+navigateScroll(scroll, 500, true);
+assert.equal(scroll.scrollTop, 500);
+assert.equal(frames.size, 0);
+assert.match(outline, /onJump\(item\.line\)/);
+assert.match(outline, /if \(!entries\.length\) return null/);
+const outlineModule = { exports: {} };
+runInNewContext(ts.transpileModule(read('src/lib/outline.ts'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText, { module: outlineModule, exports: outlineModule.exports });
+const { documentOutline, activeOutlineIndex, outlineMarkers } = outlineModule.exports;
+const headings = documentOutline('# Title\n\n## Second\n\n~~~js\n# not a heading\n~~~\n### Third');
+assert.equal(headings.length, 3);
+assert.equal(headings[2].line, 8);
+assert.equal(activeOutlineIndex(headings, 5), 1);
+assert.equal(activeOutlineIndex(headings, 0), -1);
+const long = documentOutline(Array.from({ length: 400 }, (_, i) => '## Heading ' + i).join('\n'));
+assert.equal(long.length, 400);
+assert.equal(outlineMarkers(long).length, 12);
+assert.equal(outlineMarkers(long)[11].line, 400);
+assert.equal(DEFAULT_ACCENT, 'purple', 'Purple is the default accent for new workspaces.');
 assert.equal(parseAccentTheme('sky'), 'sky');
 assert.equal(parseAccentTheme('purple'), 'purple');
-assert.equal(parseAccentTheme('unknown'), 'orange', 'Invalid preferences must fall back safely.');
-assert.equal(parseAccentTheme(null), 'orange');
+assert.equal(parseAccentTheme('unknown'), 'purple', 'Invalid preferences must fall back to purple safely.');
+assert.equal(parseAccentTheme(null), 'purple');
 assert.equal(applyAccentTheme('teal'), 'teal');
+assert.match(decodeURIComponent(faviconLink.href), /#0d9488/, 'The favicon must follow the selected accent.');
+assert.equal(faviconDocument.documentElement.dataset.accent, 'teal');
 
 assert.match(store, /accentTheme\?: AccentTheme/, 'Existing saved preferences must allow the accent key.');
 assert.match(main, /applyAccentTheme\(savedAppearance\.accentTheme\)/,
@@ -83,14 +204,10 @@ assert.match(app, /setAccentTheme\(parseAccentTheme\(prefs\.accentTheme\)\)/,
   'The editor must restore the chosen accent.');
 assert.match(app, /savePrefs\(\{ theme, accentTheme, mode/,
   'The palette must survive reloads.');
-assert.match(app, /className="accent-theme-trigger"/,
-  'A theme picker belongs in the top navigation.');
-assert.match(app, /role="menuitemradio" aria-checked=\{option\.id === accentTheme\}/,
-  'Palette choices must expose the selected state to assistive technology.');
-assert.match(app, /onKeyDown=\{onAccentMenuKeyDown\}/,
-  'The theme menu must support arrow-key navigation.');
-assert.match(app, /setAccentTheme\(option\.id\)/,
-  'Selecting a palette must actually update app state.');
+assert.doesNotMatch(app, /className="accent-theme-trigger"/);
+assert.match(app, /<DialogFrame id="settings-dialog"/);
+assert.match(app, /aria-pressed=\{option.id === accentTheme\}/);
+assert.match(app, /setAccentTheme\(option\.id\)/);
 assert.match(css, /:root\[data-theme='light'\] \{ --accent:var\(--accent-500\); \}/,
   'Light mode should use shade 500.');
 assert.match(css, /--accent:var\(--accent-600\);/,
@@ -112,3 +229,25 @@ assert.match(css, /\.topbar \.accent-theme-trigger\s*\{\s*grid-row:1; grid-colum
 assert.match(css, /\.accent-theme-menu \{/,
   'Theme menu must have a dedicated styled surface.');
 console.log('Motion, five-second save status, iOS geometry and preview cache checks passed.');
+assert.match(tree, /export default memo\(WorkspaceTree\)/, 'The file tree must not re-render on unrelated editor state');
+assert.match(app, /useTreeActions\(/, 'Tree events use stable callback identities');
+assert.match(app, /localSaveDelay\(doc\.markdown\.length, now - firstDirty\)/, 'Continuous editing has a bounded local save delay');
+const shareDialogSource = read('src/components/ShareDialog.tsx');
+assert.match(shareDialogSource, /className="share-copy-idle">Copy link/);
+assert.match(shareDialogSource, /className="share-copy-success"><Icon name="check"/);
+assert.match(css, /\.share-access \{[^}]*align-items:start/);
+assert.match(css, /\.share-revoke:is\(:hover,:focus-visible\):not\(:disabled\) \{[^}]*text-decoration:underline dotted/);
+assert.match(app, /setSettingsOpen\(true\)\}><Icon name="sliders"/);
+assert.match(css, /\.share-url-row input \{[^}]*color:var\(--share-url\)[^}]*'Geist Variable',sans-serif[^}]*-webkit-font-smoothing:antialiased/);
+assert.doesNotMatch(css, /\.share-url-row input \{[^}]*var\(--mono\)/);
+assert.match(shareDialogSource, /className="share-consent-control"[\s\S]*?type="checkbox"[\s\S]*?className="share-consent-mark"[\s\S]*?name="check"/);
+assert.match(css, /\.share-consent-control input:focus-visible \+ \.share-consent-mark/);
+assert.match(css, /--share-control:#202020;\s*--share-control-hover:#151515/);
+assert.match(css, /--share-control:#e8e8e8;\s*--share-control-hover:#f5f5f5/);
+// Reconciled clipboard fallback from the original sharing PR. Keep the
+// current compact layout and require an actual successful copy before feedback.
+assert.match(shareDialogSource, /if \(!link \|\| busy\) return/);
+assert.match(shareDialogSource, /navigator\.clipboard\?\.writeText/);
+assert.match(shareDialogSource, /input\.select\(\);\s*try \{ successful = document\.execCommand\('copy'\); \}/);
+assert.match(shareDialogSource, /if \(!successful\) \{[\s\S]*?return;\s*\}[\s\S]*?setCopied\(true\)/);
+assert.match(shareDialogSource, /ref=\{linkInputRef\} data-dialog-initial-focus/);

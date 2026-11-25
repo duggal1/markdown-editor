@@ -1,14 +1,18 @@
 import { memo, useEffect, useRef, type RefObject } from 'react';
-import { Compartment, EditorState, type Text } from '@codemirror/state';
+import { Compartment, EditorState, Prec, type Text } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, placeholder } from '@codemirror/view';
 import { minimalSetup } from 'codemirror';
-import { markdown } from '@codemirror/lang-markdown';
+import { markdown, markdownKeymap } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
-import { indentWithTab } from '@codemirror/commands';
-import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { indentWithTab, insertNewline } from '@codemirror/commands';
+import { HighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
 import { detectRawCode, type CodeLanguage } from '../lib/code';
 import { formatPlainTextAsMarkdown, shouldAutoFormatPaste } from '../lib/autoMarkdown';
+import { listEnterIntent } from '../lib/listEditing';
+import { repairLanguage } from '../lib/codeRepair';
+import { blockCommands } from '../lib/blockCommands';
+import { editorColorPicker } from '../lib/editorColorPicker';
 
 
 const flowHighlight = HighlightStyle.define([
@@ -74,11 +78,52 @@ export function formatEditor(view: EditorView | null, format: Format): void {
   view.focus();
 }
 
+/**
+ * Override only Enter on Markdown list lines. CodeMirror's built-in Markdown
+ * keymap otherwise auto-continues "- ", causing doubled markers when a user
+ * types "- two", and can trap tables/code inside a list. Leave all other
+ * commands, including Markdown Backspace, as they were.
+ */
+function enterExplicitMarkdownList(view: EditorView): boolean {
+  const { state } = view;
+  if (state.selection.ranges.length !== 1 || !state.selection.main.empty) return false;
+
+  const pos = state.selection.main.head;
+  const line = state.doc.lineAt(pos);
+  const intent = listEnterIntent(line.text, pos - line.from);
+  if (!intent) return false;
+
+  // A literal "- item" inside a fenced or indented code block is code, not
+  // a Markdown list. Keep its normal Enter/indent behavior.
+  let node = syntaxTree(state).resolveInner(Math.max(line.from, pos - 1), -1);
+  while (node) {
+    if (node.name === 'FencedCode' || node.name === 'CodeBlock' ||
+      node.name === 'HTMLBlock' || node.name === 'InlineCode') return false;
+    const parent = node.parent;
+    if (!parent) break;
+    node = parent;
+  }
+
+  if (intent === 'exit-list') {
+    // Keep one blank separator when leaving an empty list item. Without it,
+    // a following GFM table or fenced code block may still parse as list text.
+    view.dispatch({
+      changes: { from: line.from, to: line.to, insert: '\n' },
+      selection: { anchor: line.from + 1 },
+      scrollIntoView: true,
+      userEvent: 'input',
+    });
+    return true;
+  }
+  return insertNewline(view);
+}
+
 function MarkdownEditor({
-  documentId, initialText, viewRef, onChange, onPosition, focusOnMount = false,
+  documentId, initialText, fileLanguage, viewRef, onChange, onPosition, focusOnMount = false,
 }: {
   documentId: string;
   initialText: string;
+  fileLanguage?: string | null;
   viewRef: RefObject<EditorView | null>;
   onChange: (value: string, documentId: string) => void;
   onPosition?: (line: number, kind: 'scroll' | 'cursor', total: number) => void;
@@ -134,7 +179,10 @@ function MarkdownEditor({
       });
     };
     const setLanguage = (source: string) => {
-      const language = detectRawCode(source);
+      // A damaged HTML/Python paste still needs a code gutter and highlighting
+      // before the user clicks Auto Fix. Other languages use existing detection.
+      const language = fileLanguage === 'html' || fileLanguage === 'python' || fileLanguage === 'svg'
+        ? fileLanguage : detectRawCode(source) || repairLanguage(source);
       view.dom.classList.toggle('raw-code', Boolean(language));
       if (language === activeLanguage) return;
       activeLanguage = language;
@@ -142,14 +190,14 @@ function MarkdownEditor({
       if (!language) {
         view.dispatch({
           effects: [
-            languageSlot.reconfigure(markdown({ codeLanguages: languages })),
+            languageSlot.reconfigure(markdown({ codeLanguages: languages, addKeymap: false })),
             gutterSlot.reconfigure([]),
           ],
         });
         return;
       }
       const match = languages.find(item =>
-        item.name.toLowerCase() === language ||
+        item.name.toLowerCase() === (language === 'svg' ? 'xml' : language) ||
         item.alias.some(alias => alias.toLowerCase() === language),
       );
       if (!match) return;
@@ -168,8 +216,10 @@ function MarkdownEditor({
         doc: initialText,
         extensions: [
           minimalSetup,
+          blockCommands,
+          editorColorPicker,
           gutterSlot.of([]),
-          languageSlot.of(markdown({ codeLanguages: languages })),
+          languageSlot.of(markdown({ codeLanguages: languages, addKeymap: false })),
           syntaxHighlighting(flowHighlight),
           EditorView.lineWrapping,
           // Multi-line plain text becomes structured Markdown as it is pasted.
@@ -177,7 +227,8 @@ function MarkdownEditor({
           EditorView.domEventHandlers({
             paste(event, target) {
               const text = event.clipboardData?.getData('text/plain');
-              if (!text || !shouldAutoFormatPaste(text)) return false;
+              // Never run prose-to-Markdown conversion over copied code.
+              if (!text || repairLanguage(text, fileLanguage) || !shouldAutoFormatPaste(text)) return false;
               const empty = target.state.doc.length === 0;
               const atStart = empty && target.state.selection.main.from === 0;
               const formatted = formatPlainTextAsMarkdown(text, { atDocumentStart: atStart });
@@ -187,8 +238,14 @@ function MarkdownEditor({
               return true;
             },
           }),
+          // Disable only Markdown's implicit Enter continuation. Preserve
+          // its Backspace handling, plus normal Tab indentation.
+          Prec.highest(keymap.of([
+            { key: 'Enter', run: target => !activeLanguage && enterExplicitMarkdownList(target) },
+            ...markdownKeymap.filter(binding => binding.key === 'Backspace'),
+          ])),
           keymap.of([indentWithTab]),
-          placeholder('Start writing…'),
+          placeholder('Press / for commands, or start writing…'),
           EditorView.updateListener.of(update => {
             if (update.selectionSet || update.docChanged) {
               const line = update.state.doc.lineAt(update.state.selection.main.head).number;

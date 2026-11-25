@@ -1,12 +1,13 @@
 import type { TDocumentDefinitions } from 'pdfmake/interfaces';
 import pdfMakeScriptUrl from 'pdfmake/build/pdfmake.js?url';
 import pdfFontsScriptUrl from 'pdfmake/build/vfs_fonts.js?url';
-import { buildPdfDefinitionFromTree, parsePdfMarkdown, pdfImageUrlsFromTree, type PdfImageAssets } from './pdfDocument';
+import { buildPdfDefinitionFromTree, parsePdfMarkdown, pdfImageUrlsFromTree, type PdfImageAssets, type PdfDensity } from './pdfDocument';
+import { optimizePdfPagination } from './pdfPagination';
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 
 type BrowserPdfMake = {
-  vfs?: Record<string, string>;
+  addVirtualFileSystem?: (fonts: Record<string, string>) => void;
   createPdf: (definition: TDocumentDefinitions) => {
     getBlob: (callback: (blob: Blob) => void) => unknown;
   };
@@ -54,9 +55,9 @@ async function loadPdfEngine(): Promise<BrowserPdfMake> {
   if (typeof pdfMake?.createPdf !== 'function') {
     throw new Error('PDF engine failed to initialize.');
   }
-  if (!pdfMake.vfs?.['Roboto-Regular.ttf']) {
-    throw new Error('PDF fonts failed to initialize.');
-  }
+  // PDFMake 0.2 registers vfs_fonts.js through addVirtualFileSystem.
+  // Its VFS is private; absence of a public .vfs is not a font failure.
+  // The real document generation below validates the registered fonts.
   return pdfMake;
 }
 
@@ -126,21 +127,27 @@ export async function downloadStyledPdf(markdown: string, title: string, onProgr
   const tree = parsePdfMarkdown(markdown);
   const [pdfMake, images] = await Promise.all([pdfEngine(), prepareImages(pdfImageUrlsFromTree(tree))]);
   onProgress?.('Typesetting PDF…');
-  const doc = buildPdfDefinitionFromTree(tree, title, images) as TDocumentDefinitions;
-  const blob: Blob = await new Promise((resolve, reject) => {
+  const render = (density: PdfDensity): Promise<Blob> => {
+    const doc = buildPdfDefinitionFromTree(tree, title, images, density);
+    return new Promise<Blob>((resolve, reject) => {
+    const timeout = window.setTimeout(() => reject(new Error('PDF generation timed out. Try exporting a smaller page.')), 120000);
+    const fail = (error: unknown) => { clearTimeout(timeout); reject(error); };
     try {
       const pending = pdfMake.createPdf(doc).getBlob(result => {
+        clearTimeout(timeout);
         if (!result || result.size === 0) reject(new Error('Empty PDF output.'));
         else resolve(result);
       });
       // pdfmake versions that return a Promise may reject asynchronously.
       if (pending && typeof (pending as Promise<unknown>).then === 'function') {
-        void (pending as Promise<unknown>).catch(reject);
+        void (pending as Promise<unknown>).catch(fail);
       }
     } catch (error) {
-      reject(error);
+      fail(error);
     }
-  });
+    });
+  };
+  const blob = await optimizePdfPagination(render, () => onProgress?.('Optimizing page layout…'));
   // A non-empty Blob is not necessarily a PDF, particularly after a failed
   // renderer initialization. Check the actual file header before downloading.
   if (await blob.slice(0, 5).text() !== '%PDF-') {

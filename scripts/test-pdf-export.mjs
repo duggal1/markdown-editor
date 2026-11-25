@@ -38,12 +38,12 @@ const plan = [
 
 const definition = buildPdfDefinition(plan, 'Lumen: Master Build Plan');
 assert.equal(definition.pageSize, 'A4');
-assert.deepEqual([...definition.pageMargins], [58, 68, 58, 64]);
+assert.deepEqual([...definition.pageMargins], [48, 48, 48, 42]);
 assert.equal(definition.info.title, 'Lumen: Master Build Plan');
-assert.equal(definition.defaultStyle.color, '#303030');
-assert.equal(definition.styles.h1.fontSize, 25);
+assert.equal(definition.defaultStyle.color, '#252525');
+assert.equal(definition.styles.h1.fontSize, 27);
 assert.equal(definition.styles.h2.fontSize, 16);
-assert.equal(definition.styles.body.lineHeight, 1.48);
+assert.equal(definition.styles.body.lineHeight, 1.36);
 const content = definition.content;
 assert.ok(Array.isArray(content));
 assert.ok(content.some(x => x.style === 'h1'));
@@ -79,7 +79,7 @@ const rawSwift = buildPdfDefinition(
 assert.ok(rawSwift.content.some(x => x.table && x.table.body?.[0]?.[0]?.stack?.some(y =>
   y.style === 'code' && (typeof y.text === 'string' ? y.text : y.text.map(part => typeof part === 'string' ? part : part.text).join('')).includes('import SwiftUI'))),
   'Raw Swift input must be rendered as an intact code block.');
-assert.equal(definition.styles.code.fontSize, 8.8);
+assert.equal(definition.styles.code.fontSize, 9);
 const imageData = new Map([['https://example.com/test.png', 'data:image/png;base64,aGVsbG8=']]);
 const imageDoc = buildPdfDefinition('![Diagram](https://example.com/test.png)', 'Diagram', imageData);
 assert.ok(imageDoc.content.some(x => x.image), 'Embedded PNG data should become a PDF image.');
@@ -93,7 +93,7 @@ const rawTree = parsePdfMarkdown('```swift\nlet answer = 42\n```');
 const fromTree = buildPdfDefinitionFromTree(rawTree, 'Swift');
 assert.ok(fromTree.content.some(block => block.table?.body?.[0]?.[0]?.stack?.some(x =>
   x.style === 'code' && x.text.some(y => y.color))), 'PDF must render token colors.');
-assert.ok(JSON.stringify(buildPdfDefinition('[Home](https://example.com)', 'Link').content).includes('#B45309'));
+assert.ok(JSON.stringify(buildPdfDefinition('[Home](https://example.com)', 'Link').content).includes('#205D9B'));
 const sourceApp = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
 const exportCode = readFileSync(new URL('../src/lib/pdfExport.ts', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
@@ -113,8 +113,21 @@ assert.match(css, /\.flow-export-menu/);
 
 // pdfmake smoke test: actually generate a real searchable-text PDF buffer.
 const lib = (await import('pdfmake/build/pdfmake.js')).default;
-const fonts = (await import('pdfmake/build/vfs_fonts.js')).default;
-lib.addVirtualFileSystem(fonts);
+// Exercise the real browser font script registration path: the module
+// must register against window.pdfMake without a public .vfs property.
+const { runInNewContext } = await import('node:vm');
+const { createRequire } = await import('node:module');
+const require = createRequire(import.meta.url);
+let registered = false;
+runInNewContext(readFileSync(require.resolve('pdfmake/build/vfs_fonts.js'), 'utf8'), {
+  window: { pdfMake: { addVirtualFileSystem(fonts) {
+    assert.ok(fonts['Roboto-Regular.ttf']);
+    lib.addVirtualFileSystem(fonts);
+    registered = true;
+  } } },
+});
+assert.equal(registered, true);
+assert.doesNotMatch(exportCode, /pdfMake\.vfs\?/);
 
 const actual = await new Promise((resolve, reject) => {
   try {
@@ -131,3 +144,53 @@ console.log('Styled PDF generation and page-spacing regression checks passed.', 
   samplePdfBytes: actual.length, longPlanCharacters: many.length,
   longPlanPreparationMs: +prepTime.toFixed(1),
 });
+
+// Real PDF pagination regression: find the first spill into page two, then
+// run the same bounded optimization path that production exports use.
+const { inspectPdfTail, optimizePdfPagination } = await import('../src/lib/pdfPagination.ts');
+const { getDocumentProxy } = await import('unpdf');
+const fixture = count => '# Pagination fixture\n\n' + Array.from({length:count}, (_,i) => 'Section item ' + String(i+1).padStart(3,'0') + ' retains its content.').join('\n\n');
+const render = async (source, density) => new Blob([await new Promise(resolve =>
+  lib.createPdf(buildPdfDefinition(source,'Pagination fixture',new Map(),density)).getBuffer(resolve))], {type:'application/pdf'});
+let lo = 2, hi = 100;
+while (hi - lo > 1) {
+  const mid = (lo + hi) >> 1;
+  const stats = await inspectPdfTail(await render(fixture(mid),'balanced'),'balanced');
+  if (stats.pages > 1) hi = mid; else lo = mid;
+}
+const overflowSource = fixture(hi);
+const overflow = await render(overflowSource,'balanced');
+const overflowStats = await inspectPdfTail(overflow,'balanced');
+assert.equal(overflowStats.pages,2);
+assert.ok(overflowStats.sparse, 'Boundary fixture must end on a sparse extra page');
+let attempts = 0;
+const compact = await optimizePdfPagination(async density => { attempts++; return density === 'balanced' ? overflow : render(overflowSource,density); });
+assert.equal(attempts,2);
+assert.equal((await inspectPdfTail(compact,'compact')).pages,1,'Compaction must eliminate the avoidable final page');
+const readBody = async blob => {
+  const pdf = await getDocumentProxy(new Uint8Array(await blob.arrayBuffer()));
+  try {
+    const pages = [];
+    for(let page=1;page<=pdf.numPages;page++) {
+      const content = await (await pdf.getPage(page)).getTextContent();
+      pages.push(content.items.filter(x=>'str' in x).map(x=>x.str).join(' '));
+    }
+    return pages.join(' ');
+  } finally { if (typeof pdf.destroy === 'function') await pdf.destroy(); else await pdf.cleanup?.(); }
+};
+const compactText = await readBody(compact);
+for(let i=1;i<=hi;i++) assert.ok(compactText.includes('Section item ' + String(i).padStart(3,'0') + ' retains its content.'),'Missing item '+i);
+const regular = await render(fixture(2),'balanced');
+let ordinaryAttempts=0;
+assert.equal(await optimizePdfPagination(async()=>{ ordinaryAttempts++; return regular; }),regular);
+assert.equal(ordinaryAttempts,1);
+assert.equal(await optimizePdfPagination(async density=>{if(density==='compact')throw Error('retry failure');return overflow;}),overflow);
+console.log('Real PDF page count reduced from 2 to 1; every fixture item retained.');
+{
+const messy = '# Example\n\n\x60\x60\x60sql\nconst [a, b] = await db.batch([\n  db.$count(products),\n\x60\x60\x60\n\n], { readOnly: true });\n\nKeep this prose.';
+const repairedTree = parsePdfMarkdown(messy);
+const repairedBlock = repairedTree.children.find(node => node.type === 'code');
+assert.equal(repairedBlock.lang,'javascript');
+assert.ok(repairedBlock.value.endsWith('], { readOnly: true });'));
+assert.ok(repairedTree.children.some(node=>node.type==='paragraph'&&node.children[0].value==='Keep this prose.'));
+}
