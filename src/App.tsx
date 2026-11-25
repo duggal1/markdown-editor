@@ -26,6 +26,7 @@ import { inferTitle, isUntitledTitle } from './lib/title';
 import { editorPosition, previewPosition, restoreEditorPosition } from './lib/scrollPosition';
 import { cancelNavigation } from './lib/scrollMotion';
 import PageOutline from './components/PageOutline';
+import BootShell from './components/BootShell';
 import type { SearchHit } from './lib/searchIndex';
 import {
   clearRecovery, loadWorkspace, readPrefs, removeDoc, removeFolder, removeWorkspaceTree,
@@ -186,6 +187,8 @@ export default function App() {
   useEffect(() => {
     let alive = true;
     let worker: Worker | null = null;
+    let startupFrame = 0;
+    let startupTimer = 0;
     try {
       worker = new Worker(new URL('./workers/search.ts', import.meta.url), { type: 'module' });
       worker.onmessage = (event: MessageEvent<
@@ -229,9 +232,6 @@ export default function App() {
         return updated;
       });
       live.current = new Map(restored.map(doc => [doc.id, doc]));
-      // Retry only previously authorized cloud shares that changed while offline.
-      restored.forEach(queueSharedSync);
-      restored.forEach(doc => queueSiteSync(doc));
       const prefs = readPrefs();
       const first = restored.find(doc => doc.id === prefs.activeDocumentId) || restored[0];
       const chosenWorkspace = data.workspaces.find(ws => ws.id === prefs.activeWorkspaceId) ||
@@ -259,12 +259,26 @@ export default function App() {
       setMode(restoredMode);
       setPreviewText(first.markdown);
       setWords(first.markdown.length < 25000 ? wordCount(first.markdown) : 0);
-      worker?.postMessage({ type: 'index', documents: restored.map(({ id, workspaceId, title, markdown, updatedAt }) => ({ id, workspaceId, title, markdown, updatedAt })) });
-      if (first.markdown.length >= 25000) worker?.postMessage({ type: 'metrics', document: { id: first.id, markdown: first.markdown, updatedAt: first.updatedAt } });
+      // Yield a frame before cloning the entire workspace into the search worker
+      // or doing per-document cloud reconciliation. Use the current live map,
+      // not a stale startup snapshot, if an edit occurs before the callback.
+      startupFrame = requestAnimationFrame(() => {
+        startupTimer = window.setTimeout(() => {
+          if (!alive) return;
+          const current = [...live.current.values()];
+          worker?.postMessage({ type: 'index', documents: current.map(({ id, workspaceId, title, markdown, updatedAt }) => ({ id, workspaceId, title, markdown, updatedAt })) });
+          const active = live.current.get(activeIdRef.current);
+          if (active && active.markdown.length >= 25000) worker?.postMessage({ type: 'metrics', document: { id: active.id, markdown: active.markdown, updatedAt: active.updatedAt } });
+          current.forEach(queueSharedSync);
+          current.forEach(doc => queueSiteSync(doc));
+        }, 0);
+      });
       setLoaded(true);
     }).catch(() => { if (alive) { setSaveState('error'); setNotice('Workspace could not be recovered. Existing data was not changed. Reload to retry.'); } });
     return () => {
       alive = false;
+      cancelAnimationFrame(startupFrame);
+      clearTimeout(startupTimer);
       worker?.terminate();
       workerRef.current = null;
       for (const timer of saveTimers.current.values()) clearTimeout(timer);
@@ -1389,7 +1403,7 @@ async function eraseDocument(doc: FlowDocument) {
     whileTap: { scale: 0.985 },
     transition: { duration: 0.17, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
   };
-  if (!loaded) return <main className="boot"><FlowMark size={30} /><span>{saveState === 'error' ? 'Workspace could not be opened. Reload to retry.' : 'Opening workspace…'}</span></main>;
+  if (!loaded) return saveState === 'error' ? <main className="boot" role="alert"><FlowMark size={30} /><span>Workspace could not be opened. Reload to retry.</span></main> : <BootShell />;
   return <div className="flow-shell private-workspace" onDragOver={event => event.preventDefault()} onDrop={onDrop}>
     <motion.aside className={'sidebar' + (sidebarOpen ? ' is-open' : '')}
       initial={false} animate={{ width: sidebarOpen ? 232 : 0 }}
