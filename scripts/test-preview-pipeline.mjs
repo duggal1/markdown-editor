@@ -136,3 +136,10 @@ assert.equal(svgDimensions('100%','100%','0 0 24 24').height, 24);
 assert.match(svgSource, /canvas\.toBlob/);
 assert.match(svgSource, /32_000_000/);
 console.log('SVG palette source ranges, dimensions and PNG export wiring passed.');
+
+const dynamicArt = '<svg fill="currentColor"><path stroke="currentColor" fill="#171717"/><style>path { color: currentColor; fill: var(--paint); }</style></svg>';
+const dynamicColors = svgPalette(dynamicArt, () => null);
+assert.equal(dynamicColors.length, 2, 'Inherited references must not merge with identical literal colors');
+assert.equal(dynamicColors[0].token, 'currentColor');
+assert.equal(dynamicColors[0].count, 3);
+assert.equal(replaceSvgColor(dynamicArt, dynamicColors[0], '#112233'), '<svg fill="#112233"><path stroke="#112233" fill="#171717"/><style>path { color: #112233; fill: var(--paint); }</style></svg>');

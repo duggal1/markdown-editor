@@ -127,3 +127,5 @@ SVG pages and SVG snippets render artwork only in a transparent, script-disabled
 
 ## SVG inspector
 Standalone and embedded SVG previews have a compact neutral toolbar: intrinsic pixel size, 25–400% preview zoom, independent white/black/transparent/workspace backgrounds, and local PNG download at 1×–3×. Authored paint literals appear above the artwork; editable workspace swatches use the existing HSV/alpha picker. Done commits exact matching source ranges as one undoable edit; shared previews stay read-only. No external conversion service, decorative borders or source code under the artwork. PNG exports use image-mode SVG, preserve aspect ratio and cap allocations at 8192 pixels per axis / 32 megapixels. Unresolved dynamic colors and external resources are not guessed.
+
+Explicit currentColor references have a separate inherited-color swatch; selecting a color replaces those references with a fixed value without modifying unrelated paint declarations. Workspace background exports transparently unless white or black is selected.

@@ -1,7 +1,7 @@
 import { normalizeHex } from './hexColor';
 
 type ColorRange = { from: number; to: number; value: string };
-export type SvgColor = { hex: string; count: number; ranges: ColorRange[] };
+export type SvgColor = { hex: string; count: number; ranges: ColorRange[]; token?: 'currentColor' };
 const paint = /^(?:fill|stroke|color|stop-color|flood-color|lighting-color|solid-color|background-color|outline-color|border-color|--[\w-]+)$/i;
 let context: CanvasRenderingContext2D | null | undefined;
 function browserColor(value: string): string | null {
@@ -20,18 +20,20 @@ function browserColor(value: string): string | null {
 }
 
 /** Scan authored paint declarations, never selectors, ids, URL fragments or path data. */
-export function svgPalette(source: string, resolve = browserColor): SvgColor[] {
+export function svgPalette(source: string, resolve = browserColor, inherited = '#171717'): SvgColor[] {
   const colors = new Map<string, SvgColor>();
   const add = (value: string, offset: number) => {
     const trimmed = value.trim().replace(/\s*!important\s*$/i, '').trimEnd();
-    if (!trimmed || /^(?:none|transparent|currentcolor|inherit|initial|unset|revert(?:-layer)?|var\(|url\(|context-fill|context-stroke)/i.test(trimmed)) return;
-    const hex = normalizeHex(trimmed) || resolve(trimmed);
+    if (!trimmed || /^(?:none|transparent|inherit|initial|unset|revert(?:-layer)?|var\(|url\(|context-fill|context-stroke)/i.test(trimmed)) return;
+    const current = /^currentcolor$/i.test(trimmed);
+    const hex = current ? inherited : (trimmed.startsWith('#') ? normalizeHex(trimmed) : null) || resolve(trimmed);
     if (!hex) return;
+    const key = current ? 'currentColor' : hex;
     const from = offset + value.indexOf(trimmed);
     const range = { from, to: from + trimmed.length, value: trimmed };
-    const existing = colors.get(hex);
+    const existing = colors.get(key);
     if (existing) { existing.ranges.push(range); existing.count++; }
-    else colors.set(hex, { hex, count: 1, ranges: [range] });
+    else colors.set(key, { hex, count: 1, ranges: [range], ...(current ? { token: 'currentColor' as const } : {}) });
   };
   const declarations = (value: string, offset: number) => {
     // Mask comments and quoted strings without shifting source offsets.
@@ -68,7 +70,7 @@ export function svgPalette(source: string, resolve = browserColor): SvgColor[] {
 /** Patch only verified paint literals, preserving every unrelated source byte. */
 export function replaceSvgColor(source: string, color: SvgColor, replacement: string): string {
   const hex = normalizeHex(replacement);
-  if (!hex || color.hex === hex || !color.ranges.length) return source;
+  if (!hex || (!color.token && color.hex === hex) || !color.ranges.length) return source;
   const ranges = [...color.ranges].sort((a,b) => a.from - b.from);
   if (ranges.some((r,i) => source.slice(r.from,r.to) !== r.value || (i > 0 && ranges[i-1].to > r.from))) return source;
   const pieces: string[] = [];

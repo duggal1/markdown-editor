@@ -20,7 +20,7 @@ export function SvgInspector({ source, theme, onEdit }: {
   const effectiveTheme = background === 'white' ? 'light' : background === 'black' ? 'dark' : theme;
   const actual = draft ?? source;
   const art = useMemo(() => svgArtworks(source, effectiveTheme), [source, effectiveTheme]);
-  const colors = useMemo(() => svgPalette(source), [source]);
+  const colors = useMemo(() => svgPalette(source, undefined, effectiveTheme === 'dark' ? '#f5f5f5' : '#171717'), [source, effectiveTheme]);
   const documentHtml = useMemo(() => svgPreviewDocument(actual, effectiveTheme, zoom), [actual, effectiveTheme, zoom]);
   const width = art.reduce((max,a) => Math.max(max,a.width), 0);
   const height = art.reduce((sum,a) => sum + a.height, 0);
@@ -81,7 +81,7 @@ export function SvgInspector({ source, theme, onEdit }: {
           {(['white','black','transparent'] as const).map(bg => <button key={bg} type="button" title={bg + ' background'} aria-label={bg + ' background'} aria-pressed={background === bg} onClick={() => setBackground(bg)}>
             <span className={'svg-background-chip is-' + bg} />
           </button>)}
-          <button type="button" title="Match workspace" aria-label="Match workspace background" aria-pressed={background === 'auto'} onClick={() => setBackground('auto')}>A</button>
+          <button type="button" title="Match workspace (PNG stays transparent)" aria-label="Match workspace background" aria-pressed={background === 'auto'} onClick={() => setBackground('auto')}>A</button>
         </div>
         <div className="svg-inspector-group" role="group" aria-label="PNG export">
           <select aria-label="PNG resolution multiplier" title="PNG resolution multiplier" value={scale} onChange={e => setScale(Number(e.target.value))}>
@@ -92,8 +92,8 @@ export function SvgInspector({ source, theme, onEdit }: {
       </div>
     </div>
     {colors.length > 0 && <div className="svg-inspector-colors" aria-label="SVG colors">
-      {colors.map(color => <button type="button" className="svg-inspector-swatch" key={color.hex} disabled={!onEdit} title={color.hex + ' · ' + color.count + ' declarations'} aria-label={'Edit color ' + color.hex} onClick={e => pick(e.currentTarget, color)}>
-        <span style={{ backgroundColor: color.hex }} /><span>{color.hex}</span>
+      {colors.map(color => <button type="button" className="svg-inspector-swatch" key={color.token || color.hex} disabled={!onEdit} title={(color.token ? 'currentColor (inherited; replace with fixed color)' : color.hex) + ' · ' + color.count + ' declarations'} aria-label={'Edit color ' + (color.token || color.hex)} onClick={e => pick(e.currentTarget, color)}>
+        <span style={{ backgroundColor: color.hex }} /><span>{color.token || color.hex}</span>
       </button>)}
     </div>}
     {error && <div className="svg-inspector-error" role="alert">{error}</div>}

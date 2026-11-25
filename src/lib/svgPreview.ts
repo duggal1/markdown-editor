@@ -14,7 +14,8 @@ export function svgDimensions(width: string | null, height: string | null, viewB
     const m = /^\s*(\d+(?:\.\d+)?|\.\d+)\s*(px|in|cm|mm|pt|pc)?\s*$/i.exec(v || '');
     if (!m) return 0;
     const units: Record<string, number> = { px: 1, in: 96, cm: 96/2.54, mm: 96/25.4, pt: 96/72, pc: 16 };
-    return Number(m[1]) * (units[(m[2] || 'px').toLowerCase()] || 1);
+    const value = Number(m[1]) * (units[(m[2] || 'px').toLowerCase()] || 1);
+    return Number.isFinite(value) ? value : 0;
   };
   const box = (viewBox || '').trim().split(/[\s,]+/).map(Number);
   const ratio = box.length === 4 && box.every(Number.isFinite) && box[2] > 0 && box[3] > 0 ? box[2] / box[3] : 0;
@@ -22,7 +23,7 @@ export function svgDimensions(width: string | null, height: string | null, viewB
   if (!w && !h) { w = ratio ? box[2] : 300; h = ratio ? box[3] : 150; }
   else if (!w) w = ratio ? h * ratio : 300;
   else if (!h) h = ratio ? w / ratio : 150;
-  return { width: Math.max(1, Math.round(w)), height: Math.max(1, Math.round(h)) };
+  return { width: Number.isFinite(w) ? Math.max(1, Math.round(w)) : 300, height: Number.isFinite(h) ? Math.max(1, Math.round(h)) : 150 };
 }
 export function svgArtworks(code: string, theme: 'light' | 'dark'): SvgArtwork[] {
   const parser = new DOMParser();
@@ -61,7 +62,7 @@ export function svgPreviewDocument(code: string, theme: 'light' | 'dark', zoom =
     const width = 'min(' + art.width * scale + 'px, calc((100vw - 24px) * ' + scale + '), calc((100vh - 24px) * ' + ratio * scale + '))';
     return '<img alt="SVG artwork" style="width:' + width + ';aspect-ratio:' + art.width + '/' + art.height + '" src="' + art.uri + '">';
   }).join('');
-  const css = 'html,body{margin:0;min-height:100%;background:transparent;color-scheme:' + theme + '}' +
+  const css = 'html,body{margin:0;min-height:100%;background:transparent;color-scheme:' + theme + '}html{height:100%}' +
     'body{box-sizing:border-box;display:flex;flex-direction:column;align-items:safe center;justify-content:safe center;gap:16px;padding:12px;' +
     'font:12px system-ui;color:' + (theme === 'dark' ? '#a3a3a3' : '#666') + '}' +
     'img{display:block;flex:none;max-width:none;max-height:none;height:auto;object-fit:contain;background:transparent}';
@@ -76,7 +77,7 @@ export async function exportSvgPng(code: string, theme: 'light' | 'dark', backgr
   const arts = svgArtworks(code, theme);
   if (!arts.length) throw new Error('Invalid or incomplete SVG.');
   if (![1, 2, 3].includes(scale)) throw new Error('Unsupported export scale.');
-  const width = Math.max(...arts.map(a => a.width)) * scale;
+  const width = arts.reduce((max,a) => Math.max(max,a.width), 0) * scale;
   const height = arts.reduce((n,a) => n + a.height, 0) * scale;
   if (width > 8192 || height > 8192 || width * height > 32_000_000) throw new Error('PNG exceeds the 8192px / 32 megapixel limit. Choose a smaller scale.');
   const canvas = document.createElement('canvas');

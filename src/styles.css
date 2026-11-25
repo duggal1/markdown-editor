@@ -282,7 +282,7 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .svg-inspector-dimensions { color:var(--muted); font:11px var(--mono); white-space:nowrap; }
 .svg-inspector-actions { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:5px; margin-left:auto; }
 .svg-inspector-group { display:flex; align-items:center; gap:1px; background:var(--neutral-100); border-radius:7px; padding:2px; }
-.svg-inspector-group button, .svg-inspector-group select { display:inline-flex; align-items:center; justify-content:center; gap:4px; height:25px; min-width:25px; padding:0 5px; border:0; border-radius:5px; background:transparent; color:var(--muted); font:11px inherit; font-size:11px; font-family:inherit; }
+.svg-inspector-group button, .svg-inspector-group select { display:inline-flex; align-items:center; justify-content:center; gap:4px; height:25px; min-width:25px; padding:0 5px; border:0; border-radius:5px; background:transparent; color:var(--muted); font-size:11px; font-family:inherit; }
 .svg-inspector-group button:hover:not(:disabled), .svg-inspector-group button[aria-pressed=true] { color:var(--strong); background:var(--active); }
 .svg-inspector-group select { cursor:pointer; color:var(--strong); }
 .svg-inspector-group select option { background:var(--surface); color:var(--text); }
