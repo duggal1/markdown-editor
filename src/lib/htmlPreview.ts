@@ -169,7 +169,7 @@ function injectedBridge(route: string): string {
     ' }',
     ' if(e.data.type==="flow-runtime-settings"){',
     '  var fps=Number(e.data.fps);target=[30,60,120].includes(fps)?fps:0;',
-    '  if(document.documentElement.dataset)document.documentElement.dataset.flowPhone=e.data.phone===true?"true":"false";',
+    '  if(document.documentElement.dataset)document.documentElement.dataset.flowPhone=e.data.phone===true||e.data.device==="tablet"?"true":"false";',
     ' }',
     ' if(e.data.type==="flow-runtime-popstate"){',
     '  applyingRoute=true;',

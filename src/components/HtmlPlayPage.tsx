@@ -3,10 +3,12 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Icon } from './Icons';
 import RuntimeSelect, { type RuntimeOption } from './RuntimeSelect';
 import IPhoneFrame from './IPhoneFrame';
+import { tabletViewport, fitDevice, type TabletOrientation } from '../lib/deviceViewport';
 import { htmlPreviewDocument } from '../lib/htmlPreview';
 import { loadDoc } from '../lib/store';
 import { isHtmlPage } from '../lib/siteHosting';
 
+type PreviewDevice = 'desktop' | 'phone' | 'tablet';
 type Resolution = 'auto' | '1920x1080' | '1280x720' | '800x600';
 const PRESETS: Record<Exclude<Resolution, 'auto'>, [number, number]> = {
   '1920x1080': [1920, 1080], '1280x720': [1280, 720], '800x600': [800, 600],
@@ -35,6 +37,10 @@ const DESKTOP_OPTIONS: RuntimeOption<Resolution>[] = [
   { value: '1280x720', label: '1280 × 720' },
   { value: '800x600', label: '800 × 600' },
 ];
+const TABLET_OPTIONS: RuntimeOption<TabletOrientation>[] = [
+  { value: 'portrait', label: 'Portrait · 820 × 1180' },
+  { value: 'landscape', label: 'Landscape · 1180 × 820' },
+];
 const FPS_OPTIONS: RuntimeOption<number>[] = [
   { value: 0, label: 'Auto' },
   { value: 30, label: '30 FPS' },
@@ -53,7 +59,10 @@ export default function HtmlPlayPage() {
   const [routePath, setRoutePath] = useState(FIRST_ROUTE);
   const [frameRoute, setFrameRoute] = useState(FIRST_ROUTE);
   const [resolution, setResolution] = useState<Resolution>('auto');
-  const [phone, setPhone] = useState(false);
+  const [device, setDevice] = useState<PreviewDevice>('desktop');
+  const [orientation, setOrientation] = useState<TabletOrientation>('portrait');
+  const phone = device === 'phone';
+  const tablet = device === 'tablet';
   const [fpsLimit, setFpsLimit] = useState(0);
   const [observedFps, setObservedFps] = useState<number | null>(null);
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -214,6 +223,8 @@ export default function HtmlPlayPage() {
   const phoneScale = Math.min(1,
     Math.max(.05, (viewport.width - 24) / 340),
     Math.max(.05, (viewport.height - 24) / 700));
+  const tabletSize = tabletViewport(orientation);
+  const tabletScale = fitDevice(viewport.width, viewport.height, tabletSize.outerWidth, tabletSize.outerHeight);
   const frameStyle: CSSProperties = dimensions
     ? {
       position: 'absolute', width: selectedWidth, height: selectedHeight,
@@ -224,7 +235,13 @@ export default function HtmlPlayPage() {
     : { width: '100%', height: '100%' };
 
   function sendSettings() {
-    iframe.current?.contentWindow?.postMessage({ type: 'flow-runtime-settings', fps: fpsLimit, phone }, '*');
+    iframe.current?.contentWindow?.postMessage({ type: 'flow-runtime-settings', fps: fpsLimit, phone, device }, '*');
+  }
+  function selectDevice(next: PreviewDevice) {
+    if (next === device) return;
+    // A changed frame hierarchy remounts the iframe. Preserve its current SPA route.
+    setFrameRoute(currentRoute());
+    setDevice(next);
   }
   function startDrag(event: PointerEvent<HTMLButtonElement>) {
     if (event.button !== 0) return;
@@ -233,21 +250,21 @@ export default function HtmlPlayPage() {
   }
   function moveDrag(event: PointerEvent<HTMLButtonElement>) {
     if (!dragging.current) return;
-    const max = Math.max(8, window.innerWidth - (expanded ? 252 : 170) - 8);
+    const max = Math.max(8, window.innerWidth - (expanded ? 264 : 170) - 8);
     setLeft(Math.max(8, Math.min(max, dragging.current.left + event.clientX - dragging.current.x)));
   }
   function stopDrag() { dragging.current = null; }
-  useEffect(() => { sendSettings(); }, [fpsLimit, html, phone, reload]);
+  useEffect(() => { sendSettings(); }, [fpsLimit, html, device, orientation, reload]);
 
   const frame = html && <iframe key={frameRoute + ':' + reload}
     ref={iframe} title={title} srcDoc={html}
     sandbox="allow-scripts allow-forms allow-pointer-lock allow-downloads allow-modals"
     referrerPolicy="no-referrer" style={phone
       ? { width: 306, height: 623 }
-      : frameStyle} onLoad={sendSettings} />;
+      : tablet ? { width: tabletSize.width, height: tabletSize.height } : frameStyle} onLoad={sendSettings} />;
 
   return <main className="html-play-page" data-glass={glass}
-    data-preview-device={phone ? 'phone' : 'desktop'} aria-label="Full HTML preview">
+    data-preview-device={device} aria-label="Full HTML preview">
     <div className="html-play-surface" ref={surface}>
       {error ? <div className="html-play-error" role="alert">
         <strong>Page unavailable</strong><span>{error}</span>
@@ -264,7 +281,14 @@ export default function HtmlPlayPage() {
                 </div>
               </div>
             </div>
-          : frame}
+          : tablet ? <div className="html-play-tablet">
+              <div className="html-ipad-stage" style={{ width: tabletSize.outerWidth * tabletScale, height: tabletSize.outerHeight * tabletScale }}>
+                <div className="html-ipad-frame" style={{ width: tabletSize.outerWidth, height: tabletSize.outerHeight,
+                  transformOrigin: 'top left', transform: 'scale(' + tabletScale + ')' }}>
+                  <div className="html-ipad-screen" style={{ width: tabletSize.width, height: tabletSize.height }}>{frame}</div>
+                </div>
+              </div>
+            </div> : frame}
     </div>
     {controlsVisible && <div className="html-play-chrome" style={{ left }}>
       <motion.div className="html-play-compact"
@@ -306,19 +330,25 @@ export default function HtmlPlayPage() {
             { opacity: 0, y: -6, scale: .985 }}
           transition={{ duration: reduce ? 0 : .23, ease: [0.22, 1, 0.36, 1] }}>
           <div className="html-play-device-switch" role="group" aria-label="Device preview">
-            <motion.button type="button" aria-pressed={!phone} onClick={() => setPhone(false)}
+            <motion.button type="button" aria-pressed={device === 'desktop'} onClick={() => selectDevice('desktop')}
               whileTap={reduce ? undefined : { scale: .97 }}
               whileHover={reduce ? undefined : { y: -1 }} transition={spring}>
               <Icon name="desktop" size={16} /> Desktop
             </motion.button>
-            <motion.button type="button" aria-pressed={Boolean(phone)}
-              onClick={() => setPhone(true)}
+            <motion.button type="button" aria-pressed={phone}
+              onClick={() => selectDevice('phone')}
               whileTap={reduce ? undefined : { scale: .97 }}
               whileHover={reduce ? undefined : { y: -1 }} transition={spring}>
-              <Icon name="phone" size={16} /> iPhone
+              <Icon name="phone" size={15} /> iPhone
+            </motion.button>
+            <motion.button type="button" aria-pressed={tablet} onClick={() => selectDevice('tablet')}
+              whileTap={reduce ? undefined : { scale: .97 }}
+              whileHover={reduce ? undefined : { y: -1 }} transition={spring}>
+              <Icon name="tablet" size={15} /> iPad
             </motion.button>
           </div>
-          {!phone && <RuntimeSelect label="Resolution" value={resolution}
+          {tablet && <RuntimeSelect label="Orientation" value={orientation} options={TABLET_OPTIONS} onChange={setOrientation} />}
+          {device === 'desktop' && <RuntimeSelect label="Resolution" value={resolution}
             options={DESKTOP_OPTIONS} onChange={setResolution} />}
           <RuntimeSelect label="Frame rate" value={fpsLimit} options={FPS_OPTIONS}
             onChange={setFpsLimit} />

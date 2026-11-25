@@ -1,6 +1,7 @@
 import slidersGlyph from '@phosphor-icons/core/assets/regular/sliders-horizontal.svg?raw';
 import desktopGlyph from '@phosphor-icons/core/assets/regular/desktop.svg?raw';
 import phoneGlyph from '@phosphor-icons/core/assets/regular/device-mobile.svg?raw';
+import tabletGlyph from '@phosphor-icons/core/assets/regular/device-tablet.svg?raw';
 import caretDownGlyph from '@phosphor-icons/core/assets/regular/caret-down.svg?raw';
 import refreshGlyph from '@phosphor-icons/core/assets/regular/arrow-clockwise.svg?raw';
 import maximizeGlyph from '@phosphor-icons/core/assets/regular/arrows-out.svg?raw';
@@ -61,6 +62,7 @@ const glyphs = {
   sliders: slidersGlyph,
   desktop: desktopGlyph,
   phone: phoneGlyph,
+  tablet: tabletGlyph,
   caretDown: caretDownGlyph,
   refresh: refreshGlyph,
   maximize: maximizeGlyph,

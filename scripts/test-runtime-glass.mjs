@@ -103,6 +103,10 @@ assert.equal(documentElement.dataset.flowPhone, 'true',
 onMessage({ source: parentWindow, data: { type: 'flow-runtime-settings', fps: 0, phone: false } });
 assert.equal(documentElement.dataset.flowPhone, 'false',
   'Returning to desktop must restore themed scrollbar chrome.');
+onMessage({ source: parentWindow, data: { type: 'flow-runtime-settings', fps: 60, phone: false, device: 'tablet' } });
+assert.equal(documentElement.dataset.flowPhone, 'true', 'Tablet must hide only scrollbar chrome.');
+onMessage({ source: parentWindow, data: { type: 'flow-runtime-settings', fps: 0, phone: false, device: 'desktop' } });
+assert.equal(documentElement.dataset.flowPhone, 'false');
 
 assert.deepEqual(panels.map(p => p.hidden), [false, true, true]);
 history.pushState({ test: true }, '', '/history');
@@ -151,16 +155,10 @@ assert.match(css, /\.preview-pane\[data-glass='light'\] \.html-preview-popout/);
 assert.match(css, /\/\* HTML Runtime\. This is the only CSS definition/);
 assert.doesNotMatch(css, /\/\* Adaptive HTML runtime\./,
   'Legacy competing HTML player CSS rules must be removed.');
-assert.match(css, /--glass-panel: rgba\(9,12,19,\.30\)/,
-  'Dark glass must be translucent, not solid charcoal.');
-assert.match(css, /--glass-panel: rgba\(250,250,253,\.39\)/,
-  'Light glass must remain translucent.');
-assert.match(css, /--glass-menu: rgba\(10,13,20,\.36\)/,
-  'Dark dropdown must be actual glass, not a solid menu.');
-assert.match(css, /--glass-menu: rgba\(252,252,254,\.42\)/,
-  'Light dropdown must be actual glass.');
-assert.match(css, /--glass-blur: blur\(36px\)/,
-  'Both glass themes must use a substantial optical blur.');
+assert.match(css, /--glass-panel: linear-gradient\(90deg,rgba\(0,0,0,\.12\),rgba\(0,0,0,\.07\)/);
+assert.match(css, /--glass-panel: linear-gradient\(90deg,rgba\(255,255,255,\.42\),rgba\(255,255,255,\.28\)/);
+assert.match(css, /--glass-menu: linear-gradient/);
+assert.equal((css.match(/--glass-blur: blur\(15px\)/g) || []).length, 2);
 assert.match(css, /backdrop-filter: var\(--glass-blur\)/,
   'Pill, panel, and dropdown must use actual backdrop-filter.');
 assert.match(css, /\.html-runtime-field\[data-open='true'\] \{ z-index: 20; \}/,
@@ -179,21 +177,22 @@ const cssRuntimeStart = css.indexOf('/* HTML Runtime. This is the only CSS defin
 const cssRuntimeEnd = css.indexOf('/* Share and Publish modals:', cssRuntimeStart);
 assert.ok(cssRuntimeStart >= 0 && cssRuntimeEnd > cssRuntimeStart);
 const runtimeRules = css.slice(cssRuntimeStart, cssRuntimeEnd);
-assert.doesNotMatch(runtimeRules, /border:\s*[1-9]/,
-  'No player, phone, dropdown or selector may draw a positive-width border.');
-assert.doesNotMatch(runtimeRules, /--glass-(?:inner-)?edge|border-color:|box-shadow:\s*inset/,
-  'No hidden stroke tokens or inset simulated borders are permitted.');
-assert.doesNotMatch(runtimeRules, /outline:\s*[1-9]/,
-  'Focus feedback must not introduce another hard border.');
+assert.match(runtimeRules, /border: 1px solid var\(--glass-edge\)/);
+assert.match(runtimeRules, /--glass-edge: rgba\(255,255,255,\.20\)/);
+assert.match(runtimeRules, /--glass-edge: rgba\(0,0,0,\.12\)/);
+assert.match(runtimeRules, /--glass-shadow: 0 2px 6px rgba\(0,0,0,\.15\)/);
+assert.doesNotMatch(runtimeRules, /box-shadow:\s*inset|outline:\s*[1-9]/);
+assert.match(runtimeRules, /\.html-play-panel \{[\s\S]*?border-radius: 10px/);
+assert.match(runtimeRules, /\.html-ipad-screen \{ overflow:hidden; border-radius:18px/);
 assert.match(runtimeRules, /--glass-option-hover: rgba\(0,0,0,\.26\)/);
 assert.match(runtimeRules, /--glass-option-selected: rgba\(0,0,0,\.33\)/);
 assert.match(runtimeRules, /--glass-option-hover: rgba\(255,255,255,\.30\)/);
 assert.match(runtimeRules, /--glass-option-selected: rgba\(255,255,255,\.41\)/);
-assert.match(runtimeRules, /\.html-runtime-option\[aria-selected='true'\] \{[\s\S]*?background: var\(--glass-option-selected\);[\s\S]*?backdrop-filter: blur\(14px\)/);
+assert.match(runtimeRules, /\.html-runtime-option\[aria-selected='true'\] \{[\s\S]*?background: var\(--glass-option-selected\);/);
 assert.match(runtime, /type: 'flow-runtime-settings', fps: fpsLimit, phone/,
   'Phone mode must be delivered into the isolated HTML iframe.');
 
-assert.match(runtime, /data-preview-device=\{phone \? 'phone' : 'desktop'\}/,
+assert.match(runtime, /data-preview-device=\{device\}/,
   'Phone-only CSS must be tied to the device toggle.');
 assert.match(runtime, /<IPhoneFrame isDark=\{glass === 'dark'\}>/,
   'The existing HTML tone must control the original iPhone frame colors.');
@@ -211,8 +210,7 @@ assert.doesNotMatch(runtimeRules,
   'Selecting iPhone alone must not force a white canvas.');
 assert.doesNotMatch(runtimeRules, /refraction|::before/,
   'Refracted pseudo-element effects must not come back.');
-assert.doesNotMatch(runtimeRules, /box-shadow:/,
-  'Do not add shadows to the top-left pill, panel or menu.');
+assert.match(runtimeRules, /box-shadow: var\(--glass-shadow\)/, 'Reference glass uses a shallow outer shadow.');
 assert.match(runtimeRules, /background: #101114;/,
   'Dark mode must keep its original dark outer background.');
 assert.match(runtime, /const spring = \{ type: 'spring'/,
@@ -220,4 +218,4 @@ assert.match(runtime, /const spring = \{ type: 'spring'/,
 assert.match(select, /type: 'spring', stiffness: 420, damping: 32/,
   'The FPS control dropdown must retain its original implementation.');
 
-console.log('Theme-correct iPhone, reverted shadow-free controls, and borderless glass, translucent selected states, scrollbars and raw iPhone geometry passed.');
+console.log('Theme-correct phone/tablet, reference glass, translucent selected states, scrollbars and original iPhone geometry passed.');
