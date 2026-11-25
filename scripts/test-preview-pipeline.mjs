@@ -113,6 +113,9 @@ assert.match(previewSource, /: svg\s*\? <article className="markdown-preview pre
 assert.doesNotMatch(previewSource, /svgDocument &&/);
 const inspector = readFileSync(new URL('../src/components/SvgInspector.tsx', import.meta.url), 'utf8');
 assert.match(inspector, /title="SVG preview" sandbox=""/);
+assert.match(inspector, /referrerPolicy="no-referrer"/);
+assert.match(svgSource, /default-src 'none'; img-src data:/);
+assert.match(svgSource, /object-fit:contain/);
 assert.match(inspector, /exportSvgPng\(actual, effectiveTheme, background, scale\)/);
 assert.match(inspector, /onEdit\(next\)/);
 assert.match(svgSource, /root\.hasAttribute\('color'\)/);
