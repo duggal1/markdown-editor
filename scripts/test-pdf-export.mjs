@@ -186,9 +186,11 @@ assert.equal(await optimizePdfPagination(async()=>{ ordinaryAttempts++; return r
 assert.equal(ordinaryAttempts,1);
 assert.equal(await optimizePdfPagination(async density=>{if(density==='compact')throw Error('retry failure');return overflow;}),overflow);
 console.log('Real PDF page count reduced from 2 to 1; every fixture item retained.');
+{
 const messy = '# Example\n\n\x60\x60\x60sql\nconst [a, b] = await db.batch([\n  db.$count(products),\n\x60\x60\x60\n\n], { readOnly: true });\n\nKeep this prose.';
 const repairedTree = parsePdfMarkdown(messy);
 const repairedBlock = repairedTree.children.find(node => node.type === 'code');
 assert.equal(repairedBlock.lang,'javascript');
 assert.ok(repairedBlock.value.endsWith('], { readOnly: true });'));
 assert.ok(repairedTree.children.some(node=>node.type==='paragraph'&&node.children[0].value==='Keep this prose.'));
+}

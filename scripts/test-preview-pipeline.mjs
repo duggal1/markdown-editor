@@ -154,6 +154,7 @@ assert.equal(dynamicColors.length, 2, 'Inherited references must not merge with 
 assert.equal(dynamicColors[0].token, 'currentColor');
 assert.equal(dynamicColors[0].count, 3);
 assert.equal(replaceSvgColor(dynamicArt, dynamicColors[0], '#112233'), '<svg fill="#112233"><path stroke="#112233" fill="#171717"/><style>path { color: #112233; fill: var(--paint); }</style></svg>');
+{
 const mixed = '# Batch API\n\n'+ '\x60\x60\x60sql\nconst [page, total] = await db.batch([\n  db.$count(products),\n\x60\x60\x60\n\n], { isolation: "repeatable read" });\n\n## Metrics\n\nconst response = await db.batch([\ndb.$count(products),\n], { metrics: "us" });\nconsole.log(response.metrics.total);\n\n- [ ] Task stays mapped';
 const fixed = buildPreviewSections(mixed);
 assert.match(fixed.chunks.join(''), /\x60{3}javascript\nconst \[page, total\][\s\S]*?\], \{ isolation: "repeatable read" \}\);\n\x60{3}/);
@@ -171,3 +172,4 @@ assert.doesNotMatch(css,/\.markdown-preview \.code-language,/);
 assert.match(previewSource,/function CodeLanguageLabel/);
 assert.match(previewSource,/label: 'JavaScript', icon: 'fileJs'/);
 assert.match(previewSource,/label: 'TypeScript', icon: 'fileTs'/);
+}

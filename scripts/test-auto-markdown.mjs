@@ -195,6 +195,7 @@ assert.equal(detectRawCode('def hello():\n    print("Hi")\n'), 'python');
 assert.equal(detectRawCode('SELECT id FROM products;'), 'sql');
 
 console.log('Auto Markdown regression cases passed.');
+{
 const { repairMixedCode } = codeModule.exports;
 const fence = '\x60\x60\x60';
 const isolation = [ 'const [page, total] = await db.batch([', '  db.select().from(products).orderBy(products.sku).limit(25),', '  db.$count(products),', "], { isolation: 'repeatable read', readOnly: true });" ];
@@ -217,3 +218,4 @@ assert.equal(repairMixedCode(intentionalPartial).markdown,intentionalPartial);
 const ordinary = '# Docs\n\nUse db.batch() to run statements.\n\n- const example = 42;\n\nA normal sentence.';
 assert.equal(repairMixedCode(ordinary).markdown,ordinary);
 assert.equal(repairMixedCode('# Prose\n\nconst text is a reserved word in this explanation.').markdown,'# Prose\n\nconst text is a reserved word in this explanation.');
+}
