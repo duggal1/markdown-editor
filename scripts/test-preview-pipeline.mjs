@@ -95,3 +95,17 @@ const svgSections = buildPreviewSections(svgMarkdown).chunks;
 assert.equal(svgSections.join(''), svgMarkdown);
 assert.equal(svgSections.findIndex(c => c.includes('<svg>')), svgSections.findIndex(c => c.includes('</svg>')));
 console.log('SVG classification, chunk integrity, hex validation and HSV round trips passed.');
+
+/* SVG artwork must bypass both ordinary and virtualized source rendering. */
+const previewComponent = readFileSync(new URL('../src/components/MarkdownPreview.tsx', import.meta.url), 'utf8');
+assert.match(previewComponent, /if \(isSvgCode\(code, rawLanguage\)\) return <SvgCanvas source=\{code\} embedded \/>/);
+assert.match(previewComponent, /: svg\s*\? <SvgCanvas source=\{value\} \/>/);
+assert.match(previewComponent, /<iframe title="SVG preview" sandbox="" srcDoc=\{documentHtml\}/);
+assert.doesNotMatch(previewComponent, /\{svgDocument &&/);
+assert.match(css, /\.svg-document-preview iframe \{ height: 100%; \}/);
+const svgRenderer = readFileSync(new URL('../src/lib/svgPreview.ts', import.meta.url), 'utf8');
+assert.doesNotMatch(svgRenderer, /repeating-conic-gradient|checkerboard/);
+assert.match(svgRenderer, /if \(!element.hasAttribute\('color'\)\) element.setAttribute\('color', foreground\)/);
+assert.match(svgRenderer, /img-src data:/);
+assert.match(svgRenderer, /object-fit:contain/);
+console.log('SVG artwork-only routing, transparent surfaces and color fallback guards passed.');
