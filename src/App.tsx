@@ -28,11 +28,12 @@ import { editorPosition, previewPosition, restoreEditorPosition } from './lib/sc
 import { cancelNavigation } from './lib/scrollMotion';
 import PageOutline from './components/PageOutline';
 import BootShell from './components/BootShell';
+import TokenCounter from './components/TokenCounter';
 import { localSaveDelay } from './lib/saveSchedule';
 import type { SearchHit } from './lib/searchIndex';
 import {
   clearRecovery, loadWorkspace, readPrefs, removeDoc, removeFolder, removeWorkspaceTree,
-  saveDoc, saveFolder, savePrefs, saveRecovery, uid, wordCount,
+  saveDoc, saveFolder, savePrefs, saveRecovery, uid,
   type FlowDocument, type Folder, type Mode, type Theme, type Workspace,
 } from './lib/store';
 
@@ -121,7 +122,7 @@ export default function App() {
   const [searchResults, setSearchResults] = useState<SearchHit[]>([]);
   const [searchPending, setSearchPending] = useState(false);
   const [previewText, setPreviewText] = useState('');
-  const [words, setWords] = useState(0);
+  const readTokenSource = useCallback((id: string) => live.current.get(id), []);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [saveDuration, setSaveDuration] = useState(0);
   const saveStarted = useRef(new Map<string, number>());
@@ -215,17 +216,10 @@ export default function App() {
     let startupTimer = 0;
     try {
       worker = new Worker(new URL('./workers/search.ts', import.meta.url), { type: 'module' });
-      worker.onmessage = (event: MessageEvent<
-        | { type: 'result'; requestId: number; hits: SearchHit[] }
-        | { type: 'metrics'; id: string; updatedAt: number; words: number }
-      >) => {
+      worker.onmessage = (event: MessageEvent<{ type: 'result'; requestId: number; hits: SearchHit[] }>) => {
         if (event.data.type === 'result' && event.data.requestId === searchRequest.current) {
           setSearchResults(event.data.hits);
           setSearchPending(false);
-        } else if (event.data.type === 'metrics') {
-          const current = live.current.get(event.data.id);
-          if (current && activeIdRef.current === event.data.id &&
-            current.updatedAt === event.data.updatedAt) setWords(event.data.words);
         }
       };
       workerRef.current = worker;
@@ -282,7 +276,6 @@ export default function App() {
       modeRef.current = restoredMode;
       setMode(restoredMode);
       setPreviewText(first.markdown);
-      setWords(first.markdown.length < 25000 ? wordCount(first.markdown) : 0);
       // Yield a frame before cloning the entire workspace into the search worker
       // or doing per-document cloud reconciliation. Use the current live map,
       // not a stale startup snapshot, if an edit occurs before the callback.
@@ -295,8 +288,6 @@ export default function App() {
           }
           const current = [...live.current.values()];
           worker?.postMessage({ type: 'index', documents: current.map(({ id, workspaceId, title, markdown, updatedAt }) => ({ id, workspaceId, title, markdown, updatedAt })) });
-          const active = live.current.get(activeIdRef.current);
-          if (active && active.markdown.length >= 25000) worker?.postMessage({ type: 'metrics', document: { id: active.id, markdown: active.markdown, updatedAt: active.updatedAt } });
           current.forEach(queueSharedSync);
           current.forEach(doc => queueSiteSync(doc));
         }, 0);
@@ -424,6 +415,7 @@ export default function App() {
 
   const scheduleSave = useCallback((doc: FlowDocument) => {
     live.current.set(doc.id, doc);
+    if (doc.id === activeIdRef.current) window.dispatchEvent(new CustomEvent('flow-token-source', { detail: doc.id }));
     const now = performance.now();
     const firstDirty = dirtySince.current.get(doc.id) ?? now;
     dirtySince.current.set(doc.id, firstDirty);
@@ -443,7 +435,7 @@ export default function App() {
           id: latest.id, workspaceId: latest.workspaceId, title: latest.title,
           markdown: latest.markdown, updatedAt: latest.updatedAt,
         } });
-      } else if (activeIdRef.current === latest.id) setWords(wordCount(latest.markdown));
+      }
       visualTimers.current.delete(doc.id);
     }, doc.markdown.length > 100000 ? 700 : 430));
   }, [flush]);
@@ -471,7 +463,6 @@ export default function App() {
       setDocs(items => items.map(item => item.id === doc.id ? next : item));
       if (activeIdRef.current === doc.id) {
         setPreviewText(value);
-        setWords(wordCount(value));
       }
     }).catch(() => {
       if (!cancelled) setNotice('Could not decode this Markdown file. The original is preserved.');
@@ -595,8 +586,6 @@ export default function App() {
     });
     setRecentIds(current => [id, ...current.filter(item => item !== id)].slice(0, 30));
     setPreviewText(doc.markdown);
-    setWords(doc.markdown.length < 25000 ? wordCount(doc.markdown) : 0);
-    if (doc.markdown.length >= 25000) workerRef.current?.postMessage({ type: 'metrics', document: { id: doc.id, markdown: doc.markdown, updatedAt: doc.updatedAt } });
     setSaveState('idle');
     if (window.innerWidth < 800) setSidebarOpen(false);
   }, [flush, cancelHeadingMotion]);
@@ -1596,7 +1585,7 @@ async function eraseDocument(doc: FlowDocument) {
               transformTiming={{ duration: 260, easing: 'ease-out' }}
               opacityTiming={{ duration: 160, easing: 'ease-out' }} /> ms</span>
           </motion.span>
-        <span className="word-stat">{active?.fileType === 'image' ? 'Image' : active?.fileType === 'binary' ? 'File' : `${words.toLocaleString()} words`}</span>
+        <TokenCounter key={activeId} documentId={activeId} readSource={readTokenSource} />
       </div>
       <motion.main ref={editorAreaRef} className={'editor-area mode-' + mode + (compact ? ' compact' : '') + (resizingSplit ? ' is-resizing' : '')} aria-label="Flow Markdown workspace"
         initial={false} animate={{ gridTemplateColumns: compact ? 'minmax(0, 1fr)' : gridColumns,
