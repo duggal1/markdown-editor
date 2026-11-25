@@ -70,3 +70,28 @@ assert.match(css, /\.markdown-preview table > :last-child > tr:last-child > :is\
   'The outer border must not double up on the last row.');
 
 console.log('Preview worker preparation, line indexes and bounded cache tests passed.');
+
+
+const hexModule = { exports: {} };
+runInNewContext(transpile('src/lib/hexColor.ts'), { module: hexModule, exports: hexModule.exports });
+const { hexPattern, normalizeHex, hexToHsv, hsvToHex } = hexModule.exports;
+assert.equal(normalizeHex('#AbC'), '#aabbcc');
+assert.equal(normalizeHex('#1234'), '#11223344');
+assert.equal(normalizeHex('#12345'), null);
+assert.deepEqual(Array.from('fill="#abc" stroke="#11223344" #12345 #abcdefghi'.matchAll(hexPattern), m => m[0]), ['#abc', '#11223344']);
+for (const hex of ['#ff0000', '#00ff00', '#0000ff', '#123456', '#000000', '#ffffff', '#bbaacc80']) {
+  const { h, s, v, a } = hexToHsv(hex);
+  assert.equal(hsvToHex(h, s, v, hex.length === 9 ? a : undefined), hex);
+}
+const codeModule = { exports: {} };
+runInNewContext(transpile('src/lib/code.ts'), {
+  module: codeModule, exports: codeModule.exports,
+  require: () => ({ looksLikeHtml: () => false }),
+});
+assert.equal(codeModule.exports.detectRawCode('<svg/>'), 'svg');
+assert.equal(codeModule.exports.detectRawCode('<?xml version="1.0"?><svg><style>rect{fill:#abc}</style></svg>'), 'svg');
+const svgMarkdown = ('Paragraph\n\n').repeat(1800) + '<svg>\n\n' + '  <rect fill="#123456"/>\n\n'.repeat(300) + '</svg>\n\nAfter.';
+const svgSections = buildPreviewSections(svgMarkdown).chunks;
+assert.equal(svgSections.join(''), svgMarkdown);
+assert.equal(svgSections.findIndex(c => c.includes('<svg>')), svgSections.findIndex(c => c.includes('</svg>')));
+console.log('SVG classification, chunk integrity, hex validation and HSV round trips passed.');

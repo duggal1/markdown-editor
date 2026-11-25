@@ -3,7 +3,7 @@
  * scripts as strings instead of DOMParser + serialize: the latter duplicates
  * multi-megabyte documents and blocks the editor's main thread.
  */
-const HTML_OPEN = /^\s*(?:<!doctype\s+html\b[^>]*>\s*|<!--[\s\S]*?-->\s*)*(?:<html(?:\s|>)|<head(?:\s|>)|<body(?:\s|>)|<(?:main|div|section|article|header|footer|nav|form|input|button|p|h[1-6]|ul|ol|table|style|script|link|meta|span|a|img|canvas|video|svg)\b)/i;
+const HTML_OPEN = /^\s*(?:<!doctype\s+html\b[^>]*>\s*|<!--[\s\S]*?-->\s*)*(?:<html(?:\s|>)|<head(?:\s|>)|<body(?:\s|>)|<(?:main|div|section|article|header|footer|nav|form|input|button|p|h[1-6]|ul|ol|table|style|script|link|meta|span|a|img|canvas|video)\b)/i;
 
 export function looksLikeHtml(source: string): boolean {
   return HTML_OPEN.test(source.slice(0, 12000)) ||

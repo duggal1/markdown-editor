@@ -177,6 +177,10 @@ function HtmlCanvas({ source, embedded = false, scrollRef }: {
       }, '*')} />
   </div>;
 }
+function isSvgCode(code: string, language: string) {
+  return language.toLowerCase() === 'svg' ||
+    (!language || /^(xml|html)$/i.test(language)) && detectRawCode(code) === 'svg';
+}
 function VirtualCodeBlock({ code, rawLanguage }: { code: string; rawLanguage: string }) {
   const ref = useRef<HTMLPreElement>(null);
   const theme = useContext(ThemeContext);
@@ -189,7 +193,7 @@ function VirtualCodeBlock({ code, rawLanguage }: { code: string; rawLanguage: st
     estimateSize: () => 22,
     overscan: 12,
   });
-  const svgDocument = useMemo(() => rawLanguage.toLowerCase() === 'svg' && code.length < 150000
+  const svgDocument = useMemo(() => isSvgCode(code, rawLanguage)
     ? svgPreviewDocument(code, theme) : '', [code, rawLanguage, theme]);
   return <div className="code-block virtual-code-block">
     <div className="code-header"><span className="code-language"><span className="language-dot" />{rawLanguage || 'code'}</span>
@@ -197,8 +201,8 @@ function VirtualCodeBlock({ code, rawLanguage }: { code: string; rawLanguage: st
         <Icon name={copied ? 'check' : 'copy'} size={13} />{copied ? 'Copied' : 'Copy'}
       </button>
     </div>
-    {svgDocument && <div className="svg-preview"><iframe title="SVG preview" sandbox="" srcDoc={svgDocument} loading="lazy" /></div>}
-    {rawLanguage.toLowerCase() === 'html' && <HtmlCanvas source={code} embedded />}
+    {svgDocument && <div className="svg-preview"><iframe title="SVG preview" sandbox="" srcDoc={svgDocument} /></div>}
+    {rawLanguage.toLowerCase() === 'html' && !isSvgCode(code, rawLanguage) && <HtmlCanvas source={code} embedded />}
     <pre ref={ref} className="code-content virtual-code-scroll" tabIndex={0}>
       <code className="virtual-code-canvas" style={{ height: virtualizer.getTotalSize() }}>
         {virtualizer.getVirtualItems().map(item => <span key={item.key} className="virtual-code-row"
@@ -217,7 +221,7 @@ function CodeBlock({ code, rawLanguage }: { code: string; rawLanguage: string })
   const big = code.length > 20000;
   const highlighted = useMemo(() => big ? '' : highlight(code, language, 20000), [code, language, big]);
   const rows = useMemo(() => big ? 0 : code.split('\n').length, [code, big]);
-  const svgDocument = useMemo(() => rawLanguage.toLowerCase() === 'svg' && !big
+  const svgDocument = useMemo(() => !big && isSvgCode(code, rawLanguage)
     ? svgPreviewDocument(code, theme) : '', [code, rawLanguage, big, theme]);
   // Large code is a fixed-height, line-virtualized source viewer instead of thousands of DOM nodes.
   if (big) return <VirtualCodeBlock code={code} rawLanguage={rawLanguage} />;
@@ -228,8 +232,8 @@ function CodeBlock({ code, rawLanguage }: { code: string; rawLanguage: string })
         <Icon name={copied ? 'check' : 'copy'} size={13} />{copied ? 'Copied' : 'Copy'}
       </button>
     </div>
-    {svgDocument && <div className="svg-preview"><iframe title="SVG preview" sandbox="" srcDoc={svgDocument} loading="lazy" /></div>}
-    {rawLanguage.toLowerCase() === 'html' && <HtmlCanvas source={code} embedded />}
+    {svgDocument && <div className="svg-preview"><iframe title="SVG preview" sandbox="" srcDoc={svgDocument} /></div>}
+    {rawLanguage.toLowerCase() === 'html' && !isSvgCode(code, rawLanguage) && <HtmlCanvas source={code} embedded />}
     <pre className="code-content" tabIndex={0}>
       {rows <= 400 && <span className="code-gutter" aria-hidden="true">
         {Array.from({ length: rows }, (_, index) => <span key={index}>{index + 1}</span>)}
@@ -271,8 +275,51 @@ const components = {
   input: (props: React.InputHTMLAttributes<HTMLInputElement>) => <TaskCheckbox {...props} />,
   img: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img {...props} loading="lazy" alt={props.alt || ''} />,
 };
+// Send complete raw SVG blocks through the isolated SVG renderer instead of
+// stripping masks, filters, styles and references with Markdown's HTML sanitizer.
+type SvgMarkdownNode = {
+  type: string; value?: string; lang?: string; children?: SvgMarkdownNode[];
+  position?: { start: { offset?: number; line: number }; end: { offset?: number; line: number } };
+};
+function remarkSvgBlocks() {
+  return (tree: SvgMarkdownNode, file: { value: unknown }) => {
+    const source = String(file.value);
+    const children = tree.children;
+    if (!children) return;
+    // CommonMark HTML blocks can end at a blank line even inside an SVG.
+    // Recover the complete original block by source offsets, including nested
+    // svg elements, while leaving inline markup and fenced code alone.
+    for (let i = 0; i < children.length; i++) {
+      const node = children[i];
+      const from = node.position?.start.offset;
+      if (node.type !== 'html' || from === undefined || !/^<svg(?:\s|\/?>)/i.test(source.slice(from))) continue;
+      const tags = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\/?svg\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+      tags.lastIndex = from;
+      let depth = 0;
+      let end = from;
+      let match: RegExpExecArray | null;
+      while ((match = tags.exec(source))) {
+        const tag = match[0];
+        if (tag.startsWith('<!--') || tag.startsWith('<![')) continue;
+        if (tag.startsWith('</')) depth--;
+        else if (!/\/>$/.test(tag)) depth++;
+        if (depth === 0) { end = tags.lastIndex; break; }
+      }
+      if (end <= from) continue;
+      let last = i;
+      while (last + 1 < children.length && (children[last + 1].position?.start.offset ?? Infinity) < end) last++;
+      // Don't discard text sharing the closing SVG's source line.
+      const tail = children[last].position?.end.offset ?? end;
+      if (tail > end && source.slice(end, tail).trim()) continue;
+      children.splice(i, last - i + 1, {
+        type: 'code', lang: 'svg', value: source.slice(from, end),
+        position: node.position,
+      });
+    }
+  };
+}
 const MarkdownChunk = memo(function MarkdownChunk({ markdown, lineOffset = 0 }: { markdown: string; lineOffset?: number }) {
-  return <LineContext.Provider value={lineOffset}><ReactMarkdown remarkPlugins={[remarkGfm]}
+  return <LineContext.Provider value={lineOffset}><ReactMarkdown remarkPlugins={[remarkGfm, remarkSvgBlocks]}
     rehypePlugins={[rehypeRaw, [rehypeSanitize, safeMarkdownHtml]]}
     components={components}>{markdown}</ReactMarkdown></LineContext.Provider>;
 });
@@ -425,7 +472,7 @@ function MarkdownPreview({ markdown, sourceLanguage, scrollRef, theme, onToggleT
 }) {
   const deferred = useDeferredValue(markdown);
   const value = markdown.length <= 18000 ? markdown : deferred;
-  const detected = useMemo(() => sourceLanguage && sourceLanguage !== 'markdown'
+  const detected = useMemo(() => detectRawCode(value) === 'svg' ? 'svg' : sourceLanguage && sourceLanguage !== 'markdown'
     ? sourceLanguage : detectRawCode(value), [value, sourceLanguage]);
   const html = detected === 'html';
   const virtual = !detected && value.length > 18000;

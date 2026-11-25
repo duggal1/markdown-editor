@@ -12,6 +12,7 @@ import { formatPlainTextAsMarkdown, shouldAutoFormatPaste } from '../lib/autoMar
 import { listEnterIntent } from '../lib/listEditing';
 import { repairLanguage } from '../lib/codeRepair';
 import { blockCommands } from '../lib/blockCommands';
+import { editorColorPicker } from '../lib/editorColorPicker';
 
 
 const flowHighlight = HighlightStyle.define([
@@ -180,7 +181,7 @@ function MarkdownEditor({
     const setLanguage = (source: string) => {
       // A damaged HTML/Python paste still needs a code gutter and highlighting
       // before the user clicks Auto Fix. Other languages use existing detection.
-      const language = fileLanguage === 'html' || fileLanguage === 'python'
+      const language = fileLanguage === 'html' || fileLanguage === 'python' || fileLanguage === 'svg'
         ? fileLanguage : detectRawCode(source) || repairLanguage(source);
       view.dom.classList.toggle('raw-code', Boolean(language));
       if (language === activeLanguage) return;
@@ -196,7 +197,7 @@ function MarkdownEditor({
         return;
       }
       const match = languages.find(item =>
-        item.name.toLowerCase() === language ||
+        item.name.toLowerCase() === (language === 'svg' ? 'xml' : language) ||
         item.alias.some(alias => alias.toLowerCase() === language),
       );
       if (!match) return;
@@ -216,6 +217,7 @@ function MarkdownEditor({
         extensions: [
           minimalSetup,
           blockCommands,
+          editorColorPicker,
           gutterSlot.of([]),
           languageSlot.of(markdown({ codeLanguages: languages, addKeymap: false })),
           syntaxHighlighting(flowHighlight),

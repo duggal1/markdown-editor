@@ -975,9 +975,10 @@ async function eraseDocument(doc: FlowDocument) {
     async function importOne(file: File) {
       if (file.size > 50 * 1024 * 1024) throw new Error(file.name + ' exceeds the 50 MB limit');
       const supportedImage = /^image\/(png|jpeg|gif|webp|avif|bmp|x-icon|vnd\.microsoft\.icon|svg\+xml)$/i.test(file.type);
-      const image = supportedImage || /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i.test(file.name);
+      const svg = file.type === 'image/svg+xml' || /\.svg$/i.test(file.name);
+      const image = !svg && (supportedImage || /\.(png|jpe?g|gif|webp|avif|bmp|ico)$/i.test(file.name));
       const pdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
-      const recognizedText = file.type.startsWith('text/') ||
+      const recognizedText = svg || file.type.startsWith('text/') ||
         /^(application\/(?:json|javascript|xml|x-javascript|x-yaml|yaml|toml|graphql))$/i.test(file.type) ||
         Boolean(languageForFile(file.name)) || isMarkdownFile(file.name) ||
         /\.(txt|csv|tsv|log|ini|cfg|env|gitignore|editorconfig)$/i.test(file.name);
@@ -1003,7 +1004,7 @@ async function eraseDocument(doc: FlowDocument) {
         // A successfully imported PDF becomes editable Markdown, not a binary attachment.
         fileName: pdf ? file.name.replace(/\\.pdf$/i, '.md') : file.name, fileType,
         language: fileType === 'text' && !isMarkdownFile(file.name) && !pdf
-          ? languageForFile(file.name) || detectRawCode(markdown) || undefined : undefined,
+          ? (svg ? 'svg' : languageForFile(file.name)) || detectRawCode(markdown) || undefined : undefined,
         asset: image || binary ? file : undefined,
         titleAuto: false, createdAt: now, updatedAt: now,
       };

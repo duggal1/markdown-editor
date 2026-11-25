@@ -1,0 +1,26 @@
+.flow-hex-token { cursor: pointer; white-space: nowrap; }
+.flow-hex-token::before {
+  content: ''; display: inline-block; width: .78em; height: .78em;
+  margin-inline: 2px 4px; vertical-align: -.045em; border-radius: 3px;
+  background: var(--hex-swatch); box-shadow: inset 0 0 0 1px rgba(128,128,128,.48);
+}
+.flow-color-picker {
+  position: fixed; z-index: 10000; width: min(224px, calc(100vw - 16px)); box-sizing: border-box;
+  padding: 10px; display: grid; gap: 9px; color: var(--text);
+  background: #101010; border: 1px solid #252525; border-radius: 10px;
+  box-shadow: 0 8px 26px #0005; font-family: inherit; font-size: 12px; line-height: 1.2;
+}
+:root[data-theme='light'] .flow-color-picker { background: #fff; border-color: #e3e3e3; }
+.flow-color-heading, .flow-color-row { display: flex; align-items: center; gap: 8px; }
+.flow-color-heading { justify-content: space-between; color: var(--muted); }
+.flow-color-done { border: 0; background: transparent; color: var(--text); cursor: pointer; font: inherit; padding: 3px 5px; border-radius: 5px; }
+.flow-color-done:hover { background: var(--line); }
+.flow-color-sv, .flow-color-hue, .flow-color-alpha { position: relative; touch-action: none; cursor: crosshair; border-radius: 5px; outline-offset: 3px; }
+.flow-color-sv { height: 120px; background: linear-gradient(0deg,#000,transparent),linear-gradient(90deg,#fff,transparent),var(--picker-hue); }
+.flow-color-hue { height: 12px; background: linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00); }
+.flow-color-alpha { height: 12px; background: repeating-conic-gradient(#aaa 0% 25%,#ddd 0% 50%) 0 0 / 8px 8px; }
+.flow-color-alpha-paint { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; }
+.flow-color-dot, .flow-color-thumb { position: absolute; pointer-events: none; transform: translate(-50%,-50%); top: 50%; background: transparent; border: 2px solid #fff; box-shadow: 0 0 0 1px #0009; border-radius: 50%; width: 12px; height: 12px; box-sizing: border-box; }
+.flow-color-current { width: 25px; height: 25px; border-radius: 5px; flex: none; box-shadow: inset 0 0 0 1px #8885; }
+.flow-color-input { width: 0; flex: 1; min-width: 0; height: 25px; border: 0; border-radius: 5px; padding: 0 7px; background: var(--line); color: var(--text); font: 11px var(--mono); }
+.flow-color-input[aria-invalid='true'] { outline: 1px solid #ef4444; }
