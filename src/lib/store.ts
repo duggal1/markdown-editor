@@ -298,16 +298,4 @@ async function loadWorkspaceOnce(): Promise<WorkspaceSnapshot> {
   return { workspaces, folders, documents };
 }
 export { inferTitle } from './title';
-export function wordCount(value: string): number {
-  let words = 0;
-  let whitespace = true;
-  for (let i = 0; i < value.length; i++) {
-    const c = value.charCodeAt(i);
-    const blank = c === 32 || (c >= 9 && c <= 13) || c === 160 ||
-      c === 0x1680 || (c >= 0x2000 && c <= 0x200a) ||
-      c === 0x2028 || c === 0x2029 || c === 0x202f || c === 0x205f || c === 0x3000 || c === 0xfeff;
-    if (!blank && whitespace) words++;
-    whitespace = blank;
-  }
-  return words;
-}
+
