@@ -2601,21 +2601,37 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .flow-accent-palette button { background:transparent; position:relative; }
 .flow-accent-palette button[aria-pressed='true'] { background:transparent; }
 .flow-accent-palette button[aria-pressed='true'] .flow-settings-swatch { outline:1px solid var(--flow-dialog-text); outline-offset:3px; }
-#share-dialog.flow-dialog { width:min(350px,calc(100vw - 24px)); border:0; background:var(--flow-dialog-surface); border-radius:10px; }
-#share-dialog .flow-dialog-header { padding:0 12px 0 16px; height:44px; min-height:44px; }
-#share-dialog .flow-dialog-body { padding:4px 16px 12px; }
+#share-dialog.flow-dialog {
+  --share-field:#161616; --share-field-hover:#101010; --share-control:#202020;
+  --share-control-hover:#151515; --share-primary:#f2f2f2; --share-primary-hover:#dcdcdc;
+  --share-primary-text:#111111; --share-url:#ededed; --share-disabled:#777777;
+  width:min(352px,calc(100vw - 24px)); border:0; background:var(--flow-dialog-surface);
+  border-radius:12px; font-family:'Geist Variable',sans-serif;
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+  letter-spacing:-.012em;
+}
+:root[data-theme='light'] #share-dialog.flow-dialog {
+  --share-field:#efefef; --share-field-hover:#f8f8f8; --share-control:#e8e8e8;
+  --share-control-hover:#f5f5f5; --share-primary:#202020; --share-primary-hover:#343434;
+  --share-primary-text:#ffffff; --share-url:#222222; --share-disabled:#666666;
+}
+#share-dialog .flow-dialog-header { padding:0 12px 0 16px; height:40px; min-height:40px; }
+#share-dialog .flow-dialog-heading h2 { font-size:14px; line-height:20px; font-weight:450; letter-spacing:-.025em; }
+#share-dialog .flow-dialog-close:hover { background:var(--share-control-hover); }
+#share-dialog .flow-dialog-body { padding:3px 16px 12px; }
 #share-dialog .flow-dialog-footer { display:flex; align-items:center; justify-content:space-between; padding:0 16px 14px; gap:8px; }
-.share-access { display:grid; grid-template-columns:17px minmax(0,1fr); align-items:start; gap:10px; margin:0 0 15px; }
+.share-access { display:grid; grid-template-columns:17px minmax(0,1fr); align-items:start; gap:10px; margin:0 0 14px; }
 .share-access > .phosphor-icon { margin-top:1px; color:var(--flow-dialog-muted); }
 .share-access-text { min-width:0; }
-.share-access-text strong { display:block; font-size:13px; line-height:19px; font-weight:450; color:var(--flow-dialog-text); }
-.share-access-text p { margin:3px 0 0; font-size:12px; line-height:1.4; color:var(--flow-dialog-muted); }
-.share-url-row { display:flex; align-items:center; gap:7px; padding:3px 3px 3px 9px; min-width:0; background:var(--flow-dialog-field); border-radius:8px; }
+.share-access-text strong { display:block; font-size:13px; line-height:19px; font-weight:500; color:var(--flow-dialog-text); letter-spacing:-.018em; }
+.share-access-text p { margin:2px 0 0; font-size:12px; line-height:1.45; color:var(--flow-dialog-muted); }
+.share-url-row { display:flex; align-items:center; gap:7px; padding:3px 3px 3px 10px; min-width:0; background:var(--share-field); border-radius:8px; }
 .share-url-row > .phosphor-icon { flex:none; color:var(--flow-dialog-muted); }
-.share-url-row input { flex:1 1 0; min-width:0; width:0; padding:0; border:0; outline:none; color:var(--flow-dialog-muted); background:transparent; text-overflow:ellipsis; font:11px var(--mono); }
-.share-url-row input:focus-visible { outline:1px solid var(--flow-dialog-muted); outline-offset:1px; }
-.share-copy,.share-create,.share-done,.share-revoke { border:0; box-shadow:none; display:inline-flex; align-items:center; justify-content:center; gap:5px; width:auto; min-width:0; height:27px; padding:0 8px; border-radius:6px; font:500 12px/1 'Geist Variable',sans-serif; white-space:nowrap; }
-.share-copy { flex:none; width:88px; min-width:88px; overflow:hidden; background:var(--flow-dialog-text); color:var(--flow-dialog-surface); }
+.share-url-row input { flex:1 1 0; min-width:0; width:0; padding:0; border:0; outline:none; color:var(--share-url); background:transparent; text-overflow:ellipsis; font:450 12px/1.4 'Geist Variable',sans-serif; letter-spacing:-.02em; -webkit-font-smoothing:antialiased; }
+.share-url-row:focus-within { background:var(--share-field-hover); }
+.share-url-row input:focus-visible { outline:1px solid var(--flow-dialog-muted); outline-offset:2px; border-radius:2px; }
+.share-copy,.share-create,.share-done,.share-revoke { border:0; box-shadow:none; display:inline-flex; align-items:center; justify-content:center; gap:5px; width:auto; min-width:0; height:28px; padding:0 9px; border-radius:6px; font:450 12px/1 'Geist Variable',sans-serif; letter-spacing:-.015em; white-space:nowrap; cursor:pointer; }
+.share-copy { flex:none; width:86px; min-width:86px; overflow:hidden; background:var(--share-primary); color:var(--share-primary-text); }
 .share-copy-labels { display:grid; place-items:center; width:100%; height:100%; overflow:hidden; }
 .share-copy-labels > span { grid-area:1/1; display:inline-flex; align-items:center; gap:4px; line-height:1.2;
   transition:opacity 190ms cubic-bezier(.22,1,.36,1),transform 260ms cubic-bezier(.22,1,.36,1); }
@@ -2623,22 +2639,33 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .share-copy-success { opacity:0; transform:translateY(5px) scale(.96); }
 .share-copy-labels[data-copied='true'] .share-copy-idle { opacity:0; transform:translateY(-5px) scale(.96); }
 .share-copy-labels[data-copied='true'] .share-copy-success { opacity:1; transform:translateY(0) scale(1); }
-@media(prefers-reduced-motion:reduce) { .share-copy-labels > span { transition:none; transform:none; } }
-.share-copy:hover:not(:disabled) { opacity:.85; }
-.share-create { width:100%; height:32px; background:var(--flow-dialog-text); color:var(--flow-dialog-surface); }
-.share-create:disabled { opacity:1; background:var(--flow-dialog-field); color:var(--flow-dialog-muted); cursor:not-allowed; }
-.share-done { background:var(--flow-dialog-hover); color:var(--flow-dialog-text); }
-.share-done:hover:not(:disabled) { filter:brightness(1.12); }
+.share-copy:hover:not(:disabled),.share-create:hover:not(:disabled) { background:var(--share-primary-hover); }
+.share-create { width:100%; height:32px; background:var(--share-primary); color:var(--share-primary-text); }
+.share-create:disabled { opacity:1; background:var(--share-field); color:var(--share-disabled); cursor:not-allowed; }
+.share-done { min-width:52px; background:var(--share-control); color:var(--flow-dialog-text); }
+.share-done:hover:not(:disabled) { background:var(--share-control-hover); }
 .share-revoke { padding-inline:0; background:transparent; color:var(--flow-dialog-muted); font-weight:400; text-decoration:none; }
 .share-revoke:is(:hover,:focus-visible):not(:disabled) { color:var(--flow-dialog-text); text-decoration:underline dotted; text-underline-offset:4px; text-decoration-thickness:1px; }
-.share-status,.share-error { margin:8px 0 0; color:var(--flow-dialog-muted); font-size:11px; line-height:1.5; }
+.share-status,.share-error { margin:7px 0 0; color:var(--flow-dialog-muted); font-size:11px; line-height:1.5; }
 .share-error { color:#e89b9b; }
-.share-consent { display:flex; align-items:center; gap:6px; margin:0 0 10px; color:var(--flow-dialog-text); font-size:12px; }
-.share-consent input { accent-color:var(--flow-accent); }
+:root[data-theme='light'] .share-error { color:#a12424; }
+.share-consent { display:flex; align-items:center; gap:8px; width:fit-content; min-height:26px; margin:0 0 7px; color:var(--flow-dialog-text); font-size:12px; cursor:pointer; }
+.share-consent-control { position:relative; display:grid; place-items:center; width:17px; height:17px; flex:none; }
+.share-consent-control input { position:absolute; inset:0; width:100%; height:100%; margin:0; opacity:0; cursor:inherit; }
+.share-consent-mark { display:grid; place-items:center; width:17px; height:17px; border:0; border-radius:4px; background:var(--share-control); color:var(--share-primary-text); pointer-events:none; transition:background-color 170ms cubic-bezier(.22,1,.36,1); }
+.share-consent-mark > .phosphor-icon { opacity:0; transform:scale(.75); transition:opacity 170ms cubic-bezier(.22,1,.36,1),transform 170ms cubic-bezier(.22,1,.36,1); }
+.share-consent:hover .share-consent-mark { background:var(--share-control-hover); }
+.share-consent-control input:checked + .share-consent-mark { background:var(--share-primary); }
+.share-consent-control input:checked + .share-consent-mark > .phosphor-icon { opacity:1; transform:scale(1); }
+.share-consent-control input:focus-visible + .share-consent-mark { outline:2px solid var(--flow-dialog-muted); outline-offset:2px; }
+.share-consent:has(input:disabled) { opacity:.65; cursor:not-allowed; }
 .share-spinner { width:13px; height:13px; border:1px solid currentColor; border-right-color:transparent; border-radius:50%; animation:share-spin .7s linear infinite; }
 @keyframes share-spin { to { transform:rotate(360deg); } }
-@media(prefers-reduced-motion:reduce) { .share-spinner { animation:none; } }
-@media(max-width:800px) { .share-copy,.share-done,.share-revoke { min-height:34px; } .share-create { min-height:36px; } }
+@media(prefers-reduced-motion:reduce) {
+  .share-spinner { animation:none; }
+  .share-copy-labels > span,.share-consent-mark,.share-consent-mark > .phosphor-icon { transition:none; transform:none; }
+}
+@media(max-width:800px) { .share-copy,.share-done,.share-revoke { min-height:34px; } .share-create { min-height:36px; } .share-consent { min-height:34px; } }
 
 
 /* Nine accents, two appearances. Outline has its own quiet, dark surface. */
@@ -2721,8 +2748,8 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 
 /* Quiet, compact Settings and Share surfaces. */
 #settings-dialog.flow-dialog { width:min(320px,calc(100vw - 24px)); border-radius:10px; }
-#settings-dialog .flow-dialog-heading h2,#share-dialog .flow-dialog-heading h2 { font-weight:400; }
-#settings-dialog .flow-dialog-header,#share-dialog .flow-dialog-header { height:38px; min-height:38px; }
+#settings-dialog .flow-dialog-heading h2 { font-weight:400; }
+#settings-dialog .flow-dialog-header { height:38px; min-height:38px; }
 #settings-dialog .flow-dialog-body { padding:5px 14px 12px; }
 #settings-dialog .flow-dialog-footer { padding:0 14px 12px; }
 #settings-dialog .flow-appearance { background:var(--flow-dialog-field); border-radius:7px; }
@@ -2731,11 +2758,11 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 #settings-dialog .flow-accent-palette button { height:28px; }
 #settings-dialog .flow-settings-swatch { max-width:18px; border-radius:5px; }
 #settings-dialog .flow-accent-palette button[aria-pressed='true'] .flow-settings-swatch { outline-offset:2px; }
-#settings-dialog .flow-dialog-done,#share-dialog .share-done { height:27px; min-height:27px; padding:0 11px; border-radius:6px; background:var(--flow-dialog-field); }
-#settings-dialog .flow-dialog-done:hover,#share-dialog .share-done:hover { background:var(--flow-dialog-hover); }
+#settings-dialog .flow-dialog-done { height:27px; min-height:27px; padding:0 11px; border-radius:6px; background:var(--flow-dialog-field); }
+#settings-dialog .flow-dialog-done:hover { background:var(--flow-dialog-hover); }
 .private-workspace .topbar .settings-trigger { border-radius:6px; transition:background-color 180ms cubic-bezier(.22,1,.36,1),color 180ms cubic-bezier(.22,1,.36,1); }
 .private-workspace .topbar .settings-trigger:hover { color:var(--strong); background:var(--hover); }
 #settings-dialog[open],#share-dialog[open] { animation:flow-modal-enter 240ms cubic-bezier(.22,1,.36,1) both; }
 .share-copy,.share-create,.share-done,.share-revoke { transition:background-color 180ms cubic-bezier(.22,1,.36,1),color 180ms cubic-bezier(.22,1,.36,1),opacity 180ms cubic-bezier(.22,1,.36,1); }
-@media(prefers-reduced-motion:reduce) { #settings-dialog[open],#share-dialog[open] { animation:none; } }
-@media(max-width:800px) { #settings-dialog .flow-dialog-done,#share-dialog .share-done { min-height:34px; } }
+@media(prefers-reduced-motion:reduce) { #settings-dialog[open],#share-dialog[open] { animation:none; } .share-copy,.share-create,.share-done,.share-revoke { transition:none; } }
+@media(max-width:800px) { #settings-dialog .flow-dialog-done { min-height:34px; } }

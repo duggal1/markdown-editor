@@ -38,12 +38,12 @@ const plan = [
 
 const definition = buildPdfDefinition(plan, 'Lumen: Master Build Plan');
 assert.equal(definition.pageSize, 'A4');
-assert.deepEqual([...definition.pageMargins], [48, 54, 48, 46]);
+assert.deepEqual([...definition.pageMargins], [48, 48, 48, 42]);
 assert.equal(definition.info.title, 'Lumen: Master Build Plan');
 assert.equal(definition.defaultStyle.color, '#252525');
 assert.equal(definition.styles.h1.fontSize, 27);
 assert.equal(definition.styles.h2.fontSize, 16);
-assert.equal(definition.styles.body.lineHeight, 1.42);
+assert.equal(definition.styles.body.lineHeight, 1.36);
 const content = definition.content;
 assert.ok(Array.isArray(content));
 assert.ok(content.some(x => x.style === 'h1'));
@@ -144,3 +144,45 @@ console.log('Styled PDF generation and page-spacing regression checks passed.', 
   samplePdfBytes: actual.length, longPlanCharacters: many.length,
   longPlanPreparationMs: +prepTime.toFixed(1),
 });
+
+// Real PDF pagination regression: find the first spill into page two, then
+// run the same bounded optimization path that production exports use.
+const { inspectPdfTail, optimizePdfPagination } = await import('../src/lib/pdfPagination.ts');
+const { getDocumentProxy } = await import('unpdf');
+const fixture = count => '# Pagination fixture\n\n' + Array.from({length:count}, (_,i) => 'Section item ' + String(i+1).padStart(3,'0') + ' retains its content.').join('\n\n');
+const render = async (source, density) => new Blob([await new Promise(resolve =>
+  lib.createPdf(buildPdfDefinition(source,'Pagination fixture',new Map(),density)).getBuffer(resolve))], {type:'application/pdf'});
+let lo = 2, hi = 100;
+while (hi - lo > 1) {
+  const mid = (lo + hi) >> 1;
+  const stats = await inspectPdfTail(await render(fixture(mid),'balanced'),'balanced');
+  if (stats.pages > 1) hi = mid; else lo = mid;
+}
+const overflowSource = fixture(hi);
+const overflow = await render(overflowSource,'balanced');
+const overflowStats = await inspectPdfTail(overflow,'balanced');
+assert.equal(overflowStats.pages,2);
+assert.ok(overflowStats.sparse, 'Boundary fixture must end on a sparse extra page');
+let attempts = 0;
+const compact = await optimizePdfPagination(async density => { attempts++; return density === 'balanced' ? overflow : render(overflowSource,density); });
+assert.equal(attempts,2);
+assert.equal((await inspectPdfTail(compact,'compact')).pages,1,'Compaction must eliminate the avoidable final page');
+const readBody = async blob => {
+  const pdf = await getDocumentProxy(new Uint8Array(await blob.arrayBuffer()));
+  try {
+    const pages = [];
+    for(let page=1;page<=pdf.numPages;page++) {
+      const content = await (await pdf.getPage(page)).getTextContent();
+      pages.push(content.items.filter(x=>'str' in x).map(x=>x.str).join(' '));
+    }
+    return pages.join(' ');
+  } finally { if (typeof pdf.destroy === 'function') await pdf.destroy(); else await pdf.cleanup?.(); }
+};
+const compactText = await readBody(compact);
+for(let i=1;i<=hi;i++) assert.ok(compactText.includes('Section item ' + String(i).padStart(3,'0') + ' retains its content.'),'Missing item '+i);
+const regular = await render(fixture(2),'balanced');
+let ordinaryAttempts=0;
+assert.equal(await optimizePdfPagination(async()=>{ ordinaryAttempts++; return regular; }),regular);
+assert.equal(ordinaryAttempts,1);
+assert.equal(await optimizePdfPagination(async density=>{if(density==='compact')throw Error('retry failure');return overflow;}),overflow);
+console.log('Real PDF page count reduced from 2 to 1; every fixture item retained.');

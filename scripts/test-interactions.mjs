@@ -238,3 +238,9 @@ assert.match(shareDialogSource, /className="share-copy-success"><Icon name="chec
 assert.match(css, /\.share-access \{[^}]*align-items:start/);
 assert.match(css, /\.share-revoke:is\(:hover,:focus-visible\):not\(:disabled\) \{[^}]*text-decoration:underline dotted/);
 assert.match(app, /setSettingsOpen\(true\)\}><Icon name="sliders"/);
+assert.match(css, /\.share-url-row input \{[^}]*color:var\(--share-url\)[^}]*'Geist Variable',sans-serif[^}]*-webkit-font-smoothing:antialiased/);
+assert.doesNotMatch(css, /\.share-url-row input \{[^}]*var\(--mono\)/);
+assert.match(shareDialogSource, /className="share-consent-control"[\s\S]*?type="checkbox"[\s\S]*?className="share-consent-mark"[\s\S]*?name="check"/);
+assert.match(css, /\.share-consent-control input:focus-visible \+ \.share-consent-mark/);
+assert.match(css, /--share-control:#202020;\s*--share-control-hover:#151515/);
+assert.match(css, /--share-control:#e8e8e8;\s*--share-control-hover:#f5f5f5/);
