@@ -18,6 +18,7 @@ import { isHtmlPage, localHtmlUrl, publishHtml, queueSiteSync, readSiteRecord, r
   siteUrl, verifyHostedHtml } from './lib/siteHosting';
 import { detectRawCode, isMarkdownFile, languageForFile, normalizeMixedContent } from './lib/code';
 import { svgPreviewDocument } from './lib/svgPreview';
+import { locateSvgSource } from './lib/svgPalette';
 import { readTextImport } from './lib/textImport';
 import { formatPlainTextAsMarkdown, MAX_MANUAL_FORMAT_CHARS } from './lib/autoMarkdown';
 import { repairLanguage } from './lib/codeRepair';
@@ -516,6 +517,21 @@ export default function App() {
       setDocs(items => items.map(item => item.id === next.id ? next : item));
     }
   }, [scheduleSave]);
+
+  const onSvgEdit = useCallback((source: string, next: string, line: number): boolean => {
+    const id = activeIdRef.current;
+    const current = live.current.get(id);
+    if (!current || current.asset) return false;
+    const view = editorRef.current;
+    const text = view?.state.doc.toString() ?? current.markdown;
+    const from = locateSvgSource(text, source, line);
+    if (from < 0) return false;
+    if (view) view.dispatch({ changes: { from, to: from + source.length, insert: next }, userEvent: 'input' });
+    const updated = view?.state.doc.toString() ?? text.slice(0, from) + next + text.slice(from + source.length);
+    onEditorChange(updated, id);
+    setPreviewText(updated);
+    return true;
+  }, [onEditorChange]);
 
   const onToggleTask = useCallback((lineNumber: number, checked: boolean) => {
     const id = activeIdRef.current;
@@ -1607,7 +1623,7 @@ async function eraseDocument(doc: FlowDocument) {
             <Suspense fallback={<div className="preview-loading">Rendering…</div>}>
               {presentationMode !== 'write' && (active?.asset
                 ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} theme={theme} />
-                : <MarkdownPreview key={active?.id || 'preview'} markdown={previewText} sourceLanguage={active?.language} scrollRef={previewScrollRef} theme={theme} onToggleTask={onToggleTask} />)}
+                : <MarkdownPreview key={active?.id || 'preview'} markdown={previewText} sourceLanguage={active?.language} scrollRef={previewScrollRef} theme={theme} onToggleTask={onToggleTask} onSvgEdit={onSvgEdit} />)}
             </Suspense>
           </motion.div>
         </section>

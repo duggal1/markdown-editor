@@ -123,3 +123,7 @@ Desktop, iPhone and iPad are independent device modes. The iPad uses a represent
 
 ## SVG and compact sharing correction
 SVG pages and SVG snippets render artwork only in a transparent, script-disabled image iframe. Source belongs in the editor, not beneath the preview. Preserve explicit fills, strokes and embedded CSS; supply theme-aware currentColor only when no authored color overrides it. No checkerboard, white backing card or code header. Keep non-SVG code rendering unchanged. The share dialog uses a title-aligned globe, text-only Copy link, fixed-width crossfade to a check and Copied, and dotted underline for Stop sharing on hover/focus. Desktop Split gets restrained additional inline padding; keep mobile and Write geometry intact. Tables retain their full grid with a darker neutral surface and quieter borders.
+
+
+## SVG inspector
+Standalone and embedded SVG previews have a compact neutral toolbar: intrinsic pixel size, 25–400% preview zoom, independent white/black/transparent/workspace backgrounds, and local PNG download at 1×–3×. Authored paint literals appear above the artwork; editable workspace swatches use the existing HSV/alpha picker. Done commits exact matching source ranges as one undoable edit; shared previews stay read-only. No external conversion service, decorative borders or source code under the artwork. PNG exports use image-mode SVG, preserve aspect ratio and cap allocations at 8192 pixels per axis / 32 megapixels. Unresolved dynamic colors and external resources are not guessed.
