@@ -229,3 +229,6 @@ assert.match(css, /\.topbar \.accent-theme-trigger\s*\{\s*grid-row:1; grid-colum
 assert.match(css, /\.accent-theme-menu \{/,
   'Theme menu must have a dedicated styled surface.');
 console.log('Motion, five-second save status, iOS geometry and preview cache checks passed.');
+assert.match(tree, /export default memo\(WorkspaceTree\)/, 'The file tree must not re-render on unrelated editor state');
+assert.match(app, /useTreeActions\(/, 'Tree events use stable callback identities');
+assert.match(app, /localSaveDelay\(doc\.markdown\.length, now - firstDirty\)/, 'Continuous editing has a bounded local save delay');

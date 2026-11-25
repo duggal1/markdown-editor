@@ -109,7 +109,7 @@ async function uploadSnapshot(doc: FlowDocument, record: SiteRecord) {
   }
 }
 export function queueSiteSync(doc: FlowDocument, immediate = false, force = false): void {
-  if (!isHtmlPage(doc) || !readSiteRecord(doc.id)) return;
+  if (!readSiteRecord(doc.id) || !isHtmlPage(doc)) return;
   let job = jobs.get(doc.id);
   if (!job) {
     job = { latest: doc, timer: null, work: Promise.resolve() };
