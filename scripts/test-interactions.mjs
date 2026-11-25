@@ -76,6 +76,45 @@ assert.equal(applyAccentTheme('blue'), 'blue');
 assert.match(decodeURIComponent(faviconLink.href), /#2563eb/);
 assert.doesNotMatch(css, /data-background='blue'/);
 assert.match(app, /\(\['dark', 'light'\] as const\)\.map/);
+const previewColors = read('src/lib/previewColors.ts');
+assert.match(preview, /\[rehypePreviewColors, charOffset\]/);
+assert.match(preview, /attachPreviewColorPicker\(root/);
+assert.match(app, /onEditColor=\{onEditColor\}/);
+assert.match(app, /view\.state\.doc\.toString\(\) !== expected/);
+const hexMapping = { exports: {} };
+runInNewContext(ts.transpileModule(read('src/lib/hexColor.ts'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText, { module: hexMapping, exports: hexMapping.exports });
+const { mapHexOccurrences } = hexMapping.exports;
+assert.equal(mapHexOccurrences('#FF8A30', '#FF8A30', 30)[0].from, 30);
+assert.equal(mapHexOccurrences('#abc #abc', '#abc #abc', 10)[1].from, 15);
+assert.equal(mapHexOccurrences('#abc', '#def', 10)[0].from, -1);
+assert.match(previewColors, /expected = expected\.slice/);
+const previewColorModule = { exports: {} };
+runInNewContext(ts.transpileModule(previewColors, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText, {
+  module: previewColorModule, exports: previewColorModule.exports,
+  require: name => name === './hexColor' ? hexMapping.exports : { openColorPopover: () => {} },
+});
+const { createElement } = await import('react');
+const { renderToStaticMarkup } = await import('react-dom/server');
+const { default: ReactMarkdown } = await import('react-markdown');
+const { default: remarkGfm } = await import('remark-gfm');
+const { default: rehypeRaw } = await import('rehype-raw');
+const { default: rehypeSanitize } = await import('rehype-sanitize');
+const colorDocument = '# Colors\n\nOrange #FF8A30, repeat #FF8A30.\n\n| Token | Value |\n| --- | --- |\n| Shell | ' + String.fromCharCode(96) + '#000000' + String.fromCharCode(96) + ' |\n';
+const renderedColors = renderToStaticMarkup(createElement(ReactMarkdown, {
+  remarkPlugins: [remarkGfm],
+  rehypePlugins: [rehypeRaw, rehypeSanitize, [previewColorModule.exports.rehypePreviewColors, 100]],
+  children: colorDocument,
+}));
+for (const literal of ['#FF8A30', '#000000']) {
+  assert.ok(renderedColors.includes('--hex-swatch:' + literal), 'Actual swatch must render: ' + literal);
+  const at = colorDocument.indexOf(literal) + 100;
+  assert.ok(renderedColors.includes('data-flow-from="' + at + '"'), 'Source offset must survive sanitization for ' + literal + ': ' + renderedColors);
+}
+assert.ok(renderedColors.includes('data-flow-from="' + (colorDocument.lastIndexOf('#FF8A30') + 100) + '"'), 'Repeated color literals have distinct source offsets');
 const outline = read('src/components/PageOutline.tsx');
 assert.doesNotMatch(app, /id="outline-dialog"|onClick=\{openOutline\}/);
 assert.doesNotMatch(css, /#outline-dialog/);
@@ -105,7 +144,7 @@ const { navigationEase, navigationDuration, navigateScroll, cancelNavigation } =
 assert.equal(navigationEase(0), 0);
 assert.equal(navigationEase(1), 1);
 assert.equal(navigationEase(.5), .5);
-assert.ok(navigationDuration(10000, 500) <= 560);
+assert.ok(navigationDuration(10000, 500) <= 980);
 function advance(dt) {
   time += dt;
   const callbacks = [...frames.values()];
@@ -123,12 +162,12 @@ const stopped = scroll.scrollTop;
 advance(500);
 assert.equal(scroll.scrollTop, stopped);
 navigateScroll(scroll, 900, true);
-for (let i = 0; i < 60; i++) advance(1000 / 90);
+for (let i = 0; i < 100; i++) advance(1000 / 90);
 assert.equal(scroll.scrollTop, 900);
 assert.equal(frames.size, 0);
 navigateScroll(scroll, 9000, true, true);
 assert.equal(scroll.scrollTop, 8375);
-for (let i = 0; i < 60; i++) advance(1000 / 60);
+for (let i = 0; i < 100; i++) advance(1000 / 60);
 assert.equal(scroll.scrollTop, 9000);
 navigateScroll(scroll, 0, true);
 advance(16);

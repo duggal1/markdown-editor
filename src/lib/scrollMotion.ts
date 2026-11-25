@@ -6,7 +6,7 @@ export function navigationEase(progress: number): number {
   return t * t * t * (t * (t * 6 - 15) + 10);
 }
 export function navigationDuration(distance: number, viewport: number): number {
-  return Math.max(220, Math.min(560, 220 + 135 * Math.sqrt(Math.abs(distance) / Math.max(1, viewport))));
+  return Math.max(360, Math.min(980, 360 + 190 * Math.sqrt(Math.abs(distance) / Math.max(1, viewport))));
 }
 
 type Motion = { frame: number; target: number };
@@ -20,21 +20,22 @@ export function cancelNavigation(scroll: HTMLElement | null | undefined): void {
   running.delete(scroll);
 }
 
-export function navigateScroll(scroll: HTMLElement, top: number, smooth = false, bounded = false): void {
+export function navigateScroll(scroll: HTMLElement, top: number, smooth = false, bounded = false, onDone?: () => void): void {
   const target = Math.max(0, Math.min(top, Math.max(0, scroll.scrollHeight - scroll.clientHeight)));
   const previous = running.get(scroll);
   if (smooth && previous && Math.abs(previous.target - target) < 2) return;
   cancelNavigation(scroll);
-  if (Math.abs(scroll.scrollTop - target) < 1) return;
+  if (Math.abs(scroll.scrollTop - target) < 1) { onDone?.(); return; }
   if (!smooth || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     scroll.scrollTop = target;
+    onDone?.();
     return;
   }
   let from = scroll.scrollTop;
   const viewport = Math.max(1, scroll.clientHeight);
   // Don't render hundreds of offscreen virtual windows just to cross a large
   // file. Seek close to the target, then ease the final visible travel.
-  if (bounded && Math.abs(target - from) > viewport * 3) {
+  if (bounded && Math.abs(target - from) > viewport * 12) {
     from = target - Math.sign(target - from) * viewport * 1.25;
     scroll.scrollTop = from;
   }
@@ -48,7 +49,7 @@ export function navigateScroll(scroll: HTMLElement, top: number, smooth = false,
     // One write per display refresh. No React updates or geometry reads here.
     scroll.scrollTop = progress === 1 ? target : from + distance * navigationEase(progress);
     if (progress < 1) motion.frame = requestAnimationFrame(tick);
-    else running.delete(scroll);
+    else { running.delete(scroll); onDone?.(); }
   };
   running.set(scroll, motion);
   motion.frame = requestAnimationFrame(tick);
