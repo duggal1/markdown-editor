@@ -37,7 +37,7 @@ function codeContinuation(line: string): boolean {
 // declarations/calls are anchors; an unmatched expression must be closed by
 // an immediately adjacent code-shaped continuation. Never synthesize code.
 const jsDeclaration = /^(?:export\s+)?(?:const|let|var)\s+(?:[\w$]+|\[[^\]]+\]|\{[^}]+\})\s*(?::[^=]+)?=(?!=)/;
-const jsCall = /^(?:await\s+)?(?:console\.[\w$]+|[\w$]+(?:\.[\w$]+)+)\s*\([^]*\)\s*;$/;
+const jsCall = /^(?:await\s+)?(?:console\.[\w$]+|[\w$]+(?:\.[\w$]+)+)\s*\([^]*\)\s*;\s*(?:\/\/.*)?$/;
 const jsAnchor = (line: string) => jsDeclaration.test(line.trim()) || jsCall.test(line.trim());
 const jsTail = (line: string) => /^[\s]*[}\])]/.test(line);
 const fenceMarker = /^ {0,3}(\x60{3,}|~{3,})(.*)$/;
