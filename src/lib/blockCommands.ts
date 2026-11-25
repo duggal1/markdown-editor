@@ -2,6 +2,7 @@ import { EditorView, ViewPlugin, keymap, type ViewUpdate } from '@codemirror/vie
 import { Prec, type Text } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
 import { phosphorElement, type IconName } from './phosphorGlyphs';
+import { selectionEdit, type SelectionFormat } from './selectionFormat';
 
 type Command = { name: string; icon: string; keywords: string; insert: string; caret?: number; group: string };
 const commands: Command[] = [
@@ -26,6 +27,14 @@ function glyph(name: string): SVGSVGElement {
   const aliases: Record<string, IconName> = { bullet: 'list', image: 'svg' };
   return phosphorElement(aliases[name] || name as IconName);
 }
+const selectionActions: { kind: SelectionFormat; icon: string; label: string }[] = [
+  { kind: 'bold', icon: 'bold', label: 'Bold' }, { kind: 'italic', icon: 'italic', label: 'Italic' },
+  { kind: 'link', icon: 'link', label: 'Link' }, { kind: 'code', icon: 'code', label: 'Code' },
+  ...([1, 2, 3, 4] as const).map(n => ({ kind: ('h' + n) as SelectionFormat, icon: 'h' + n, label: 'Heading ' + n })),
+  { kind: 'bullet', icon: 'bullet', label: 'Bulleted list' }, { kind: 'number', icon: 'number', label: 'Numbered list' },
+  { kind: 'todo', icon: 'todo', label: 'To-do list' }, { kind: 'quote', icon: 'quote', label: 'Quote' },
+  { kind: 'text', icon: 'text', label: 'Plain text block' },
+];
 type Span = { from: number; to: number };
 function blockAt(view: EditorView, pos: number): Span {
   const doc = view.state.doc;
@@ -49,6 +58,10 @@ function codeContext(view: EditorView, pos: number): boolean {
 class BlockUI {
   menu = document.createElement('div');
   handle = document.createElement('div');
+  toolbar = document.createElement('div');
+  selectionFrame = 0;
+  dismissedSelection: Span | null = null;
+  selectionSnapshot: (Span & { doc: Text }) | null = null;
   add = document.createElement('button');
   grip = document.createElement('button');
   matches: Command[] = [];
@@ -72,7 +85,36 @@ class BlockUI {
     this.add.append(glyph('plus')); this.grip.append(glyph('grip'));
     this.grip.draggable = true;
     this.handle.append(this.add, this.grip);
-    document.body.append(this.menu, this.handle);
+    this.toolbar.className = 'flow-selection-toolbar';
+    this.toolbar.setAttribute('role', 'group');
+    this.toolbar.setAttribute('aria-label', 'Format selected Markdown');
+    this.toolbar.hidden = true;
+    for (const action of selectionActions) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.title = action.label;
+      button.setAttribute('aria-label', action.label);
+      button.dataset.format = action.kind;
+      button.append(glyph(action.icon));
+      // Keep the editor's native selection when using mouse, pen or touch.
+      button.addEventListener('pointerdown', event => event.preventDefault());
+      button.addEventListener('mousedown', event => event.preventDefault());
+      button.addEventListener('click', () => this.formatSelection(action.kind));
+      this.toolbar.append(button);
+    }
+    this.toolbar.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        this.escape();
+        this.view.focus();
+      }
+    });
+    this.toolbar.addEventListener('focusout', this.scheduleSelection);
+    document.body.append(this.menu, this.handle, this.toolbar);
+    view.dom.addEventListener('pointerup', this.scheduleSelection);
+    view.dom.addEventListener('touchend', this.scheduleSelection, { passive: true });
+    window.visualViewport?.addEventListener('resize', this.scheduleSelection);
+    window.visualViewport?.addEventListener('scroll', this.scheduleSelection);
     this.add.addEventListener('mousedown', e => e.preventDefault());
     this.add.addEventListener('click', () => {
       const span = this.hover;
@@ -98,12 +140,96 @@ class BlockUI {
     window.addEventListener('resize', this.onScroll);
   }
   onOutside = (e: PointerEvent) => {
-    if (!(e.target instanceof Node) || this.menu.contains(e.target) || this.handle.contains(e.target)) return;
-    if (!this.view.dom.contains(e.target)) { this.close(); this.handle.hidden = true; }
+    if (!(e.target instanceof Node) || this.menu.contains(e.target) || this.handle.contains(e.target) || this.toolbar.contains(e.target)) return;
+    if (!this.view.dom.contains(e.target)) {
+      this.close(); this.handle.hidden = true;
+      const range = this.view.state.selection.main;
+      this.dismissedSelection = { from: range.from, to: range.to };
+      this.hideSelection();
+    }
   };
-  onScroll = () => { this.handle.hidden = true; if (this.trigger) this.position(); };
+  onScroll = () => { this.handle.hidden = true; if (this.trigger) this.position(); this.scheduleSelection(); };
+  hideSelection() {
+    this.toolbar.hidden = true;
+    this.selectionSnapshot = null;
+  }
+  scheduleSelection = () => {
+    if (this.selectionFrame) return;
+    this.selectionFrame = requestAnimationFrame(() => {
+      this.selectionFrame = 0;
+      this.positionSelection();
+    });
+  };
+  positionSelection() {
+    const { state } = this.view;
+    const range = state.selection.main;
+    const focused = this.view.hasFocus || this.toolbar.contains(document.activeElement);
+    if (!focused || range.empty || state.selection.ranges.length !== 1 ||
+        state.readOnly || this.view.composing ||
+        this.view.dom.classList.contains('raw-code') ||
+        (this.dismissedSelection?.from === range.from && this.dismissedSelection.to === range.to) ||
+        !this.view.dom.getClientRects().length || getComputedStyle(this.view.dom).visibility === 'hidden') {
+      this.hideSelection(); return;
+    }
+    // Never apply prose formatting inside source blocks or across fenced code.
+    let inCode = false;
+    syntaxTree(state).iterate({ from: range.from, to: range.to, enter: node => {
+      if (node.from < range.to && node.to > range.from &&
+          ['FencedCode', 'CodeBlock', 'HTMLBlock'].includes(node.name)) { inCode = true; return false; }
+    } });
+    if (inCode) { this.hideSelection(); return; }
+    const pane = this.view.scrollDOM.getBoundingClientRect();
+    const vv = window.visualViewport;
+    const left = Math.max(pane.left, vv?.offsetLeft ?? 0) + 8;
+    const right = Math.min(pane.right, (vv?.offsetLeft ?? 0) + (vv?.width ?? window.innerWidth)) - 8;
+    const top = Math.max(pane.top, vv?.offsetTop ?? 0) + 8;
+    const bottom = Math.min(pane.bottom, (vv?.offsetTop ?? 0) + (vv?.height ?? window.innerHeight)) - 8;
+    if (right - left < 100 || bottom - top < 48) { this.hideSelection(); return; }
+    const start = this.view.coordsAtPos(range.from, 1);
+    const end = this.view.coordsAtPos(range.to, -1);
+    if ((!start && !end) || (start && end && (end.bottom < top || start.top > bottom))) {
+      this.hideSelection(); return;
+    }
+    const visible = (rect: typeof start) => !!rect && rect.bottom >= top && rect.top <= bottom;
+    if (!visible(start) && !visible(end) && !(start && end && start.top < top && end.bottom > bottom)) {
+      this.hideSelection(); return;
+    }
+    this.handle.hidden = true;
+    this.close();
+    this.toolbar.style.maxWidth = (right - left) + 'px';
+    this.toolbar.hidden = false;
+    const link = this.toolbar.querySelector<HTMLButtonElement>('[data-format="link"]');
+    // Compare line numbers rather than allocating selected text on each frame.
+    if (link) link.disabled = state.doc.lineAt(range.from).number !== state.doc.lineAt(range.to - 1).number;
+    const width = this.toolbar.offsetWidth, height = this.toolbar.offsetHeight;
+    if (height > bottom - top) { this.hideSelection(); return; }
+    const anchor = visible(start) ? start! : visible(end) ? end! : null;
+    const center = start && end && Math.abs(start.top - end.top) < 2
+      ? (start.left + end.right) / 2 : anchor?.left ?? (left + right) / 2;
+    const above = (start?.top ?? top) - height - 8;
+    const below = (end?.bottom ?? bottom) + 8;
+    const y = above >= top ? above : below + height <= bottom ? below
+      : anchor && anchor.top - top > bottom - anchor.bottom ? top : bottom - height;
+    this.toolbar.style.left = Math.max(left, Math.min(center - width / 2, right - width)) + 'px';
+    this.toolbar.style.top = Math.max(top, Math.min(y, bottom - height)) + 'px';
+    this.selectionSnapshot = { from: range.from, to: range.to, doc: state.doc };
+  }
+  formatSelection(kind: SelectionFormat) {
+    const snapshot = this.selectionSnapshot;
+    if (!snapshot || snapshot.doc !== this.view.state.doc) { this.hideSelection(); return; }
+    const range = this.view.state.selection.main;
+    if (range.from !== snapshot.from || range.to !== snapshot.to) { this.hideSelection(); return; }
+    const edit = selectionEdit(snapshot.doc, snapshot.from, snapshot.to, kind);
+    if (!edit) return;
+    this.view.dispatch({ ...edit, userEvent: 'input.format', scrollIntoView: false });
+    this.view.focus();
+    if (kind === 'link') {
+      this.dismissedSelection = { from: edit.selection.anchor, to: edit.selection.head };
+      this.hideSelection();
+    } else this.scheduleSelection();
+  }
   onMove = (e: PointerEvent) => {
-    if (e.pointerType === 'touch' || this.drag || !this.menu.hidden) return;
+    if (e.pointerType === 'touch' || this.drag || !this.menu.hidden || !this.view.state.selection.main.empty) { this.handle.hidden = true; return; }
     if (this.frame) return;
     const x = e.clientX, y = e.clientY;
     this.frame = requestAnimationFrame(() => {
@@ -155,9 +281,16 @@ class BlockUI {
     this.handle.hidden = true; this.view.focus();
   };
   update(update: ViewUpdate) {
+    if (update.docChanged || update.selectionSet || update.focusChanged || update.geometryChanged || update.viewportChanged) this.scheduleSelection();
     if (!update.docChanged && !update.selectionSet && !update.focusChanged) return;
     if (update.docChanged) this.dismissed = null;
     const range = update.state.selection.main;
+    const previous = update.startState.selection.main;
+    if (update.docChanged || previous.from !== range.from || previous.to !== range.to) {
+      this.dismissedSelection = null;
+      this.hideSelection();
+    }
+    if (!range.empty) this.handle.hidden = true;
     if (!this.view.hasFocus || !range.empty || codeContext(this.view, range.head)) { this.close(); return; }
     const line = update.state.doc.lineAt(range.head);
     const prefix = line.text.slice(0, range.head - line.from);
@@ -227,12 +360,22 @@ class BlockUI {
     this.view.focus(); return true;
   }
   escape() {
+    if (!this.toolbar.hidden) {
+      const range = this.view.state.selection.main;
+      this.dismissedSelection = { from: range.from, to: range.to };
+      this.hideSelection(); return true;
+    }
     if (!this.trigger) return false;
     this.dismissed = this.view.state.selection.main.head; this.close(); return true;
   }
   close() { this.trigger = null; this.menu.hidden = true; cancelAnimationFrame(this.menuFrame); }
   destroy() {
-    cancelAnimationFrame(this.frame); cancelAnimationFrame(this.menuFrame); this.menu.remove(); this.handle.remove();
+    cancelAnimationFrame(this.frame); cancelAnimationFrame(this.menuFrame); cancelAnimationFrame(this.selectionFrame);
+    this.menu.remove(); this.handle.remove(); this.toolbar.remove();
+    this.view.dom.removeEventListener('pointerup', this.scheduleSelection);
+    this.view.dom.removeEventListener('touchend', this.scheduleSelection);
+    window.visualViewport?.removeEventListener('resize', this.scheduleSelection);
+    window.visualViewport?.removeEventListener('scroll', this.scheduleSelection);
     this.view.dom.removeEventListener('pointermove', this.onMove);
     this.view.dom.removeEventListener('dragover', this.onDragOver, true);
     this.view.dom.removeEventListener('drop', this.onDrop, true);
