@@ -24,7 +24,14 @@ export async function inspectPdfTail(blob: Blob, density: PdfDensity): Promise<P
     for (const y of baselines) if (!rows.length || Math.abs(rows[rows.length-1]-y)>2) rows.push(y);
     const sparse = rows.length > 0 && rows.length <= 3 && height - top - rows[rows.length-1] <= 96;
     return { pages: pdf.numPages, lines: rows.length, sparse };
-  } finally { await pdf.destroy(); }
+  } finally {
+    // unpdf's portable proxy type intentionally exposes fewer methods than
+    // PDF.js's native proxy. Release whichever cleanup hook is available.
+    try {
+      if ('destroy' in pdf && typeof pdf.destroy === 'function') await pdf.destroy();
+      else if ('cleanup' in pdf && typeof pdf.cleanup === 'function') await pdf.cleanup();
+    } catch { /* Cleanup cannot invalidate an otherwise valid inspection. */ }
+  }
 }
 
 /** One optional retry. All content is re-typeset from the original tree.

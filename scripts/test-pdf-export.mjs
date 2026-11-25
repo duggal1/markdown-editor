@@ -176,7 +176,7 @@ const readBody = async blob => {
       pages.push(content.items.filter(x=>'str' in x).map(x=>x.str).join(' '));
     }
     return pages.join(' ');
-  } finally { await pdf.destroy(); }
+  } finally { if (typeof pdf.destroy === 'function') await pdf.destroy(); else await pdf.cleanup?.(); }
 };
 const compactText = await readBody(compact);
 for(let i=1;i<=hi;i++) assert.ok(compactText.includes('Section item ' + String(i).padStart(3,'0') + ' retains its content.'),'Missing item '+i);
