@@ -24,7 +24,8 @@ import { repairLanguage } from './lib/codeRepair';
 import { repairCodeAction } from './lib/codeRepairAction';
 import { inferTitle, isUntitledTitle } from './lib/title';
 import { editorPosition, previewPosition, restoreEditorPosition } from './lib/scrollPosition';
-import { documentOutline, type OutlineEntry } from './lib/outline';
+import { cancelNavigation } from './lib/scrollMotion';
+import PageOutline from './components/PageOutline';
 import type { SearchHit } from './lib/searchIndex';
 import {
   clearRecovery, loadWorkspace, readPrefs, removeDoc, removeFolder, removeWorkspaceTree,
@@ -111,8 +112,6 @@ export default function App() {
   const [shareOpen, setShareOpen] = useState(false);
   const [htmlSurfaceTone, setHtmlSurfaceTone] = useState<'dark' | 'light'>('dark');
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [outline, setOutline] = useState<OutlineEntry[] | null>(null);
-  const [outlineQuery, setOutlineQuery] = useState('');
   const [pdfExporting, setPdfExporting] = useState(false);
   const [autoFormatting, setAutoFormatting] = useState(false);
   const autoFormatInFlight = useRef(false);
@@ -137,13 +136,17 @@ export default function App() {
     return () => window.removeEventListener('message', onTone);
   }, []);
   const editorAreaRef = useRef<HTMLElement>(null);
-  const targetLine = useRef<{ line: number; total: number; kind: 'scroll' | 'cursor'; id: string } | null>(null);
+  const targetLine = useRef<{ line: number; total: number; kind: 'scroll' | 'cursor' | 'jump'; id: string } | null>(null);
   const syncFrame = useRef<number | null>(null);
   const splitFrame = useRef<number | null>(null);
   const splitNext = useRef<number>(50);
   const lastSyncLine = useRef(-1);
   const scrollOwner = useRef<'editor' | 'preview' | 'transition'>('editor');
-  const modeRestore = useRef<{ id: string; line: number; total: number } | null>(null);
+  const modeRestore = useRef<{ id: string; line: number; total: number; smooth?: boolean } | null>(null);
+  const cancelHeadingMotion = useCallback(() => {
+    cancelNavigation(editorRef.current?.scrollDOM);
+    cancelNavigation(previewScrollRef.current);
+  }, []);
   const workerRef = useRef<Worker | null>(null);
   const searchRequest = useRef(0);
   const saveTimers = useRef(new Map<string, number>());
@@ -430,6 +433,7 @@ export default function App() {
       ...current, markdown: value, title, titleAuto: autoTitle, updatedAt: Date.now(),
     };
     scheduleSave(next);
+    if (id === activeIdRef.current) window.dispatchEvent(new CustomEvent('flow-outline-change', { detail: id }));
     // Coalesce edits to one preview update per animation frame, never after an idle delay.
     if (id === activeIdRef.current && modeRef.current !== 'write') {
       pendingPreview.current = { id, markdown: value };
@@ -497,6 +501,7 @@ export default function App() {
     if (previewTimer.current !== null) { clearTimeout(previewTimer.current); previewTimer.current = null; }
     if (previewFrame.current !== null) { cancelAnimationFrame(previewFrame.current); previewFrame.current = null; }
     setActiveId(id);
+    cancelHeadingMotion();
     targetLine.current = null;
     lastSyncLine.current = -1;
     scrollOwner.current = 'editor';
@@ -510,7 +515,7 @@ export default function App() {
     if (doc.markdown.length >= 25000) workerRef.current?.postMessage({ type: 'metrics', document: { id: doc.id, markdown: doc.markdown, updatedAt: doc.updatedAt } });
     setSaveState('idle');
     if (window.innerWidth < 800) setSidebarOpen(false);
-  }, [flush]);
+  }, [flush, cancelHeadingMotion]);
 
   const makeDocument = useCallback((targetWorkspace?: string, targetFolder?: string, parentId?: string) => {
     if (!workspaces.length) return;
@@ -1208,9 +1213,10 @@ async function eraseDocument(doc: FlowDocument) {
     const target = modeRestore.current;
     if (!target || target.id !== activeIdRef.current) return;
     const view = editorRef.current;
-    if (view && modeRef.current !== 'preview') restoreEditorPosition(view, target.line);
+    if (view && modeRef.current !== 'preview') restoreEditorPosition(view, target.line, target.smooth,
+      target.smooth ? () => modeRestore.current === target : undefined);
     if (modeRef.current !== 'write') {
-      targetLine.current = { ...target, kind: 'scroll' };
+      targetLine.current = { ...target, kind: target.smooth ? 'jump' : 'scroll' };
       dispatchPreviewPosition();
     }
   }, [dispatchPreviewPosition]);
@@ -1231,8 +1237,10 @@ async function eraseDocument(doc: FlowDocument) {
     };
     const claim = () => {
       if (modeRef.current !== 'write') {
+        cancelHeadingMotion();
         scrollOwner.current = 'preview';
         modeRestore.current = null;
+        targetLine.current = null;
         preview.dispatchEvent(new Event('flow-preview-user-scroll'));
       }
     };
@@ -1266,7 +1274,7 @@ async function eraseDocument(doc: FlowDocument) {
       if (frame !== null) cancelAnimationFrame(frame);
       if (readyFrame !== null) cancelAnimationFrame(readyFrame);
     };
-  }, [loaded, restoreModePosition, dispatchPreviewPosition]);
+  }, [loaded, restoreModePosition, dispatchPreviewPosition, cancelHeadingMotion]);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -1305,6 +1313,7 @@ async function eraseDocument(doc: FlowDocument) {
   function changeMode(next: Mode) {
     const previous = modeRef.current;
     if (previous === next) return;
+    cancelHeadingMotion();
     const view = editorRef.current;
     const preview = previewScrollRef.current;
     if (view) {
@@ -1324,21 +1333,33 @@ async function eraseDocument(doc: FlowDocument) {
     setMode(next);
     if (next === 'preview') view?.contentDOM.blur();
   }
-  function openOutline() {
-    setOutlineQuery('');
+  const outlineSource = useCallback(() => editorRef.current?.state.doc.toString()
+    ?? live.current.get(activeIdRef.current)?.markdown ?? '', []);
+  const outlinePosition = useCallback(() => {
     const view = editorRef.current;
-    setOutline(documentOutline(view?.state.doc.toString() ?? live.current.get(activeIdRef.current)?.markdown ?? ''));
-  }
+    if (!view) return 1;
+    if (modeRestore.current?.id === activeIdRef.current) return modeRestore.current.line;
+    return modeRef.current === 'preview' || (modeRef.current === 'split' && scrollOwner.current === 'preview')
+      ? previewScrollRef.current ? previewPosition(previewScrollRef.current, view.state.doc.lines) : 1
+      : editorPosition(view);
+  }, []);
   function jumpToHeading(line: number) {
     const view = editorRef.current;
-    if (!view) return;
-    const target = { id: activeIdRef.current, line, total: view.state.doc.lines };
+    if (!view || line < 1 || line > view.state.doc.lines) return;
+    cancelHeadingMotion();
+    const target = { id: activeIdRef.current, line, total: view.state.doc.lines, smooth: !motionOff };
     modeRestore.current = target;
-    targetLine.current = { ...target, kind: 'scroll' };
+    targetLine.current = { ...target, kind: target.smooth ? 'jump' : 'scroll' };
     scrollOwner.current = 'transition';
-    setOutline(null);
     requestAnimationFrame(restoreModePosition);
   }
+  function claimEditorScroll() {
+    cancelHeadingMotion();
+    scrollOwner.current = 'editor';
+    modeRestore.current = null;
+    targetLine.current = null;
+  }
+  useEffect(() => cancelHeadingMotion, [cancelHeadingMotion]);
   // A phone's Split mode shows two vertically stacked, independently scrolling panes.
   const presentationMode: Mode = mode;
   const gridColumns = presentationMode === 'split' ? `minmax(0, ${splitPercent}fr) minmax(0, ${100 - splitPercent}fr)`
@@ -1470,7 +1491,6 @@ async function eraseDocument(doc: FlowDocument) {
             <Icon name="copy" size={14} /> <span>Copy all</span>
           </motion.button>
           <motion.button {...pressMotion} className="import-action" title="Import files" aria-label="Import files" onClick={() => fileRef.current?.click()}><Icon name="upload" size={14} /><span>Upload</span></motion.button>
-          <button type="button" title="Page outline" aria-label="Page outline" disabled={!active || Boolean(active.asset)} onClick={openOutline}><Icon name="list" size={15} /></button>
         </div>
         <motion.span className="save-indicator" data-save-state={saveState}
             initial={false} aria-hidden={saveState === 'idle'}
@@ -1495,10 +1515,10 @@ async function eraseDocument(doc: FlowDocument) {
         transition={motionOff || resizingSplit || compact || Math.max(active?.markdown.length ?? 0, previewText.length) > 80000 ? { duration: 0 } : { duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
         onAnimationComplete={() => { editorRef.current?.requestMeasure(); restoreModePosition(); }}>
         <section className="editor-pane" aria-label="Write Markdown"
-          onPointerDownCapture={() => { scrollOwner.current = 'editor'; modeRestore.current = null; }}
-          onWheelCapture={() => { scrollOwner.current = 'editor'; modeRestore.current = null; }}
-          onTouchStartCapture={() => { scrollOwner.current = 'editor'; modeRestore.current = null; }}
-          onKeyDownCapture={() => { scrollOwner.current = 'editor'; modeRestore.current = null; }}>
+          onPointerDownCapture={claimEditorScroll}
+          onWheelCapture={claimEditorScroll}
+          onTouchStartCapture={claimEditorScroll}
+          onKeyDownCapture={claimEditorScroll}>
           {active?.asset ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} theme={theme} /> : active && <MarkdownEditor key={active.id} documentId={active.id} initialText={active.markdown}
             fileLanguage={activeFileLanguage} viewRef={editorRef} onChange={onEditorChange} onPosition={onEditorPosition} />}
         </section>
@@ -1518,6 +1538,9 @@ async function eraseDocument(doc: FlowDocument) {
             </Suspense>
           </motion.div>
         </section>
+        {active && !active.asset && !activeHtml && (!activeFileLanguage || activeFileLanguage === 'markdown') &&
+          <PageOutline key={active.id} documentId={active.id} getSource={outlineSource}
+            getPosition={outlinePosition} onJump={jumpToHeading} />}
         {mode === 'split' && !compact && <div className="split-resizer" role="separator" tabIndex={0}
           aria-label="Resize editor and preview" aria-orientation="vertical"
           aria-valuemin={22} aria-valuemax={78} aria-valuenow={Math.round(splitPercent)}
@@ -1566,25 +1589,6 @@ async function eraseDocument(doc: FlowDocument) {
             title={live.current.get(active.id)?.title || active.title}
             getCurrent={() => live.current.get(activeIdRef.current) || null}
             onClose={() => setShareOpen(false)} />)}
-      {outline && <DialogFrame id="outline-dialog" title="Page outline" icon="list" describedBy="outline-description"
-        onClose={() => setOutline(null)} footer={null}>
-        <p id="outline-description" className="settings-sr-only">Jump to a heading in the current page.</p>
-        {outline.length > 0 && <div className="flow-outline-field">
-          <Icon name="search" size={15} />
-          <input className="flow-outline-search" aria-label="Search headings" placeholder="Find a heading…" data-dialog-initial-focus
-            value={outlineQuery} onChange={event => setOutlineQuery(event.target.value)} />
-        </div>}
-        <div className="flow-outline-list">
-          {outline.filter(item => item.title.toLowerCase().includes(outlineQuery.toLowerCase())).slice(0, 300).map(item =>
-            <button type="button" key={item.line} onClick={() => jumpToHeading(item.line)} style={{ paddingInlineStart: 8 + (item.level - 1) * 8 }}>
-              <span>{item.title}</span><small>{item.line}</small>
-            </button>)}
-          {outline.length === 0 && <p className="flow-outline-empty">Add a Markdown heading to navigate this page.</p>}
-          {outline.length > 0 && !outline.some(item => item.title.toLowerCase().includes(outlineQuery.toLowerCase())) &&
-            <p className="flow-outline-empty">No matching headings.</p>}
-          {outline.length > 300 && <p className="flow-dialog-copy">Search to find headings beyond the first 300.</p>}
-        </div>
-      </DialogFrame>}
       {settingsOpen && <DialogFrame id="settings-dialog" title="Settings" icon="settings"
         describedBy="settings-description" onClose={() => setSettingsOpen(false)} footer={<button type="button" className="flow-dialog-button flow-dialog-done" onClick={() => setSettingsOpen(false)}>Done</button>}>
         <p id="settings-description" className="flow-dialog-copy settings-sr-only">Appearance is saved automatically on this device.</p>

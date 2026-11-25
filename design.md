@@ -99,12 +99,16 @@ Settings has immediate appearance selection and a compact accent palette. Share 
 
 
 ## Dense workspace controls and reliable export
-Markdown controls use a 24–26px desktop height, 5–8px horizontal insets and soft 8–9px radii; mobile preserves larger targets. Copy and import are left aligned, save status right aligned. Settings uses an explicit Done control. Draw retains its layout; only the new SVG mark is unboxed. Heading outline is generated on demand. Scroll synchronization keeps a source-line anchor across modes and cancels stale virtual-window jumps on user input. Large pages avoid animated pane reflow. PDFMake's classic font script registers with its public API; the generated PDF, not a private VFS property, determines success. PDF styling is neutral A4 with selectable text, syntax colors and compact tables.
+Markdown controls use a 24–26px desktop height, 5–8px horizontal insets and soft 8–9px radii; mobile preserves larger targets. Copy and import are left aligned, save status right aligned. Settings uses an explicit Done control. Draw retains its layout; only the new SVG mark is unboxed. Heading outline is a compact, vertically centered left rail; headings refresh after edits and on reveal. Scroll synchronization keeps a source-line anchor across modes and cancels stale virtual-window jumps on user input. Large pages avoid animated pane reflow. PDFMake's classic font script registers with its public API; the generated PDF, not a private VFS property, determines success. PDF styling is neutral A4 with selectable text, syntax colors and compact tables.
 
 
 ## Appearance correction
-Appearance is strictly Dark or Light. Blue is a ninth accent (600 in dark, 500 in light), never a background theme. The previous background preference is discarded on save. The toolbar uses the Phosphor regular gear-six settings glyph. The heading outline has a #0d0d0d dark surface, borderless search with a subtle focus fill, and no search control for pages without headings.
+Appearance is strictly Dark or Light. Blue is a ninth accent (600 in dark, 500 in light), never a background theme. The previous background preference is discarded on save. The toolbar uses the Phosphor regular gear-six settings glyph. The heading outline has no toolbar trigger, modal, backdrop, search or line-number chrome. A narrow hierarchy of neutral marks reveals the #0d0d0d heading panel on hover, focus or touch; clicking a heading uses the shared source-line navigation. Empty and non-Markdown pages have no rail.
 
 
 ## HTML runtime routing
 The isolated player maintains app-relative routes without reloading the iframe or granting same-origin privileges. Relative and root-relative links, history push/replace, back/forward and hash notifications share a route bridge. Single-file HTML can declare route panels with data-flow-route, or handle the flow:route event and read window.__FLOW_SITE_ROUTE__. The hosted API serves the same committed source on validated SPA subroutes. Missing screens and arbitrary server endpoints must be supplied by the HTML author, not fabricated by the player.
+
+
+## Outline motion
+The left rail and heading panel use reversible opacity/transform transitions with a shared decelerating curve. A single sliding row highlight follows hover and keyboard focus; no animated geometry or blur. Explicit heading navigation uses refresh-rate-aware time-based easing, cancels on direct interaction, and retains immediate source synchronization. Very distant virtualized jumps seek near the destination before easing the final travel. Native wheel and touch scrolling stay native. Reduced-motion disables transitions and animated jumps.
