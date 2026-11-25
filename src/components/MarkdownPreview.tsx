@@ -1,6 +1,7 @@
 import { createContext, memo, useContext, useDeferredValue, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { ReactNode } from 'react';
 import { svgPreviewDocument } from '../lib/svgPreview';
+import { cancelNavigation, navigateScroll } from '../lib/scrollMotion';
 import { htmlPreviewDocument } from '../lib/htmlPreview';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -53,13 +54,13 @@ function TaskCheckbox({ type, checked }: React.InputHTMLAttributes<HTMLInputElem
     aria-label={checked ? 'Mark task incomplete' : 'Mark task complete'}
     disabled={!onToggle} onChange={event => onToggle?.(line, event.currentTarget.checked)} />;
 }
-type PositionEvent = CustomEvent<{ line: number; total: number; kind: 'scroll' | 'cursor' }>;
-function locatePreview(scroll: HTMLDivElement, line: number, kind: 'scroll' | 'cursor',
+type PositionEvent = CustomEvent<{ line: number; total: number; kind: 'scroll' | 'cursor' | 'jump' }>;
+function locatePreview(scroll: HTMLDivElement, line: number, kind: 'scroll' | 'cursor' | 'jump',
   section?: HTMLElement) {
   // The virtual preview can have hundreds of anchors. Only examine the
   // requested mounted section instead of querying every visible chunk.
   const anchored = (section || scroll).querySelectorAll<HTMLElement>('[data-source-line]');
-  if (line <= 1) { scroll.scrollTop = 0; return; }
+  if (line <= 1) { navigateScroll(scroll, 0, kind === 'jump', Boolean(section)); return; }
   if (!anchored.length) {
     if (line <= 1) scroll.scrollTop = 0;
     return;
@@ -85,7 +86,7 @@ function locatePreview(scroll: HTMLDivElement, line: number, kind: 'scroll' | 'c
     target <= scroll.scrollTop + scroll.clientHeight * 0.78) return;
   const destination = Math.max(0, target - (kind === 'cursor' ? scroll.clientHeight * 0.30 : 12));
   // Avoid a subpixel scroll write and layout invalidation every frame.
-  if (Math.abs(destination - scrollTop) > 2) scroll.scrollTop = destination;
+  if (Math.abs(destination - scrollTop) > 2 || kind !== 'jump') navigateScroll(scroll, destination, kind === 'jump', Boolean(section));
 }
 
 const aliases: Record<string, string> = {
@@ -363,8 +364,9 @@ function VirtualMarkdown({ markdown, scrollRef }: {
       if (!scroll || !latest) return;
       const { line, total, kind } = latest;
       if (settle !== null) { cancelAnimationFrame(settle); settle = null; }
-      if (line <= 1) { scroll.scrollTop = 0; return; }
+      if (line <= 1) { navigateScroll(scroll, 0, kind === 'jump', true); return; }
       if (line >= total) {
+        if (kind === 'jump') { navigateScroll(scroll, scroll.scrollHeight, true, true); return; }
         virtualizer.scrollToIndex(chunks.length - 1, { align: 'end' });
         if (settle !== null) cancelAnimationFrame(settle);
         settle = requestAnimationFrame(() => {
@@ -389,6 +391,7 @@ function VirtualMarkdown({ markdown, scrollRef }: {
       // Jump to the nearest virtual chunk immediately, then land on its
       // exact source anchor after React mounts it. One frame was insufficient
       // during heavy Markdown rendering, leaving the preview behind.
+      cancelNavigation(scroll);
       virtualizer.scrollToIndex(index, { align: 'start' });
       if (settle !== null) cancelAnimationFrame(settle);
       let attempts = 0;
@@ -430,6 +433,7 @@ function VirtualMarkdown({ markdown, scrollRef }: {
     }
     function cancelSync() {
       latest = null;
+      cancelNavigation(scroll);
       if (pending !== null) { cancelAnimationFrame(pending); pending = null; }
       if (settle !== null) { cancelAnimationFrame(settle); settle = null; }
     }
@@ -439,6 +443,7 @@ function VirtualMarkdown({ markdown, scrollRef }: {
     return () => {
       scroll.removeEventListener('flow-preview-position', onPosition);
       scroll.removeEventListener('flow-preview-user-scroll', cancelSync);
+      cancelNavigation(scroll);
       if (pending !== null) cancelAnimationFrame(pending);
       if (settle !== null) cancelAnimationFrame(settle);
     };
@@ -487,7 +492,7 @@ function MarkdownPreview({ markdown, sourceLanguage, scrollRef, theme, onToggleT
         return;
       }
       if (line >= total && total > 1) {
-        scroll.scrollTop = scroll.scrollHeight - scroll.clientHeight;
+        navigateScroll(scroll, scroll.scrollHeight, kind === 'jump');
         return;
       }
       if (detected) {
@@ -500,7 +505,13 @@ function MarkdownPreview({ markdown, sourceLanguage, scrollRef, theme, onToggleT
     };
     scroll.addEventListener('flow-preview-position', onPosition);
     scroll.dispatchEvent(new Event('flow-preview-ready'));
-    return () => scroll.removeEventListener('flow-preview-position', onPosition);
+    const cancel = () => cancelNavigation(scroll);
+    scroll.addEventListener('flow-preview-user-scroll', cancel);
+    return () => {
+      scroll.removeEventListener('flow-preview-position', onPosition);
+      scroll.removeEventListener('flow-preview-user-scroll', cancel);
+      cancelNavigation(scroll);
+    };
   }, [detected, scrollRef, virtual, html, value]);
   const body = !value.trim()
     ? <article className="markdown-preview"><p className="empty-preview">Nothing to preview.</p></article>

@@ -1,4 +1,5 @@
 import type { EditorView } from '@codemirror/view';
+import { navigateScroll } from './scrollMotion';
 
 export function editorPosition(view: EditorView): number {
   const scroll = view.scrollDOM;
@@ -50,7 +51,7 @@ export function previewPosition(scroll: HTMLDivElement, total: number): number {
     (top - rect.top) / Math.max(1, end - rect.top))) * Math.max(0, b - a)));
 }
 
-export function restoreEditorPosition(view: EditorView, line: number) {
+export function restoreEditorPosition(view: EditorView, line: number, smooth = false, isCurrent?: () => boolean) {
   view.requestMeasure({
     read: v => {
       const scroll = v.scrollDOM;
@@ -63,7 +64,7 @@ export function restoreEditorPosition(view: EditorView, line: number) {
         (block.top + (line % 1) * block.height) * (v.scaleY || 1);
     },
     write: (top, v) => {
-      if (top !== null && Math.abs(v.scrollDOM.scrollTop - top) > 2) v.scrollDOM.scrollTop = top;
+      if (top !== null && (!isCurrent || isCurrent())) navigateScroll(v.scrollDOM, top, smooth, true);
     },
   });
 }

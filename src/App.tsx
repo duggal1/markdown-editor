@@ -24,6 +24,7 @@ import { repairLanguage } from './lib/codeRepair';
 import { repairCodeAction } from './lib/codeRepairAction';
 import { inferTitle, isUntitledTitle } from './lib/title';
 import { editorPosition, previewPosition, restoreEditorPosition } from './lib/scrollPosition';
+import { cancelNavigation } from './lib/scrollMotion';
 import PageOutline from './components/PageOutline';
 import type { SearchHit } from './lib/searchIndex';
 import {
@@ -135,13 +136,17 @@ export default function App() {
     return () => window.removeEventListener('message', onTone);
   }, []);
   const editorAreaRef = useRef<HTMLElement>(null);
-  const targetLine = useRef<{ line: number; total: number; kind: 'scroll' | 'cursor'; id: string } | null>(null);
+  const targetLine = useRef<{ line: number; total: number; kind: 'scroll' | 'cursor' | 'jump'; id: string } | null>(null);
   const syncFrame = useRef<number | null>(null);
   const splitFrame = useRef<number | null>(null);
   const splitNext = useRef<number>(50);
   const lastSyncLine = useRef(-1);
   const scrollOwner = useRef<'editor' | 'preview' | 'transition'>('editor');
-  const modeRestore = useRef<{ id: string; line: number; total: number } | null>(null);
+  const modeRestore = useRef<{ id: string; line: number; total: number; smooth?: boolean } | null>(null);
+  const cancelHeadingMotion = useCallback(() => {
+    cancelNavigation(editorRef.current?.scrollDOM);
+    cancelNavigation(previewScrollRef.current);
+  }, []);
   const workerRef = useRef<Worker | null>(null);
   const searchRequest = useRef(0);
   const saveTimers = useRef(new Map<string, number>());
@@ -496,6 +501,7 @@ export default function App() {
     if (previewTimer.current !== null) { clearTimeout(previewTimer.current); previewTimer.current = null; }
     if (previewFrame.current !== null) { cancelAnimationFrame(previewFrame.current); previewFrame.current = null; }
     setActiveId(id);
+    cancelHeadingMotion();
     targetLine.current = null;
     lastSyncLine.current = -1;
     scrollOwner.current = 'editor';
@@ -509,7 +515,7 @@ export default function App() {
     if (doc.markdown.length >= 25000) workerRef.current?.postMessage({ type: 'metrics', document: { id: doc.id, markdown: doc.markdown, updatedAt: doc.updatedAt } });
     setSaveState('idle');
     if (window.innerWidth < 800) setSidebarOpen(false);
-  }, [flush]);
+  }, [flush, cancelHeadingMotion]);
 
   const makeDocument = useCallback((targetWorkspace?: string, targetFolder?: string, parentId?: string) => {
     if (!workspaces.length) return;
@@ -1207,9 +1213,10 @@ async function eraseDocument(doc: FlowDocument) {
     const target = modeRestore.current;
     if (!target || target.id !== activeIdRef.current) return;
     const view = editorRef.current;
-    if (view && modeRef.current !== 'preview') restoreEditorPosition(view, target.line);
+    if (view && modeRef.current !== 'preview') restoreEditorPosition(view, target.line, target.smooth,
+      target.smooth ? () => modeRestore.current === target : undefined);
     if (modeRef.current !== 'write') {
-      targetLine.current = { ...target, kind: 'scroll' };
+      targetLine.current = { ...target, kind: target.smooth ? 'jump' : 'scroll' };
       dispatchPreviewPosition();
     }
   }, [dispatchPreviewPosition]);
@@ -1230,8 +1237,10 @@ async function eraseDocument(doc: FlowDocument) {
     };
     const claim = () => {
       if (modeRef.current !== 'write') {
+        cancelHeadingMotion();
         scrollOwner.current = 'preview';
         modeRestore.current = null;
+        targetLine.current = null;
         preview.dispatchEvent(new Event('flow-preview-user-scroll'));
       }
     };
@@ -1265,7 +1274,7 @@ async function eraseDocument(doc: FlowDocument) {
       if (frame !== null) cancelAnimationFrame(frame);
       if (readyFrame !== null) cancelAnimationFrame(readyFrame);
     };
-  }, [loaded, restoreModePosition, dispatchPreviewPosition]);
+  }, [loaded, restoreModePosition, dispatchPreviewPosition, cancelHeadingMotion]);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -1304,6 +1313,7 @@ async function eraseDocument(doc: FlowDocument) {
   function changeMode(next: Mode) {
     const previous = modeRef.current;
     if (previous === next) return;
+    cancelHeadingMotion();
     const view = editorRef.current;
     const preview = previewScrollRef.current;
     if (view) {
@@ -1336,12 +1346,20 @@ async function eraseDocument(doc: FlowDocument) {
   function jumpToHeading(line: number) {
     const view = editorRef.current;
     if (!view || line < 1 || line > view.state.doc.lines) return;
-    const target = { id: activeIdRef.current, line, total: view.state.doc.lines };
+    cancelHeadingMotion();
+    const target = { id: activeIdRef.current, line, total: view.state.doc.lines, smooth: !motionOff };
     modeRestore.current = target;
-    targetLine.current = { ...target, kind: 'scroll' };
+    targetLine.current = { ...target, kind: target.smooth ? 'jump' : 'scroll' };
     scrollOwner.current = 'transition';
     requestAnimationFrame(restoreModePosition);
   }
+  function claimEditorScroll() {
+    cancelHeadingMotion();
+    scrollOwner.current = 'editor';
+    modeRestore.current = null;
+    targetLine.current = null;
+  }
+  useEffect(() => cancelHeadingMotion, [cancelHeadingMotion]);
   // A phone's Split mode shows two vertically stacked, independently scrolling panes.
   const presentationMode: Mode = mode;
   const gridColumns = presentationMode === 'split' ? `minmax(0, ${splitPercent}fr) minmax(0, ${100 - splitPercent}fr)`
@@ -1497,10 +1515,10 @@ async function eraseDocument(doc: FlowDocument) {
         transition={motionOff || resizingSplit || compact || Math.max(active?.markdown.length ?? 0, previewText.length) > 80000 ? { duration: 0 } : { duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
         onAnimationComplete={() => { editorRef.current?.requestMeasure(); restoreModePosition(); }}>
         <section className="editor-pane" aria-label="Write Markdown"
-          onPointerDownCapture={() => { scrollOwner.current = 'editor'; modeRestore.current = null; }}
-          onWheelCapture={() => { scrollOwner.current = 'editor'; modeRestore.current = null; }}
-          onTouchStartCapture={() => { scrollOwner.current = 'editor'; modeRestore.current = null; }}
-          onKeyDownCapture={() => { scrollOwner.current = 'editor'; modeRestore.current = null; }}>
+          onPointerDownCapture={claimEditorScroll}
+          onWheelCapture={claimEditorScroll}
+          onTouchStartCapture={claimEditorScroll}
+          onKeyDownCapture={claimEditorScroll}>
           {active?.asset ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} theme={theme} /> : active && <MarkdownEditor key={active.id} documentId={active.id} initialText={active.markdown}
             fileLanguage={activeFileLanguage} viewRef={editorRef} onChange={onEditorChange} onPosition={onEditorPosition} />}
         </section>

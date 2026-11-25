@@ -83,7 +83,62 @@ assert.match(app, /<PageOutline[\s\S]*?onJump=\{jumpToHeading\}/);
 assert.match(css, /\.page-outline-rail\s*\{[\s\S]*?left:5px; top:50%; transform:translateY\(-50%\)/);
 assert.match(outline, /onPointerEnter=/);
 assert.match(outline, /onPointerLeave=\{leave\}/);
-assert.match(outline, /\{open && <div/);
+assert.match(outline, /\{mounted && <div[\s\S]*?inert=\{!open\}/);
+assert.match(css, /\.page-outline-panel\[data-open='true'\]/);
+assert.match(css, /\.page-outline-hover\s*\{[\s\S]*?transition:transform 210ms/);
+assert.match(app, /cancelHeadingMotion\(\)/);
+const scrollModule = { exports: {} };
+let frameId = 0, time = 0;
+const frames = new Map();
+const scroll = { scrollTop: 0, scrollHeight: 10000, clientHeight: 500 };
+let reduced = false;
+runInNewContext(ts.transpileModule(read('src/lib/scrollMotion.ts'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText, {
+  module: scrollModule, exports: scrollModule.exports,
+  performance: { now: () => time },
+  window: { matchMedia: () => ({ matches: reduced }) },
+  requestAnimationFrame: callback => { frames.set(++frameId, callback); return frameId; },
+  cancelAnimationFrame: id => frames.delete(id),
+});
+const { navigationEase, navigationDuration, navigateScroll, cancelNavigation } = scrollModule.exports;
+assert.equal(navigationEase(0), 0);
+assert.equal(navigationEase(1), 1);
+assert.equal(navigationEase(.5), .5);
+assert.ok(navigationDuration(10000, 500) <= 560);
+function advance(dt) {
+  time += dt;
+  const callbacks = [...frames.values()];
+  frames.clear();
+  callbacks.forEach(cb => cb(time));
+}
+navigateScroll(scroll, 450, true);
+assert.equal(frames.size, 1);
+navigateScroll(scroll, 450, true);
+assert.equal(frames.size, 1);
+advance(100);
+assert.ok(scroll.scrollTop > 0 && scroll.scrollTop < 450);
+cancelNavigation(scroll);
+const stopped = scroll.scrollTop;
+advance(500);
+assert.equal(scroll.scrollTop, stopped);
+navigateScroll(scroll, 900, true);
+for (let i = 0; i < 60; i++) advance(1000 / 90);
+assert.equal(scroll.scrollTop, 900);
+assert.equal(frames.size, 0);
+navigateScroll(scroll, 9000, true, true);
+assert.equal(scroll.scrollTop, 8375);
+for (let i = 0; i < 60; i++) advance(1000 / 60);
+assert.equal(scroll.scrollTop, 9000);
+navigateScroll(scroll, 0, true);
+advance(16);
+navigateScroll(scroll, 300, false);
+assert.equal(scroll.scrollTop, 300);
+assert.equal(frames.size, 0);
+reduced = true;
+navigateScroll(scroll, 500, true);
+assert.equal(scroll.scrollTop, 500);
+assert.equal(frames.size, 0);
 assert.match(outline, /onJump\(item\.line\)/);
 assert.match(outline, /if \(!entries\.length\) return null/);
 const outlineModule = { exports: {} };

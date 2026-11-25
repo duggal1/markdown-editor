@@ -108,3 +108,7 @@ Appearance is strictly Dark or Light. Blue is a ninth accent (600 in dark, 500 i
 
 ## HTML runtime routing
 The isolated player maintains app-relative routes without reloading the iframe or granting same-origin privileges. Relative and root-relative links, history push/replace, back/forward and hash notifications share a route bridge. Single-file HTML can declare route panels with data-flow-route, or handle the flow:route event and read window.__FLOW_SITE_ROUTE__. The hosted API serves the same committed source on validated SPA subroutes. Missing screens and arbitrary server endpoints must be supplied by the HTML author, not fabricated by the player.
+
+
+## Outline motion
+The left rail and heading panel use reversible opacity/transform transitions with a shared decelerating curve. A single sliding row highlight follows hover and keyboard focus; no animated geometry or blur. Explicit heading navigation uses refresh-rate-aware time-based easing, cancels on direct interaction, and retains immediate source synchronization. Very distant virtualized jumps seek near the destination before easing the final travel. Native wheel and touch scrolling stay native. Reduced-motion disables transitions and animated jumps.
