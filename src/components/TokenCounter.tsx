@@ -1,12 +1,13 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import '@fontsource-variable/instrument-sans/wght.css';
 import { countTokensCooperative } from '../lib/tokenizer';
+import { countAssetTokens } from '../lib/imageTokens';
 import { SCRAMBLE_MS, scrambleDigits } from '../lib/tokenScramble';
 
-type Source = { markdown: string; asset?: Blob };
+type Source = { markdown: string; asset?: Blob; fileType?: 'text' | 'image' | 'binary' };
 type Result = { count: number; revision: number };
 const format = new Intl.NumberFormat(undefined, { numberingSystem: 'latn' });
-const DESCRIPTION = 'Flow lexical tokens: words, identifiers, punctuation, emoji and source markup. Whitespace excluded; each opaque attachment counts as one token. Not an LLM token estimate.';
+const DESCRIPTION = 'Flow lexical tokens: words, identifiers, punctuation, emoji and source markup. Whitespace excluded. Local raster images use 32 × 32 pixel patches; unknown files count as one attachment. Remote images count as source references. Not an LLM token estimate.';
 
 function Digits({ result }: { result: Result }) {
   const target = format.format(result.count);
@@ -61,14 +62,16 @@ function TokenCounter({ documentId, readSource }: { documentId: string; readSour
     const submit = () => {
       if (disposed || busy) return;
       const doc = readSource(documentId);
-      const job = { revision, source: doc?.markdown || '', hasAsset: Boolean(doc?.asset) };
+      const job = { revision, source: doc?.markdown || '', asset: doc?.asset, isImage: doc?.fileType === 'image' };
       busy = true;
       if (worker) {
         try { worker.postMessage(job); return; }
         catch { worker.terminate(); worker = undefined; }
       }
-      void countTokensCooperative(job.source, job.hasAsset, () => disposed || revision !== job.revision)
-        .then(count => {
+      const cancelled = () => disposed || revision !== job.revision;
+      void Promise.all([countTokensCooperative(job.source, false, cancelled),
+        countAssetTokens(job.asset, job.isImage)]).then(([text, asset]) => {
+          const count = text === null ? null : text + asset;
           if (disposed) return;
           if (count === null) { busy = false; schedule(); }
           else complete({ revision: job.revision, count });
