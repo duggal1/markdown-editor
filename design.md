@@ -115,4 +115,4 @@ The left rail and heading panel use reversible opacity/transform transitions wit
 
 
 ## Preview colors and dark dialogs
-Hex literals in preview text, inline code, tables and source blocks display their actual swatches; editable literals map to exact source offsets and share the custom HSV/alpha picker with CodeMirror. A stale preview must never change a different literal. Shared public pages remain read-only. Settings and Share use a near-black #080808 surface, #111111 controls, compact spacing and regular-weight type. Explicit heading scroll uses a longer quintic ease with bounded travel for extreme distances.
+Hex literals in preview text, inline code, tables and source blocks display real inline-painted swatches. Preview is read-only: no picker, no source edits. The custom HSV/alpha picker remains in CodeMirror. Shared public pages remain read-only. Settings and Share use a near-black #080808 surface, #111111 controls, compact spacing and regular-weight type. Explicit heading scroll uses a longer quintic ease with bounded travel for extreme distances.

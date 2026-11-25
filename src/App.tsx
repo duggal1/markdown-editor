@@ -491,20 +491,6 @@ export default function App() {
     if (updated) setDocs(items => items.map(doc => doc.id === id ? updated : doc));
   }, [onEditorChange]);
 
-  const onEditColor = useCallback((from: number, before: string, after: string, expected: string) => {
-    const id = activeIdRef.current;
-    const view = editorRef.current;
-    // Reject stale deferred previews, even when two identical literals exist.
-    if (!view || live.current.get(id)?.asset || view.state.doc.toString() !== expected ||
-        view.state.doc.sliceString(from, from + before.length) !== before) return false;
-    if (before === after) return true;
-    view.dispatch({ changes: { from, to: from + before.length, insert: after }, userEvent: 'input' });
-    const next = view.state.doc.toString();
-    onEditorChange(next, id);
-    setPreviewText(next);
-    return true;
-  }, [onEditorChange]);
-
   const selectDocument = useCallback((id: string) => {
     const doc = live.current.get(id);
     if (!doc) return;
@@ -1548,7 +1534,7 @@ async function eraseDocument(doc: FlowDocument) {
             <Suspense fallback={<div className="preview-loading">Rendering…</div>}>
               {presentationMode !== 'write' && (active?.asset
                 ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} theme={theme} />
-                : <MarkdownPreview key={active?.id || 'preview'} markdown={previewText} sourceLanguage={active?.language} scrollRef={previewScrollRef} theme={theme} onToggleTask={onToggleTask} onEditColor={onEditColor} />)}
+                : <MarkdownPreview key={active?.id || 'preview'} markdown={previewText} sourceLanguage={active?.language} scrollRef={previewScrollRef} theme={theme} onToggleTask={onToggleTask} />)}
             </Suspense>
           </motion.div>
         </section>
