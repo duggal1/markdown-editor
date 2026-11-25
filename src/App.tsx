@@ -6,7 +6,8 @@ import type { EditorView } from '@codemirror/view';
 import MarkdownEditor, { formatEditor } from './components/MarkdownEditor';
 import { setTaskChecked, taskMarkerEdit } from './lib/taskList';
 import WorkspaceTree from './components/WorkspaceTree';
-import { rankDocuments, restoreRecent, touchRecent } from './lib/workspaceRecency';
+import { finishVisit, rankDocuments, restoreRecent } from './lib/workspaceRecency';
+import { canExpireDraft, EMPTY_DRAFT_IDLE_MS } from './lib/emptyDraft';
 import { FlowMark, Icon, SuppliedIcon } from './components/Icons';
 import { ACCENT_THEMES, applyAccentTheme, parseAccentTheme, type AccentTheme } from './lib/accentTheme';
 import { downloadMarkdown } from './lib/document';
@@ -33,7 +34,7 @@ import TokenCounter from './components/TokenCounter';
 import { localSaveDelay } from './lib/saveSchedule';
 import type { SearchHit } from './lib/searchIndex';
 import {
-  clearRecovery, loadWorkspace, readPrefs, removeDoc, removeFolder, removeWorkspaceTree,
+  clearRecovery, loadDoc, loadWorkspace, readPrefs, removeDoc, removeEmptyDraft, removeFolder, removeWorkspaceTree,
   saveDoc, saveFolder, savePrefs, saveRecovery, uid,
   type FlowDocument, type Folder, type Mode, type Theme, type Workspace,
 } from './lib/store';
@@ -119,6 +120,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [compact, setCompact] = useState(() => window.matchMedia('(max-width: 800px)').matches);
   const [recentIds, setRecentIds] = useState<string[]>([]);
+  const draftDeadlines = useRef(new Map<string, number>());
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchHit[]>([]);
   const [searchPending, setSearchPending] = useState(false);
@@ -268,7 +270,7 @@ export default function App() {
       activeIdRef.current = first.id;
       setActiveId(first.id);
       setWorkspaceId(chosenWorkspace.id);
-      setRecentIds(restoreRecent(prefs.recentIds, first.id, new Set(live.current.keys())));
+      setRecentIds(restoreRecent(prefs.recentIds, restored));
       setTheme(prefs.theme === 'dark' || prefs.theme === 'light' ? prefs.theme
         : 'dark');
       setAccentTheme(parseAccentTheme(prefs.accentTheme));
@@ -486,7 +488,6 @@ export default function App() {
       ...current, markdown: value, title, titleAuto: autoTitle, updatedAt: Date.now(),
     };
     scheduleSave(next);
-    setRecentIds(ids => touchRecent(ids, id));
     if (id === activeIdRef.current) window.dispatchEvent(new CustomEvent('flow-outline-change', { detail: id }));
     // Coalesce edits to one preview update per animation frame, never after an idle delay.
     if (id === activeIdRef.current && modeRef.current !== 'write') {
@@ -564,7 +565,10 @@ export default function App() {
     const doc = live.current.get(id);
     if (!doc) return;
     const previous = activeIdRef.current;
-    if (previous && previous !== id) flush(previous);
+    if (previous && previous !== id) {
+      flush(previous);
+      setRecentIds(ids => finishVisit(ids, previous, id, live.current.has(previous)));
+    }
     activeIdRef.current = id;
     pendingPreview.current = null;
     if (previewTimer.current !== null) { clearTimeout(previewTimer.current); previewTimer.current = null; }
@@ -586,7 +590,6 @@ export default function App() {
       });
       return changed ? next : current;
     });
-    setRecentIds(current => touchRecent(current, id));
     setPreviewText(doc.markdown);
     setSaveState('idle');
     if (window.innerWidth < 800) setSidebarOpen(false);
@@ -626,7 +629,7 @@ export default function App() {
   }
 
 
-async function eraseDocument(doc: FlowDocument) {
+async function eraseDocument(doc: FlowDocument, automatic = false) {
     // Remove the row instantly. Cloud revocation and IndexedDB writes are
     // asynchronous; restore the original page if any required operation fails.
     const pendingSave = saveQueue.current.get(doc.id);
@@ -654,7 +657,17 @@ async function eraseDocument(doc: FlowDocument) {
         shared ? revokeCloudShare(doc.id, shared) : Promise.resolve(),
         hosted ? revokeHtml(doc.id) : Promise.resolve(),
       ]);
-      await removeDoc(doc.id);
+      if (automatic) {
+        if (!await removeEmptyDraft(doc)) {
+          // A newer persisted revision may have prevented deletion. Restore
+          // that revision instead of exposing the old blank snapshot for editing.
+          const restored = await loadDoc(doc.id) || doc;
+          live.current.set(restored.id, restored);
+          setDocs([...live.current.values()]);
+          workerRef.current?.postMessage({ type: 'upsert', document: { id: restored.id, workspaceId: restored.workspaceId, title: restored.title, markdown: restored.markdown, updatedAt: restored.updatedAt } });
+          return;
+        }
+      } else await removeDoc(doc.id);
       // Deleting a page does not delete its subpages. Missing parents are also
       // rendered as roots if a save is interrupted.
       for (const child of live.current.values()) if (child.parentId === doc.id) {
@@ -848,7 +861,7 @@ async function eraseDocument(doc: FlowDocument) {
       setNotice('Workspace deletion could not finish. Its files were restored; check public share links.');
     }
   }
-  async function deleteTarget(target: { kind: 'document' | 'workspace'; id: string }) {
+  async function deleteTarget(target: { kind: 'document' | 'workspace'; id: string }, automatic = false) {
     const operationKey = target.kind + ':' + target.id;
     if (deletionsInFlight.current.has(operationKey)) return;
     deletionsInFlight.current.add(operationKey);
@@ -856,7 +869,8 @@ async function eraseDocument(doc: FlowDocument) {
       if (target.kind === 'workspace') await eraseWorkspace(target.id);
       else {
         const doc = live.current.get(target.id);
-        if (doc) await eraseDocument(doc);
+        if (doc && (!automatic || canExpireDraft(doc, activeIdRef.current, live.current.values(),
+          Boolean(readShareRecord(doc.id) || readSiteRecord(doc.id))))) await eraseDocument(doc, automatic);
       }
     } finally {
       deletionsInFlight.current.delete(operationKey);
@@ -1455,6 +1469,39 @@ async function eraseDocument(doc: FlowDocument) {
     whileTap: { scale: 0.985 },
     transition: { duration: 0.17, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
   };
+  // Start the grace period only while a blank draft is not the active page.
+  // Keep deadlines across unrelated renders; reopen cancels the countdown.
+  useEffect(() => {
+    if (!loaded) return;
+    const eligible = new Set<string>();
+    const timers: number[] = [];
+    const deadlines = draftDeadlines.current;
+    for (const doc of live.current.values()) {
+      if (!canExpireDraft(doc, activeIdRef.current, live.current.values(),
+        Boolean(readShareRecord(doc.id) || readSiteRecord(doc.id)))) continue;
+      eligible.add(doc.id);
+      if (!deadlines.has(doc.id)) deadlines.set(doc.id, Date.now() + EMPTY_DRAFT_IDLE_MS);
+      const expire = () => {
+        const current = live.current.get(doc.id);
+        if (!current || !canExpireDraft(current, activeIdRef.current, live.current.values(),
+          Boolean(readShareRecord(doc.id) || readSiteRecord(doc.id)))) {
+          deadlines.delete(doc.id); return;
+        }
+        // Let an outstanding local commit settle before evaluating the stored draft.
+        if (saveQueue.current.has(doc.id) || saveTimers.current.has(doc.id)) {
+          timers.push(window.setTimeout(expire, 500)); return;
+        }
+        deadlines.delete(doc.id);
+        void deleteTarget({ kind: 'document', id: doc.id }, true);
+      };
+      timers.push(window.setTimeout(expire, Math.max(0, deadlines.get(doc.id)! - Date.now())));
+    }
+    for (const id of deadlines.keys()) if (!eligible.has(id)) deadlines.delete(id);
+    return () => { for (const timer of timers) clearTimeout(timer); };
+    // Deletion uses current refs and the existing guarded persistence path.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, docs, activeId]);
+  const previousPageId = recentIds.find(id => id !== activeId && live.current.has(id));
   const treeActions = useTreeActions({
     onOpen: selectDocument, onNewFolder: createFolder, onNewDocument: makeDocument,
     onRenameFolder: renameFolder, onRenameDocument: renameDocument, onDuplicateDocument: duplicateDocument,
@@ -1512,7 +1559,7 @@ async function eraseDocument(doc: FlowDocument) {
             : <button className="sidebar-bottom-action" onClick={() => { void copyRecoveryKey(); }}
                 title="Keep this private key outside your browser to restore after clearing site data">
                 <Icon name="copy" size={16} /> Copy recovery key</button>}
-          <button className="sidebar-bottom-action" onClick={() => { if (recentIds[1]) selectDocument(recentIds[1]); }} disabled={!recentIds[1]}><Icon name="history" size={16} /> Previous page</button>
+          <button className="sidebar-bottom-action" onClick={() => { if (previousPageId) selectDocument(previousPageId); }} disabled={!previousPageId}><Icon name="history" size={16} /> Previous page</button>
         </div>
       </motion.div>
     </motion.aside>
