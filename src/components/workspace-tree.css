@@ -152,7 +152,7 @@
 .private-page-row,.private-root-drop button { border-radius:7px; }
 .filetree-menu.private-page-menu { border-radius:9px; }
 
-/* The global workspace is a protected root over all stored workspaces. */
+/* The protected workspace holds unfiled pages; real folders are its siblings. */
 .private-tree-heading { font-weight:500; }
 .workspace-root-row { height:30px; gap:4px; padding:0 3px 0 2px; border-radius:7px; }
 .workspace-root-row.is-drop { outline:1px solid var(--flow-accent); outline-offset:-1px; background:var(--neutral-200); }
@@ -167,3 +167,7 @@
 .workspace-glyph { flex:none; display:block; }
 .filetree-result-open > .workspace-glyph { margin-top:2px; color:var(--muted); }
 @media (prefers-reduced-motion:reduce) { .workspace-root-chevron svg { transition:none; } }
+
+.workspace-sibling-folder { min-width:0; }
+.workspace-sibling-folder > .private-folder-row { cursor:pointer; }
+.workspace-sibling-folder > .private-folder-row .filetree-label { font-weight:500; }

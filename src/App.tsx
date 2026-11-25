@@ -712,6 +712,7 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
     if (!workspaces.some(ws => ws.id === targetWorkspace)) return;
     const folder: Folder = { id: uid(), workspaceId: targetWorkspace, name: 'New folder', createdAt: Date.now() };
     setFolders(items => [...items, folder]);
+    setQuery('');
     setNewFolderId(folder.id);
     void saveFolder(folder).catch(() => setNotice('Folder could not be saved.'));
   }
