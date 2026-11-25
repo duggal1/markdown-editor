@@ -1,6 +1,6 @@
 import { createContext, memo, useContext, useDeferredValue, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { ReactNode } from 'react';
-import { svgPreviewDocument } from '../lib/svgPreview';
+import { SvgInspector } from './SvgInspector';
 import { cancelNavigation, navigateScroll } from '../lib/scrollMotion';
 import { rehypePreviewColors } from '../lib/previewColors';
 import { hexOccurrences } from '../lib/hexColor';
@@ -38,6 +38,7 @@ const safeMarkdownHtml = {
   },
 };
 const ThemeContext = createContext<'light' | 'dark'>('light');
+const SvgEditContext = createContext<((source: string, next: string, line: number) => boolean) | null>(null);
 const LineContext = createContext(0);
 const TaskLineContext = createContext<number | null>(null);
 const TaskToggleContext = createContext<((line: number, checked: boolean) => void) | null>(null);
@@ -225,10 +226,10 @@ function colorCodeHtml(value: string, html: string): string {
   return template.innerHTML;
 }
 /** SVG is artwork, never an accompanying source viewer. The editor retains its source. */
-function SvgCanvas({ source }: { source: string }) {
+function SvgCanvas({ source, line = 1 }: { source: string; line?: number }) {
   const theme = useContext(ThemeContext);
-  const document = useMemo(() => svgPreviewDocument(source, theme), [source, theme]);
-  return <div className="svg-preview"><iframe title="SVG preview" sandbox="" referrerPolicy="no-referrer" srcDoc={document} /></div>;
+  const edit = useContext(SvgEditContext);
+  return <SvgInspector source={source} theme={theme} onEdit={edit ? (next) => edit(source, next, line) : undefined} />;
 }
 function VirtualCodeBlock({ code, rawLanguage }: { code: string; rawLanguage: string }) {
   const ref = useRef<HTMLPreElement>(null);
@@ -259,8 +260,8 @@ function VirtualCodeBlock({ code, rawLanguage }: { code: string; rawLanguage: st
     </pre>
   </div>;
 }
-function CodeBlock({ code, rawLanguage }: { code: string; rawLanguage: string }) {
-  if (isSvgCode(code, rawLanguage)) return <SvgCanvas source={code} />;
+function CodeBlock({ code, rawLanguage, line }: { code: string; rawLanguage: string; line?: number }) {
+  if (isSvgCode(code, rawLanguage)) return <SvgCanvas source={code} line={line} />;
   return <SourceCodeBlock code={code} rawLanguage={rawLanguage} />;
 }
 function SourceCodeBlock({ code, rawLanguage }: { code: string; rawLanguage: string }) {
@@ -314,7 +315,7 @@ const components = {
     const props = child.props as { className?: string; children?: unknown };
     const language = /language-([\w+#.-]+)/.exec(props.className ?? '')?.[1] ?? '';
     const code = String(props.children ?? '').replace(/\n$/, '');
-    return <div data-source-line={line}><CodeBlock code={code} rawLanguage={language} /></div>;
+    return <div data-source-line={line}><CodeBlock code={code} rawLanguage={language} line={line} /></div>;
   },
   a: ({ children, href }: { children?: ReactNode; href?: string }) =>
     <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
@@ -522,11 +523,12 @@ function VirtualMarkdown({ markdown, scrollRef }: {
     </div>
   </article>;
 }
-function MarkdownPreview({ markdown, sourceLanguage, scrollRef, theme, onToggleTask = null }: {
+function MarkdownPreview({ markdown, sourceLanguage, scrollRef, theme, onToggleTask = null, onSvgEdit = null }: {
   markdown: string; sourceLanguage?: string | null;
   scrollRef: RefObject<HTMLDivElement | null>;
   theme: 'light' | 'dark';
   onToggleTask?: ((line: number, checked: boolean) => void) | null;
+  onSvgEdit?: ((source: string, next: string, line: number) => boolean) | null;
 }) {
   const deferred = useDeferredValue(markdown);
   const value = markdown.length <= 18000 ? markdown : deferred;
@@ -581,7 +583,7 @@ function MarkdownPreview({ markdown, sourceLanguage, scrollRef, theme, onToggleT
         ? <VirtualMarkdown markdown={value} scrollRef={scrollRef} />
         : <article className="markdown-preview"><MarkdownChunk markdown={value} /></article>;
   return <TaskToggleContext.Provider value={onToggleTask}>
-    <ThemeContext.Provider value={theme}>{body}</ThemeContext.Provider>
+    <ThemeContext.Provider value={theme}><SvgEditContext.Provider value={onSvgEdit}>{body}</SvgEditContext.Provider></ThemeContext.Provider>
   </TaskToggleContext.Provider>;
 }
 export default memo(MarkdownPreview);
