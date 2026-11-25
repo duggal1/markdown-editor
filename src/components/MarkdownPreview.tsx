@@ -11,8 +11,8 @@ import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import hljs from 'highlight.js';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Icon } from './Icons';
-import { detectRawCode } from '../lib/code';
+import { Icon, type IconName } from './Icons';
+import { detectRawCode, repairMixedCode } from '../lib/code';
 import { cachedPreview, immediatePreview, preparePreview, type PreparedPreview } from '../lib/previewPipeline';
 
 const safeMarkdownHtml = {
@@ -40,12 +40,15 @@ const safeMarkdownHtml = {
 const ThemeContext = createContext<'light' | 'dark'>('light');
 const SvgEditContext = createContext<((source: string, next: string, line: number) => boolean) | null>(null);
 const LineContext = createContext(0);
+const SourceLineMapContext = createContext<readonly number[] | undefined>(undefined);
 const TaskLineContext = createContext<number | null>(null);
 const TaskToggleContext = createContext<((line: number, checked: boolean) => void) | null>(null);
 type SourceNode = { position?: { start?: { line?: number; offset?: number }; end?: { offset?: number } } };
 function sourceLine(node?: SourceNode): number {
   const offset = useContext(LineContext);
-  return offset + (node?.position?.start?.line || 1);
+  const map = useContext(SourceLineMapContext);
+  const line = node?.position?.start?.line || 1;
+  return map?.[line - 1] ?? offset + line;
 }
 type BlockProps = { children?: ReactNode; node?: SourceNode; className?: string };
 function TaskCheckbox({ type, checked }: React.InputHTMLAttributes<HTMLInputElement>) {
@@ -231,6 +234,22 @@ function SvgCanvas({ source, line = 1 }: { source: string; line?: number }) {
   const edit = useContext(SvgEditContext);
   return <SvgInspector source={source} theme={theme} onEdit={edit ? (next) => edit(source, next, line) : undefined} />;
 }
+const snippetLanguages: Record<string, { label: string; icon: IconName }> = {
+  javascript: { label: 'JavaScript', icon: 'fileJs' }, jsx: { label: 'JSX', icon: 'fileJs' },
+  typescript: { label: 'TypeScript', icon: 'fileTs' }, tsx: { label: 'TSX', icon: 'fileTs' },
+  html: { label: 'HTML', icon: 'fileHtml' }, sql: { label: 'SQL', icon: 'database' },
+  css: { label: 'CSS', icon: 'code' }, json: { label: 'JSON', icon: 'code' },
+  python: { label: 'Python', icon: 'code' }, bash: { label: 'Bash', icon: 'terminal' },
+  swift: { label: 'Swift', icon: 'code' }, rust: { label: 'Rust', icon: 'code' },
+  go: { label: 'Go', icon: 'code' }, xml: { label: 'XML', icon: 'code' },
+  markdown: { label: 'Markdown', icon: 'file' }, yaml: { label: 'YAML', icon: 'file' },
+};
+function CodeLanguageLabel({ rawLanguage }: { rawLanguage: string }) {
+  const raw = rawLanguage.toLowerCase();
+  const key = raw === 'html' || raw === 'jsx' || raw === 'tsx' ? raw : aliases[raw] || raw;
+  const meta = snippetLanguages[key] || { label: raw ? raw[0].toUpperCase()+raw.slice(1) : 'Code', icon: 'code' as const };
+  return <span className="code-language"><Icon name={meta.icon} size={15} /><span>{meta.label}</span></span>;
+}
 function VirtualCodeBlock({ code, rawLanguage }: { code: string; rawLanguage: string }) {
   const ref = useRef<HTMLPreElement>(null);
   const language = aliases[rawLanguage.toLowerCase()] || rawLanguage.toLowerCase();
@@ -243,7 +262,7 @@ function VirtualCodeBlock({ code, rawLanguage }: { code: string; rawLanguage: st
     overscan: 12,
   });
   return <div className="code-block virtual-code-block">
-    <div className="code-header"><span className="code-language"><span className="language-dot" />{rawLanguage || 'code'}</span>
+    <div className="code-header"><CodeLanguageLabel rawLanguage={rawLanguage} />
       <button type="button" className="code-copy" onClick={() => { void copy(); }}>
         <Icon name={copied ? 'check' : 'copy'} size={13} />{copied ? 'Copied' : 'Copy'}
       </button>
@@ -274,7 +293,7 @@ function SourceCodeBlock({ code, rawLanguage }: { code: string; rawLanguage: str
   if (big) return <VirtualCodeBlock code={code} rawLanguage={rawLanguage} />;
   return <div className="code-block">
     <div className="code-header">
-      <span className="code-language"><span className="language-dot" />{rawLanguage || 'code'}</span>
+      <CodeLanguageLabel rawLanguage={rawLanguage} />
       <button type="button" className="code-copy" onClick={() => { void copy(); }} aria-label={copied ? 'Copied' : 'Copy code'}>
         <Icon name={copied ? 'check' : 'copy'} size={13} />{copied ? 'Copied' : 'Copy'}
       </button>
@@ -365,10 +384,10 @@ function remarkSvgBlocks() {
     }
   };
 }
-const MarkdownChunk = memo(function MarkdownChunk({ markdown, lineOffset = 0 }: { markdown: string; lineOffset?: number }) {
-  return <LineContext.Provider value={lineOffset}><ReactMarkdown remarkPlugins={[remarkGfm, remarkSvgBlocks]}
+const MarkdownChunk = memo(function MarkdownChunk({ markdown, lineOffset = 0, sourceLines }: { markdown: string; lineOffset?: number; sourceLines?: readonly number[] }) {
+  return <LineContext.Provider value={lineOffset}><SourceLineMapContext.Provider value={sourceLines}><ReactMarkdown remarkPlugins={[remarkGfm, remarkSvgBlocks]}
     rehypePlugins={[rehypeRaw, [rehypeSanitize, safeMarkdownHtml], rehypePreviewColors]}
-    components={components}>{markdown}</ReactMarkdown></LineContext.Provider>;
+    components={components}>{markdown}</ReactMarkdown></SourceLineMapContext.Provider></LineContext.Provider>;
 });
 function VirtualMarkdown({ markdown, scrollRef }: {
   markdown: string; scrollRef: RefObject<HTMLDivElement | null>;
@@ -517,7 +536,7 @@ function VirtualMarkdown({ markdown, scrollRef }: {
           className={'virtual-markdown-section' +
             (prepared.continuations[item.index] ? ' continues-list' : '') +
             (prepared.continuations[item.index + 1] ? ' followed-by-list' : '')}>
-          <MarkdownChunk markdown={chunks[item.index]} lineOffset={firstLines[item.index] - 1} />
+          <MarkdownChunk markdown={chunks[item.index]} lineOffset={firstLines[item.index] - 1} sourceLines={prepared.sourceLineMaps?.[item.index]} />
         </div>)}
       </div>}
     </div>
@@ -537,6 +556,7 @@ function MarkdownPreview({ markdown, sourceLanguage, scrollRef, theme, onToggleT
   const html = detected === 'html';
   const svg = detected === 'svg';
   const virtual = !detected && value.length > 18000;
+  const repaired = useMemo(() => !detected && !virtual ? repairMixedCode(value) : { markdown: value }, [value, detected, virtual]);
   useEffect(() => {
     const scroll = scrollRef.current;
     if (!scroll || virtual || html || svg) return;
@@ -581,7 +601,7 @@ function MarkdownPreview({ markdown, sourceLanguage, scrollRef, theme, onToggleT
         </article>
       : virtual
         ? <VirtualMarkdown markdown={value} scrollRef={scrollRef} />
-        : <article className="markdown-preview"><MarkdownChunk markdown={value} /></article>;
+        : <article className="markdown-preview"><MarkdownChunk markdown={repaired.markdown} sourceLines={repaired.sourceLines} /></article>;
   return <TaskToggleContext.Provider value={onToggleTask}>
     <ThemeContext.Provider value={theme}><SvgEditContext.Provider value={onSvgEdit}>{body}</SvgEditContext.Provider></ThemeContext.Provider>
   </TaskToggleContext.Provider>;

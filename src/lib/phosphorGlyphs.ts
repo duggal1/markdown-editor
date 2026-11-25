@@ -57,8 +57,17 @@ import tableGlyph from '@phosphor-icons/core/assets/regular/table.svg?raw';
 import htmlGlyph from '@phosphor-icons/core/assets/regular/code-block.svg?raw';
 import gripGlyph from '@phosphor-icons/core/assets/regular/dots-six-vertical.svg?raw';
 
+import fileJsGlyph from '@phosphor-icons/core/assets/regular/file-js.svg?raw';
+import fileTsGlyph from '@phosphor-icons/core/assets/regular/file-ts.svg?raw';
+import fileHtmlGlyph from '@phosphor-icons/core/assets/regular/file-html.svg?raw';
+import databaseGlyph from '@phosphor-icons/core/assets/regular/database.svg?raw';
+
 // All markup is imported at build time from Phosphor; never interpolate user text.
 const glyphs = {
+  fileJs: fileJsGlyph,
+  fileTs: fileTsGlyph,
+  fileHtml: fileHtmlGlyph,
+  database: databaseGlyph,
   sliders: slidersGlyph,
   desktop: desktopGlyph,
   phone: phoneGlyph,
