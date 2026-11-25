@@ -12,6 +12,7 @@ import { formatPlainTextAsMarkdown, shouldAutoFormatPaste } from '../lib/autoMar
 import { listEnterIntent } from '../lib/listEditing';
 import { repairLanguage } from '../lib/codeRepair';
 import { blockCommands } from '../lib/blockCommands';
+import { selectionEdit, type SelectionFormat } from '../lib/selectionFormat';
 import { editorColorPicker } from '../lib/editorColorPicker';
 
 
@@ -38,6 +39,13 @@ export type Format = 'bold' | 'italic' | 'heading' | 'bullet' | 'todo' | 'quote'
 export function formatEditor(view: EditorView | null, format: Format): void {
   if (!view) return;
   const range = view.state.selection.main;
+  if (!range.empty) {
+    const kind: SelectionFormat = format === 'heading' ? 'h1' : format;
+    const edit = selectionEdit(view.state.doc, range.from, range.to, kind);
+    if (edit) view.dispatch({ ...edit, scrollIntoView: true, userEvent: 'input.format' });
+    view.focus();
+    return;
+  }
   const selected = view.state.doc.sliceString(range.from, range.to);
   const tick = String.fromCharCode(96);
   if (format === 'heading' || format === 'bullet' || format === 'todo' || format === 'quote') {

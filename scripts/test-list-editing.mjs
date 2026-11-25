@@ -101,3 +101,36 @@ assert.equal(enterAtEnd('1. one\n2. '), '1. one\n\n',
 assert.equal(enterAtEnd('- [ ] '), '\n', 'Empty task list items must exit cleanly.');
 
 console.log('List typing, empty-line exit, table/fence parsing, and save wiring regressions passed.');
+
+
+// Real CodeMirror transactions exercise contextual formatting without a browser.
+const { EditorState } = await import('@codemirror/state');
+const { selectionEdit } = await import('../src/lib/selectionFormat.ts');
+function formatSelection(source, from, to, kind) {
+  const state = EditorState.create({ doc: source, selection: { anchor: from, head: to } });
+  const edit = selectionEdit(state.doc, from, to, kind);
+  assert.ok(edit);
+  return state.update(edit).state;
+}
+let passage = 'Before\nFirst sentence. Second sentence. Third sentence.\nAfter';
+let from = passage.indexOf('First'), to = passage.indexOf('\nAfter');
+let bold = formatSelection(passage, from, to, 'bold');
+assert.equal(bold.doc.toString(), 'Before\n**First sentence. Second sentence. Third sentence.**\nAfter');
+assert.equal(bold.sliceDoc(bold.selection.main.from, bold.selection.main.to), passage.slice(from, to));
+assert.equal(formatSelection(bold.doc.toString(), bold.selection.main.from, bold.selection.main.to, 'bold').doc.toString(), passage);
+let multiline = 'Before\nOne\nTwo\nThree\nAfter';
+let list = formatSelection(multiline, 7, multiline.indexOf('\nAfter'), 'number');
+assert.equal(list.doc.toString(), 'Before\n1. One\n2. Two\n3. Three\nAfter');
+assert.equal(formatSelection(list.doc.toString(), list.selection.main.from, list.selection.main.to, 'number').doc.toString(), multiline);
+assert.equal(formatSelection('One\n\nTwo', 0, 8, 'italic').doc.toString(), '*One*\n\n*Two*');
+assert.equal(formatSelection('One\nTwo\nAfter', 0, 8, 'quote').doc.toString(), '> One\n> Two\nAfter');
+let linked = formatSelection('go here', 3, 7, 'link');
+assert.equal(linked.doc.toString(), 'go [here](https://)');
+assert.equal(linked.sliceDoc(linked.selection.main.from, linked.selection.main.to), 'https://');
+assert.equal(selectionEdit(EditorState.create({doc:'One\nTwo'}).doc, 0, 7, 'link'), null);
+const blockCommandsSource = readFileSync(new URL('../src/lib/blockCommands.ts', import.meta.url), 'utf8');
+assert.match(blockCommandsSource, /update\.selectionSet.*this\.scheduleSelection\(\)/);
+assert.match(blockCommandsSource, /window\.visualViewport\?\.addEventListener\('resize'/);
+assert.match(blockCommandsSource, /snapshot\.doc !== this\.view\.state\.doc/);
+assert.match(blockCommandsSource, /this\.toolbar\.remove\(\)/);
+console.log('Contextual selection format transactions passed.');
