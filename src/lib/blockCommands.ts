@@ -214,6 +214,11 @@ class BlockUI {
     this.toolbar.style.top = Math.max(top, Math.min(y, bottom - height)) + 'px';
     this.selectionSnapshot = { from: range.from, to: range.to, doc: state.doc };
   }
+  focusSelection() {
+    if (this.toolbar.hidden) return false;
+    this.toolbar.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+    return true;
+  }
   formatSelection(kind: SelectionFormat) {
     const snapshot = this.selectionSnapshot;
     if (!snapshot || snapshot.doc !== this.view.state.doc) { this.hideSelection(); return; }
@@ -288,7 +293,8 @@ class BlockUI {
     const previous = update.startState.selection.main;
     if (update.docChanged || previous.from !== range.from || previous.to !== range.to) {
       this.dismissedSelection = null;
-      this.hideSelection();
+      this.selectionSnapshot = null;
+      if (range.empty || update.docChanged) this.hideSelection();
     }
     if (!range.empty) this.handle.hidden = true;
     if (!this.view.hasFocus || !range.empty || codeContext(this.view, range.head)) { this.close(); return; }
@@ -390,4 +396,5 @@ export const blockCommands = [plugin, Prec.highest(keymap.of([
   { key: 'ArrowUp', run: view => view.plugin(plugin)?.step(-1) ?? false },
   { key: 'Enter', run: view => view.plugin(plugin)?.choose() ?? false },
   { key: 'Escape', run: view => view.plugin(plugin)?.escape() ?? false },
+  { key: 'Alt-F10', run: view => view.plugin(plugin)?.focusSelection() ?? false },
 ]))];
