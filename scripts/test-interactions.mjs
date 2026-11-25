@@ -232,3 +232,9 @@ console.log('Motion, five-second save status, iOS geometry and preview cache che
 assert.match(tree, /export default memo\(WorkspaceTree\)/, 'The file tree must not re-render on unrelated editor state');
 assert.match(app, /useTreeActions\(/, 'Tree events use stable callback identities');
 assert.match(app, /localSaveDelay\(doc\.markdown\.length, now - firstDirty\)/, 'Continuous editing has a bounded local save delay');
+const shareDialogSource = read('src/components/ShareDialog.tsx');
+assert.match(shareDialogSource, /className="share-copy-idle">Copy link/);
+assert.match(shareDialogSource, /className="share-copy-success"><Icon name="check"/);
+assert.match(css, /\.share-access \{[^}]*align-items:start/);
+assert.match(css, /\.share-revoke:is\(:hover,:focus-visible\):not\(:disabled\) \{[^}]*text-decoration:underline dotted/);
+assert.match(app, /setSettingsOpen\(true\)\}><Icon name="sliders"/);

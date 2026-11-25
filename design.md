@@ -103,7 +103,7 @@ Markdown controls use a 24–26px desktop height, 5–8px horizontal insets and 
 
 
 ## Appearance correction
-Appearance is strictly Dark or Light. Blue is a ninth accent (600 in dark, 500 in light), never a background theme. The previous background preference is discarded on save. The toolbar uses the Phosphor regular gear-six settings glyph. The heading outline has no toolbar trigger, modal, backdrop, search or line-number chrome. A narrow hierarchy of neutral marks reveals the #0d0d0d heading panel on hover, focus or touch; clicking a heading uses the shared source-line navigation. Empty and non-Markdown pages have no rail.
+Appearance is strictly Dark or Light. Blue is a ninth accent (600 in dark, 500 in light), never a background theme. The previous background preference is discarded on save. The toolbar uses the Phosphor regular horizontal sliders glyph for Settings. The heading outline has no toolbar trigger, modal, backdrop, search or line-number chrome. A narrow hierarchy of neutral marks reveals the #0d0d0d heading panel on hover, focus or touch; clicking a heading uses the shared source-line navigation. Empty and non-Markdown pages have no rail.
 
 
 ## HTML runtime routing
@@ -120,3 +120,6 @@ Hex literals in preview text, inline code, tables and source blocks display real
 
 ## iPad viewport
 Desktop, iPhone and iPad are independent device modes. The iPad uses a representative 11-inch CSS viewport of 820 × 1180 (portrait) or 1180 × 820 (landscape), with a 12px matte frame and uniform fit-to-window scaling. The iframe layout dimensions remain unscaled for responsive media queries. This is not Safari/DPR emulation. Tablet scrollbars hide chrome without disabling scrolling. The existing phone SVG geometry is unchanged. The HTML source is never restyled by the player glass.
+
+## SVG and compact sharing correction
+SVG pages and SVG snippets render artwork only in a transparent, script-disabled image iframe. Source belongs in the editor, not beneath the preview. Preserve explicit fills, strokes and embedded CSS; supply theme-aware currentColor only when no authored color overrides it. No checkerboard, white backing card or code header. Keep non-SVG code rendering unchanged. The share dialog uses a title-aligned globe, text-only Copy link, fixed-width crossfade to a check and Copied, and dotted underline for Stop sharing on hover/focus. Desktop Split gets restrained additional inline padding; keep mobile and Write geometry intact. Tables retain their full grid with a darker neutral surface and quieter borders.
