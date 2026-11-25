@@ -1,5 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
+import ts from 'typescript';
 
 const read = (path) => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
 const tree = read('src/components/WorkspaceTree.tsx');
@@ -65,3 +66,23 @@ assert.match(style, /\.flow-dialog-footer \{/);
 assert.doesNotMatch(style, /\.(?:dialog-backdrop|share-dialog|delete-dialog)\b/);
 
 console.log('Workspace controls, toast and dark native dialogs passed.');
+
+// Exercise the actual ranking helper, including legacy preferences and >30 files.
+const js = ts.transpileModule(read('src/lib/workspaceRecency.ts'), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
+const { touchRecent, restoreRecent, rankDocuments } = await import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'));
+const docs = Array.from({ length: 45 }, (_, i) => ({ id: String(i), updatedAt: i }));
+let history = [];
+for (const doc of docs) history = touchRecent(history, doc.id);
+assert.equal(history.length, 45);
+history = touchRecent(history, '0');
+assert.equal(rankDocuments(docs, history)[0].id, '0');
+assert.equal(touchRecent(history, '0'), history);
+assert.deepEqual(restoreRecent(['4', '4', 'missing', 2], '0', new Set(['0', '4'])), ['0', '4']);
+assert.deepEqual(rankDocuments(docs.slice(0, 3), []).map(doc => doc.id), ['2', '1', '0']);
+assert.match(tree, /className="workspace-root" role="treeitem"/);
+assert.match(tree, /tree\.entries\.map/);
+assert.match(tree, /branchRank\(child\.id\)/);
+assert.match(app, /rankDocuments\(docs, recentIds\)/);
+assert.match(app, /setRecentIds\(ids => touchRecent\(ids, id\)\)/);
+assert.doesNotMatch(app, /setRecentIds[^\n]*slice\(0, 30\)/);
+console.log('Global workspace root and durable recency ranking passed.');

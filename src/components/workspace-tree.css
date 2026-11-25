@@ -151,3 +151,19 @@
 
 .private-page-row,.private-root-drop button { border-radius:7px; }
 .filetree-menu.private-page-menu { border-radius:9px; }
+
+/* The global workspace is a protected root over all stored workspaces. */
+.private-tree-heading { font-weight:500; }
+.workspace-root-row { height:30px; gap:4px; padding:0 3px 0 2px; border-radius:7px; }
+.workspace-root-row.is-drop { outline:1px solid var(--flow-accent); outline-offset:-1px; background:var(--neutral-200); }
+.workspace-root-toggle { display:flex; align-items:center; gap:7px; flex:1; min-width:0; height:30px; padding:0 3px; border:0; border-radius:7px; background:transparent; color:var(--text); text-align:left; font:500 13px 'Instrument Sans Variable',sans-serif; cursor:pointer; }
+.workspace-root-toggle > .workspace-glyph { color:var(--muted); }
+.workspace-root-chevron { display:grid; place-items:center; color:var(--muted); flex:none; }
+.workspace-root-chevron svg { transition:transform .16s cubic-bezier(.22,1,.36,1); }
+.workspace-root-chevron.is-open svg { transform:rotate(90deg); }
+.workspace-root-row:hover .private-add-child,.workspace-root-row:focus-within .private-add-child { opacity:1; }
+.workspace-root-children { padding-top:2px; }
+.workspace-root-children .private-root-drop { padding-inline-start:14px; }
+.workspace-glyph { flex:none; display:block; }
+.filetree-result-open > .workspace-glyph { margin-top:2px; color:var(--muted); }
+@media (prefers-reduced-motion:reduce) { .workspace-root-chevron svg { transition:none; } }
