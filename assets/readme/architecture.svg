@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="356" viewBox="0 0 1120 356" role="img" font-family="Geist, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" fill="#fafafa">
+<title>Flow architecture</title><desc>CodeMirror and document state feed the preview pipeline and IndexedDB. Optional cloud APIs use a selectable storage adapter.</desc>
+<style>.muted{fill:#a3a3a3}.quiet{fill:#858585}</style>
+<rect width="1120" height="356" rx="18" fill="#080808"/>
+<text x="32" y="39" font-size="21" font-weight="500" letter-spacing="-.5">Source first. Cloud optional.</text>
+<text x="1088" y="38" text-anchor="end" font-size="13" class="muted">Browser execution / server boundary</text>
+<rect x="28" y="61" width="1064" height="165" rx="11" fill="#101010"/>
+<text x="45" y="84" font-size="12" class="quiet">Browser · React / Vite</text>
+<g fill="none" stroke="#565656" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M222 132H284m-6-5 6 5-6 5"/>
+  <path d="M476 132H536m-6-5 6 5-6 5"/>
+  <path d="M476 159H506V194H773V159H788m-6-5 6 5-6 5"/>
+  <path d="M878 178V239m-5-6 5 6 5-6" stroke-dasharray="3 5"/>
+</g>
+<rect x="45" y="101" width="177" height="77" rx="8" fill="#181818"/>
+<rect x="284" y="101" width="192" height="77" rx="8" fill="#181818"/>
+<rect x="536" y="101" width="214" height="77" rx="8" fill="#181818"/>
+<rect x="788" y="101" width="287" height="77" rx="8" fill="#181818"/>
+<g font-size="17" font-weight="500">
+  <text x="59" y="128">CodeMirror 6</text><text x="298" y="128">Document state</text>
+  <text x="550" y="128">Preview pipeline</text><text x="802" y="128">IndexedDB</text>
+</g>
+<g font-size="13" class="muted">
+  <text x="59" y="151">Transactions / undo</text><text x="298" y="151">React + source text</text>
+  <text x="550" y="151">Worker / virtualized UI</text><text x="802" y="151">Documents / folders / assets</text>
+  <text x="536" y="212">Serialized, debounced writes</text><text x="45" y="212">Local editing never waits on the cloud.</text>
+</g>
+<rect x="28" y="245" width="1064" height="83" rx="11" fill="#101010"/>
+<text x="45" y="270" font-size="12" class="quiet">Optional cloud</text>
+<text x="45" y="299" font-size="16">Backup · Share · HTML hosting</text>
+<path d="M322 294h69m-6-5 6 5-6 5M634 294h70m-6-5 6 5-6 5" stroke="#565656" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="408" y="288" font-size="16">Vercel API routes</text>
+<text x="408" y="309" font-size="12" class="muted">Versioned manifests / signed parts</text>
+<text x="720" y="288" font-size="16">Storage adapter</text>
+<text x="720" y="309" font-size="12" class="muted">Vercel Blob or Drizzle / PostgreSQL</text>
+<text x="1088" y="344" text-anchor="end" class="quiet" font-size="11">Logical data flow · not a deployment claim</text>
+</svg>

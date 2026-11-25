@@ -1,4 +1,4 @@
-import { detectRawCode } from './code';
+import { detectRawCode, normalizeMixedContent } from './code';
 
 export type MarkdownFormatOptions = { atDocumentStart?: boolean; manual?: boolean; selection?: boolean };
 export const MAX_MANUAL_FORMAT_CHARS = 1_000_000;
@@ -46,7 +46,9 @@ export function formatPlainTextAsMarkdown(
   options: MarkdownFormatOptions = {},
 ): string {
   if (!source.trim() || source.length > (options.manual ? MAX_MANUAL_FORMAT_CHARS : 180_000) || detectRawCode(source)) return source;
-  const lines = source.replace(/\r\n?/g, '\n').replace(/\u00a0/g, ' ').split('\n');
+  const normalized = normalizeMixedContent(source);
+  const recoveredDocument = normalized !== source;
+  const lines = normalized.replace(/\r\n?/g, '\n').split('\n');
   // Explicit formatting can recognize a single titled feature; pastes stay conservative.
   const count = lines.reduce((n, line) => n + (featureParts(line) ? 1 : 0), 0);
   const hasFeatureSeries = count >= 2 || Boolean(options.manual && lines.some(line => {
@@ -54,7 +56,7 @@ export function formatPlainTextAsMarkdown(
     return feature && likelySectionLabel(feature.label);
   }));
   const result: Line[] = [];
-  let fence: '`' | '~' | null = null;
+  let fence: { char: string; width: number } | null = null;
   // One backwards pass replaces repeated scans over the whole document.
   // Long imported plans must remain linear, not quadratic in line count.
   const following: string[] = new Array(lines.length);
@@ -68,12 +70,12 @@ export function formatPlainTextAsMarkdown(
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
-    const trimmed = raw.trim();
+    const trimmed = raw.replace(/\u00a0/g, ' ').trim();
     const delimiter = isFence(raw);
     if (delimiter) {
-      const token = delimiter[1].charAt(0) as '`' | '~';
-      if (!fence) fence = token;
-      else if (fence === token) fence = null;
+      const token = delimiter[1];
+      if (!fence) fence = { char: token[0], width: token.length };
+      else if (fence.char === token[0] && token.length >= fence.width && !raw.slice(delimiter[0].length).trim()) fence = null;
       result.push({ value: raw, type: 'protected' });
       continue;
     }
@@ -104,8 +106,12 @@ export function formatPlainTextAsMarkdown(
     const isolatedSection = Boolean(options.manual && likelySectionLabel(trimmed)
       && (preceding || !lines[i - 1].trim())
       && (i === lines.length - 1 || !lines[i + 1].trim() || Boolean(featureParts(next))));
-    if (startTitle || sectionBeforeFeatures || isolatedSection) {
-      const level = startTitle ? '# ' :
+    const recoveredSection = recoveredDocument && plainSectionTitle(trimmed)
+      && next.length > 0 && !featureParts(trimmed)
+      && (i === firstContentIndex || !lines[i - 1].trim() || plainSectionTitle(lines[i - 1].trim()))
+      && (!plainSectionTitle(next) || (lines[i + 1]?.trim() === next && Boolean(following[i + 1])));
+    if (startTitle || sectionBeforeFeatures || isolatedSection || recoveredSection) {
+      const level = startTitle ? '# ' : recoveredSection ? '## ' :
         /^(?:feature request|section|chapter|part)\b/i.test(trimmed) ? '## ' : '### ';
       result.push({ value: level + trimmed, type: 'heading' });
       continue;

@@ -1,6 +1,9 @@
 # DESIGN.md — Flow HTML runtime
 
-Read this before changing the HTML player, glass controls, or iPhone preview.
+Read this before changing Flow's interface, HTML player, glass controls, or device previews.
+
+## Default visual direction: borderless first
+Start every new UI design with zero decorative borders. Distinguish components through neutral surface tones, spacing, typography, shape and contrast, not outlines or inset strokes masquerading as borders. Dark appearance hover moves toward darker surfaces; light appearance hover moves toward lighter surfaces. Use restrained rounding and brief, reversible transitions. Preserve meaningful keyboard focus indicators, accessibility, and borders that are necessary to the actual authored content. Apply this direction to new designs by default; do not restyle unrelated existing surfaces without an explicit request.
 
 ## The screen is the product
 
@@ -103,7 +106,7 @@ Markdown controls use a 24–26px desktop height, 5–8px horizontal insets and 
 
 
 ## Appearance correction
-Appearance is strictly Dark or Light. Blue is a ninth accent (600 in dark, 500 in light), never a background theme. The previous background preference is discarded on save. The toolbar uses the Phosphor regular gear-six settings glyph. The heading outline has no toolbar trigger, modal, backdrop, search or line-number chrome. A narrow hierarchy of neutral marks reveals the #0d0d0d heading panel on hover, focus or touch; clicking a heading uses the shared source-line navigation. Empty and non-Markdown pages have no rail.
+Appearance is strictly Dark or Light. Blue is a ninth accent (600 in dark, 500 in light), never a background theme. The previous background preference is discarded on save. The toolbar uses the Phosphor regular horizontal sliders glyph for Settings. The heading outline has no toolbar trigger, modal, backdrop, search or line-number chrome. A narrow hierarchy of neutral marks reveals the #0d0d0d heading panel on hover, focus or touch; clicking a heading uses the shared source-line navigation. Empty and non-Markdown pages have no rail.
 
 
 ## HTML runtime routing
@@ -120,3 +123,20 @@ Hex literals in preview text, inline code, tables and source blocks display real
 
 ## iPad viewport
 Desktop, iPhone and iPad are independent device modes. The iPad uses a representative 11-inch CSS viewport of 820 × 1180 (portrait) or 1180 × 820 (landscape), with a 12px matte frame and uniform fit-to-window scaling. The iframe layout dimensions remain unscaled for responsive media queries. This is not Safari/DPR emulation. Tablet scrollbars hide chrome without disabling scrolling. The existing phone SVG geometry is unchanged. The HTML source is never restyled by the player glass.
+
+## SVG and compact sharing correction
+SVG pages and SVG snippets render artwork only in a transparent, script-disabled image iframe. Source belongs in the editor, not beneath the preview. Preserve explicit fills, strokes and embedded CSS; supply theme-aware currentColor only when no authored color overrides it. No checkerboard, white backing card or code header. Keep non-SVG code rendering unchanged. The share dialog uses a title-aligned globe, text-only Copy link, fixed-width crossfade to a check and Copied, and dotted underline for Stop sharing on hover/focus. Desktop Split gets restrained additional inline padding; keep mobile and Write geometry intact. Markdown tables use the borderless-first direction: no outer stroke, row dividers, column rules or simulated borders. A compact 10px rounded surface and distinct header/alternating row tones provide hierarchy. Dark hover is darker than either resting row tone; light hover is lighter than either resting row tone. Preserve semantic table markup, alignment, text contrast, inline code and mobile horizontal scrolling. The approved change is limited to Markdown preview tables, including shared read-only pages; PDF output and authored HTML are untouched.
+
+## SVG inspector
+Standalone and embedded SVG previews have a compact neutral toolbar: intrinsic pixel size, 25–400% preview zoom, independent white/black/transparent/workspace backgrounds, and local PNG download at 1×–3×. Authored paint literals appear above the artwork; editable workspace swatches use the existing HSV/alpha picker. Done commits exact matching source ranges as one undoable edit; shared previews stay read-only. No external conversion service, decorative borders or source code under the artwork. PNG exports use image-mode SVG, preserve aspect ratio and cap allocations at 8192 pixels per axis / 32 megapixels. Unresolved dynamic colors and external resources are not guessed.
+
+Explicit currentColor references have a separate inherited-color swatch; selecting a color replaces those references with a fixed value without modifying unrelated paint declarations. Workspace background exports transparently unless white or black is selected.
+
+## Efficient PDF pagination and Markdown sharing
+PDF exports use A4 with a consistent 48pt horizontal measure, legible fixed font sizes, tighter vertical spacing, and a single optional compact reflow only when the actual final page contains a few lines near its top. Select the compact candidate only when the rendered page count decreases; never delete content, shrink type, or remove a page after rendering. Keep running headings, page numbers, links, syntax colors and image behavior. Markdown Share is borderless, uses bright Geist sans URL text with antialiasing and tight tracking, a native checkbox with a neutral Phosphor check treatment, and compact neutral controls. Maintain title-aligned globe, text-only idle copy with animated check, dotted stop-sharing hover, keyboard focus and reduced motion. Hover darkens dark surfaces and lightens light surfaces. Do not change hosted HTML runtime or its publishing behavior.
+
+## Code snippet surfaces and recovered documentation
+Snippet cards use a quieter #111111 dark surface, no strokes, unchanged compact rounding and selectable monospaced code. Language headers use neutral theme-appropriate Geist Sans labels (JavaScript, TypeScript, HTML, SQL) with official Phosphor SVG file/database prefixes, never accent-colored dots. The same header renders in normal and virtualized snippets. Recover confidently identifiable copied JavaScript/TypeScript islands, premature fences and incorrect SQL labels without inventing statements, silently editing existing documents or swallowing adjacent prose. Preview and PDF share the same repair; retain original source line anchors for scroll sync, SVG edits and tasks. Explicit well-formed fences and real SQL remain unchanged.
+
+## Live document tokens
+The upper-right metric is **tokens**, not whitespace-separated words. Flow Lexical v1 is a documented local tokenizer for source text, including identifiers, numbers, punctuation, quotes, markup, SVG path data, image references, and Unicode/emoji. Whitespace separates tokens and does not count. Local raster images contribute one token per non-overlapping 32×32 spatial patch (including edge patches). Unknown binary assets or unrecognized images contribute one structural token. Remote image references count as source only; do not claim a model-specific vision or LLM context count. The counter uses self-hosted Instrument Sans, tight tracking, tabular numerals, no borders, and a short numeric-only scramble resolving to the real count after edits, including equal-count edits. Reduced motion uses the final number directly. Keep search independent, coalesce worker requests and reject stale results. Never fetch or transmit document contents.

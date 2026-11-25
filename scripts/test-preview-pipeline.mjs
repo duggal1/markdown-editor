@@ -14,11 +14,18 @@ runInNewContext(transpile('src/lib/previewChunks.ts'), {
   module: chunks, exports: chunks.exports,
 });
 
+const codeModule = { exports: {} };
+runInNewContext(transpile('src/lib/code.ts'), {
+  module: codeModule, exports: codeModule.exports,
+  require: () => ({ looksLikeHtml: () => false }),
+});
+
 const pipeline = { exports: {} };
 runInNewContext(transpile('src/lib/previewPipeline.ts'), {
   module: pipeline, exports: pipeline.exports,
   require: (name) => {
     if (name === './previewChunks') return chunks.exports;
+    if (name === './code') return codeModule.exports;
     throw new Error('Unexpected import ' + name);
   },
 });
@@ -57,17 +64,26 @@ assert.match(css, /\.markdown-preview a,[\s\S]*?color:var\(--preview-orange\)/,
 assert.match(css, /\.markdown-preview :not\(pre\) > code,[\s\S]*?\.markdown-preview \.hljs-number,[\s\S]*?color:var\(--preview-orange\)/,
   'Inline-code badges and orange syntax tokens must use the same Tailwind shade.');
 assert.match(css, /:root\[data-theme='light'\] \.markdown-preview \{/,
-  'Preview accents and table borders must have a separate light theme.');
-assert.match(css, /--preview-table-border:#303030/,
-  'Dark-mode table grid must be subtle but complete.');
-assert.match(css, /--preview-table-border:#dedede/,
-  'Light-mode table grid must remain visible and neutral.');
-assert.match(css, /\.markdown-preview \.table-scroll \{[\s\S]*?border:1px solid var\(--preview-table-border\)/,
-  'Tables require a complete outer border.');
-assert.match(css, /\.markdown-preview th,\s*\.markdown-preview td \{[\s\S]*?border-right:1px solid var\(--preview-table-border\);[\s\S]*?border-bottom:1px solid var\(--preview-table-border\)/,
-  'Table cells require vertical and horizontal dividers.');
-assert.match(css, /\.markdown-preview table > :last-child > tr:last-child > :is\(th,td\) \{ border-bottom:0; \}/,
-  'The outer border must not double up on the last row.');
+  'Preview accents and table surfaces must have a separate light theme.');
+// Approved borderless table direction: one set of table rules, no grid strokes.
+assert.doesNotMatch(css, /--preview-table-border/);
+const tableRules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+  .filter(([,selector]) => /\.markdown-preview\s+(?:\.table-scroll|table\b|thead\b|tbody\b|th\b|td\b|tr\b)/.test(selector));
+for (const [, selector, declarations] of tableRules) {
+  assert.doesNotMatch(declarations, /(?:^|;)\s*border(?:-(?:top|right|bottom|left|width|color|style)(?:-\w+)?)?\s*:\s*(?!0(?:\s|;|$)|none(?:\s|;|$))[^;]+/, 'No decorative table border: ' + selector.trim());
+}
+assert.match(css, /\.markdown-preview \.table-scroll \{[^}]*border:0;[^}]*box-shadow:none;[^}]*border-radius:10px/);
+assert.match(css, /\.markdown-preview th, \.markdown-preview td \{[^}]*border:0;[^}]*box-shadow:none/);
+assert.match(css, /\.markdown-preview tbody tr:nth-child\(even\) \{ background:var\(--preview-table-stripe\); \}/);
+assert.match(css, /\.markdown-preview tbody tr:hover \{ background:var\(--preview-table-hover\); \}/);
+const darkTable = css.match(/\.markdown-preview \{\s*--preview-orange:[^}]+\}/)[0];
+const lightTable = css.match(/:root\[data-theme='light'\] \.markdown-preview \{\s*--preview-orange:[^}]+\}/)[0];
+const tone = (block, name) => parseInt(block.match(new RegExp('--preview-table-' + name + ':#([a-f0-9]{6})'))[1], 16);
+for (const resting of ['surface', 'stripe']) {
+  assert.ok(tone(darkTable, 'hover') < tone(darkTable, resting), 'Dark hover must darken resting rows');
+  assert.ok(tone(lightTable, 'hover') > tone(lightTable, resting), 'Light hover must lighten resting rows');
+}
+assert.match(css, /@media\(prefers-reduced-motion:reduce\) \{\s*\.markdown-preview tbody tr \{ transition:none; \}/);
 
 console.log('Preview worker preparation, line indexes and bounded cache tests passed.');
 
@@ -83,11 +99,6 @@ for (const hex of ['#ff0000', '#00ff00', '#0000ff', '#123456', '#000000', '#ffff
   const { h, s, v, a } = hexToHsv(hex);
   assert.equal(hsvToHex(h, s, v, hex.length === 9 ? a : undefined), hex);
 }
-const codeModule = { exports: {} };
-runInNewContext(transpile('src/lib/code.ts'), {
-  module: codeModule, exports: codeModule.exports,
-  require: () => ({ looksLikeHtml: () => false }),
-});
 assert.equal(codeModule.exports.detectRawCode('<svg/>'), 'svg');
 assert.equal(codeModule.exports.detectRawCode('<?xml version="1.0"?><svg><style>rect{fill:#abc}</style></svg>'), 'svg');
 const svgMarkdown = ('Paragraph\n\n').repeat(1800) + '<svg>\n\n' + '  <rect fill="#123456"/>\n\n'.repeat(300) + '</svg>\n\nAfter.';
@@ -95,17 +106,73 @@ const svgSections = buildPreviewSections(svgMarkdown).chunks;
 assert.equal(svgSections.join(''), svgMarkdown);
 assert.equal(svgSections.findIndex(c => c.includes('<svg>')), svgSections.findIndex(c => c.includes('</svg>')));
 console.log('SVG classification, chunk integrity, hex validation and HSV round trips passed.');
+const previewSource = readFileSync(new URL('../src/components/MarkdownPreview.tsx', import.meta.url), 'utf8');
+const svgSource = readFileSync(new URL('../src/lib/svgPreview.ts', import.meta.url), 'utf8');
+assert.match(previewSource, /if \(isSvgCode\(code, rawLanguage\)\) return <SvgCanvas source=\{code\} line=\{line\} \/>/);
+assert.match(previewSource, /: svg\s*\? <article className="markdown-preview preview-is-svg"><SvgCanvas source=\{value\} \/>/);
+assert.doesNotMatch(previewSource, /svgDocument &&/);
+const inspector = readFileSync(new URL('../src/components/SvgInspector.tsx', import.meta.url), 'utf8');
+assert.match(inspector, /title="SVG preview" sandbox=""/);
+assert.match(inspector, /referrerPolicy="no-referrer"/);
+assert.match(svgSource, /default-src 'none'; img-src data:/);
+assert.match(svgSource, /object-fit:contain/);
+assert.match(inspector, /exportSvgPng\(actual, effectiveTheme, background, scale\)/);
+assert.match(inspector, /onEdit\(next\)/);
+assert.match(svgSource, /root\.hasAttribute\('color'\)/);
+assert.match(svgSource, /namespaceURI === SVG_NS/);
+assert.doesNotMatch(svgSource, /repeating-conic-gradient/);
 
-/* SVG artwork must bypass both ordinary and virtualized source rendering. */
-const previewComponent = readFileSync(new URL('../src/components/MarkdownPreview.tsx', import.meta.url), 'utf8');
-assert.match(previewComponent, /if \(isSvgCode\(code, rawLanguage\)\) return <SvgCanvas source=\{code\} embedded \/>/);
-assert.match(previewComponent, /: svg\s*\? <SvgCanvas source=\{value\} \/>/);
-assert.match(previewComponent, /<iframe title="SVG preview" sandbox="" srcDoc=\{documentHtml\}/);
-assert.doesNotMatch(previewComponent, /\{svgDocument &&/);
-assert.match(css, /\.svg-document-preview iframe \{ height: 100%; \}/);
-const svgRenderer = readFileSync(new URL('../src/lib/svgPreview.ts', import.meta.url), 'utf8');
-assert.doesNotMatch(svgRenderer, /repeating-conic-gradient|checkerboard/);
-assert.match(svgRenderer, /if \(!element.hasAttribute\('color'\)\) element.setAttribute\('color', foreground\)/);
-assert.match(svgRenderer, /img-src data:/);
-assert.match(svgRenderer, /object-fit:contain/);
-console.log('SVG artwork-only routing, transparent surfaces and color fallback guards passed.');
+const paletteModule = { exports: {} };
+runInNewContext(transpile('src/lib/svgPalette.ts'), { module: paletteModule, exports: paletteModule.exports,
+  require: name => { if (name === './hexColor') return hexModule.exports; throw new Error(name); } });
+const { svgPalette, replaceSvgColor, locateSvgSource } = paletteModule.exports;
+const art = '<svg viewBox="0 0 100 50"><style>#abc { fill: #abc; stroke: red !important; --paint: #abc; }</style><path id="abc" fill="#aabbcc" stroke="url(#abc)" d="M 0 0"/><rect style="fill:#abc;stroke:none"/><stop stop-color="#1234"/><!-- fill="#abc" --></svg>';
+const palette = svgPalette(art, v => v === 'red' ? '#ff0000' : null);
+assert.equal(palette.length, 3);
+assert.equal(palette[0].hex, '#aabbcc');
+assert.equal(palette[0].count, 4);
+const recolored = replaceSvgColor(art, palette[0], '#123456');
+assert.ok(recolored.includes('#abc { fill: #123456; stroke: red !important; --paint: #123456; }'));
+assert.ok(recolored.includes('id="abc" fill="#123456" stroke="url(#abc)"'));
+assert.ok(recolored.includes('<!-- fill="#abc" -->'));
+assert.equal(replaceSvgColor(art.replace('fill: #abc','fill: #999'), palette[0], '#123456'), art.replace('fill: #abc','fill: #999'));
+const fenced = 'Title\n\n' + '\x60\x60\x60svg\n' + art + '\n' + '\x60\x60\x60';
+assert.equal(locateSvgSource(fenced, art, 3), fenced.indexOf(art));
+assert.equal(locateSvgSource(fenced, art, 1), -1);
+assert.equal(locateSvgSource(art, art, 1), 0);
+const svgModule = { exports: {} };
+runInNewContext(transpile('src/lib/svgPreview.ts'), { module: svgModule, exports: svgModule.exports });
+const { svgDimensions } = svgModule.exports;
+assert.equal(svgDimensions(null,null,'0 0 100 50').width, 100);
+assert.equal(svgDimensions('200',null,'0 0 100 50').height, 100);
+assert.equal(svgDimensions('1in','2in',null).width, 96);
+assert.equal(svgDimensions('100%','100%','0 0 24 24').height, 24);
+assert.match(svgSource, /canvas\.toBlob/);
+assert.match(svgSource, /32_000_000/);
+console.log('SVG palette source ranges, dimensions and PNG export wiring passed.');
+
+const dynamicArt = '<svg fill="currentColor"><path stroke="currentColor" fill="#171717"/><style>path { color: currentColor; fill: var(--paint); }</style></svg>';
+const dynamicColors = svgPalette(dynamicArt, () => null);
+assert.equal(dynamicColors.length, 2, 'Inherited references must not merge with identical literal colors');
+assert.equal(dynamicColors[0].token, 'currentColor');
+assert.equal(dynamicColors[0].count, 3);
+assert.equal(replaceSvgColor(dynamicArt, dynamicColors[0], '#112233'), '<svg fill="#112233"><path stroke="#112233" fill="#171717"/><style>path { color: #112233; fill: var(--paint); }</style></svg>');
+{
+const mixed = '# Batch API\n\n'+ '\x60\x60\x60sql\nconst [page, total] = await db.batch([\n  db.$count(products),\n\x60\x60\x60\n\n], { isolation: "repeatable read" });\n\n## Metrics\n\nconst response = await db.batch([\ndb.$count(products),\n], { metrics: "us" });\nconsole.log(response.metrics.total);\n\n- [ ] Task stays mapped';
+const fixed = buildPreviewSections(mixed);
+assert.match(fixed.chunks.join(''), /\x60{3}javascript\nconst \[page, total\][\s\S]*?\], \{ isolation: "repeatable read" \}\);\n\x60{3}/);
+assert.ok(fixed.sourceLineMaps);
+const taskIndex = fixed.chunks[0].split('\n').findIndex(line=>line.includes('Task stays mapped'));
+assert.equal(fixed.sourceLineMaps[0][taskIndex],mixed.split('\n').length);
+assert.equal(buildPreviewSections(fixed.chunks.join('')).sourceLineMaps,undefined,'Repair is idempotent');
+const longMixed = ('## Intro\n\nA normal paragraph remains untouched.\n\n').repeat(600)+mixed;
+const longFixed=buildPreviewSections(longMixed);
+assert.ok(longFixed.chunks.length>1);
+const repairedChunk=longFixed.chunks.find(chunk=>chunk.includes('const [page, total]'));
+assert.ok(repairedChunk.includes('isolation: "repeatable read"'));
+assert.match(css,/--code-bg:#111111/);
+assert.doesNotMatch(css,/\.markdown-preview \.code-language,/);
+assert.match(previewSource,/function CodeLanguageLabel/);
+assert.match(previewSource,/label: 'JavaScript', icon: 'fileJs'/);
+assert.match(previewSource,/label: 'TypeScript', icon: 'fileTs'/);
+}

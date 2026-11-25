@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, SuppliedIcon } from './Icons';
 import type { FlowDocument, Folder, Workspace } from '../lib/store';
@@ -37,7 +37,7 @@ function Rename({ title, onSave, onCancel }: { title: string; onSave: (s: string
     onChange={e => setValue(e.target.value)} onBlur={() => finish(true)}
     onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); finish(e.key === 'Enter'); } }} />;
 }
-export default function WorkspaceTree({
+function WorkspaceTree({
   workspaces, folders, documents, activeId, activeWorkspaceId, search, searchHits, searchPending, newFolderId,
   onOpen, onNewDocument, onNewFolder, onRenameFolder, onRenameDocument, onDuplicateDocument, onMovePage, onDeleteFolder, onDeleteDocument,
 }: Props) {
@@ -195,3 +195,4 @@ export default function WorkspaceTree({
     </div>, document.body)}
   </>;
 }
+export default memo(WorkspaceTree);

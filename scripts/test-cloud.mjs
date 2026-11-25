@@ -39,7 +39,7 @@ const setTtl = async (path, options) => {
   ttlChanges.push({ path, ttlDays: options.ttlDays });
 };
 const handler = new Function('deps', 'Response', 'Buffer', 'process', 'console',
-  'const { createHash, randomBytes, timingSafeEqual, del, get, head, issueSignedToken, presignUrl, put, setTtl } = deps;\n' +
+  'const { createHash, randomBytes, timingSafeEqual, del, get, head, issueSignedToken, presignUrl, put, setTtl } = deps; const headMany = paths => Promise.all(paths.map(head));\n' +
     source + '\nreturn handler;')({
       createHash, randomBytes, timingSafeEqual, del, get, head, issueSignedToken,
       presignUrl, put, setTtl,

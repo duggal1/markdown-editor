@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type PointerEvent } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ChangeEvent, type DragEvent, type PointerEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { createPortal } from 'react-dom';
 import NumberFlow from '@number-flow/react';
@@ -16,8 +16,9 @@ import { backupStatus, enableBackup, getRecoveryKey, recoverWithKey, resumeBacku
 import { queueSharedSync, readShareRecord, revokeCloudShare } from './lib/sharing';
 import { isHtmlPage, localHtmlUrl, publishHtml, queueSiteSync, readSiteRecord, revokeHtml,
   siteUrl, verifyHostedHtml } from './lib/siteHosting';
-import { detectRawCode, isMarkdownFile, languageForFile } from './lib/code';
+import { detectRawCode, isMarkdownFile, languageForFile, normalizeMixedContent } from './lib/code';
 import { svgPreviewDocument } from './lib/svgPreview';
+import { locateSvgSource } from './lib/svgPalette';
 import { readTextImport } from './lib/textImport';
 import { formatPlainTextAsMarkdown, MAX_MANUAL_FORMAT_CHARS } from './lib/autoMarkdown';
 import { repairLanguage } from './lib/codeRepair';
@@ -26,14 +27,38 @@ import { inferTitle, isUntitledTitle } from './lib/title';
 import { editorPosition, previewPosition, restoreEditorPosition } from './lib/scrollPosition';
 import { cancelNavigation } from './lib/scrollMotion';
 import PageOutline from './components/PageOutline';
+import BootShell from './components/BootShell';
+import TokenCounter from './components/TokenCounter';
+import { localSaveDelay } from './lib/saveSchedule';
 import type { SearchHit } from './lib/searchIndex';
 import {
   clearRecovery, loadWorkspace, readPrefs, removeDoc, removeFolder, removeWorkspaceTree,
-  saveDoc, saveFolder, savePrefs, saveRecovery, uid, wordCount,
+  saveDoc, saveFolder, savePrefs, saveRecovery, uid,
   type FlowDocument, type Folder, type Mode, type Theme, type Workspace,
 } from './lib/store';
 
 const MarkdownPreview = lazy(() => import('./components/MarkdownPreview'));
+
+type TreeActions = Pick<ComponentProps<typeof WorkspaceTree>,
+  'onOpen' | 'onNewDocument' | 'onNewFolder' | 'onRenameFolder' | 'onRenameDocument' |
+  'onDuplicateDocument' | 'onMovePage' | 'onDeleteFolder' | 'onDeleteDocument'>;
+// Keep callback identities stable for the memoized tree, but dispatch to the
+// latest committed closures (workspace, folders and delete state can change).
+function useTreeActions(actions: TreeActions): TreeActions {
+  const latest = useRef(actions);
+  useLayoutEffect(() => { latest.current = actions; }, [actions]);
+  return useMemo<TreeActions>(() => ({
+    onOpen: (...args) => latest.current.onOpen(...args),
+    onNewDocument: (...args) => latest.current.onNewDocument(...args),
+    onNewFolder: (...args) => latest.current.onNewFolder(...args),
+    onRenameFolder: (...args) => latest.current.onRenameFolder(...args),
+    onRenameDocument: (...args) => latest.current.onRenameDocument(...args),
+    onDuplicateDocument: (...args) => latest.current.onDuplicateDocument(...args),
+    onMovePage: (...args) => latest.current.onMovePage(...args),
+    onDeleteFolder: (...args) => latest.current.onDeleteFolder(...args),
+    onDeleteDocument: (...args) => latest.current.onDeleteDocument(...args),
+  }), []);
+}
 
 // Warm the preview's module on idle without blocking the editor or changing
 // mobile layout. This removes a cold-import pause on the first preview.
@@ -97,7 +122,7 @@ export default function App() {
   const [searchResults, setSearchResults] = useState<SearchHit[]>([]);
   const [searchPending, setSearchPending] = useState(false);
   const [previewText, setPreviewText] = useState('');
-  const [words, setWords] = useState(0);
+  const readTokenSource = useCallback((id: string) => live.current.get(id), []);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [saveDuration, setSaveDuration] = useState(0);
   const saveStarted = useRef(new Map<string, number>());
@@ -150,6 +175,7 @@ export default function App() {
   const workerRef = useRef<Worker | null>(null);
   const searchRequest = useRef(0);
   const saveTimers = useRef(new Map<string, number>());
+  const dirtySince = useRef(new Map<string, number>());
   const saveQueue = useRef(new Map<string, Promise<void>>());
   const visualTimers = useRef(new Map<string, number>());
   const previewFrame = useRef<number | null>(null);
@@ -186,19 +212,14 @@ export default function App() {
   useEffect(() => {
     let alive = true;
     let worker: Worker | null = null;
+    let startupFrame = 0;
+    let startupTimer = 0;
     try {
       worker = new Worker(new URL('./workers/search.ts', import.meta.url), { type: 'module' });
-      worker.onmessage = (event: MessageEvent<
-        | { type: 'result'; requestId: number; hits: SearchHit[] }
-        | { type: 'metrics'; id: string; updatedAt: number; words: number }
-      >) => {
+      worker.onmessage = (event: MessageEvent<{ type: 'result'; requestId: number; hits: SearchHit[] }>) => {
         if (event.data.type === 'result' && event.data.requestId === searchRequest.current) {
           setSearchResults(event.data.hits);
           setSearchPending(false);
-        } else if (event.data.type === 'metrics') {
-          const current = live.current.get(event.data.id);
-          if (current && activeIdRef.current === event.data.id &&
-            current.updatedAt === event.data.updatedAt) setWords(event.data.words);
         }
       };
       workerRef.current = worker;
@@ -207,7 +228,19 @@ export default function App() {
       if (!alive) return;
       // Upgrade older default "Untitled" pages once. Named pages and
       // imported filenames are never silently renamed.
-      const restored = data.documents.map(doc => {
+      const restored = data.documents.map(original => {
+        let doc = original;
+        // Recover old inferred-code pages, never explicit source-file imports.
+        if (!doc.asset && doc.markdown.length < 180_000 &&
+          (!doc.fileName || isMarkdownFile(doc.fileName) || !languageForFile(doc.fileName)) &&
+          normalizeMixedContent(doc.markdown) !== doc.markdown) {
+          const markdown = formatPlainTextAsMarkdown(doc.markdown, { atDocumentStart: true });
+          if (markdown !== doc.markdown) {
+            doc = { ...doc, markdown, language: undefined, updatedAt: Date.now() };
+            if (doc.titleAuto && !doc.fileName) doc.title = inferTitle(markdown);
+            void saveDoc(doc).catch(() => setNotice('Could not save recovered Markdown structure.'));
+          }
+        }
         if (doc.asset || doc.fileName || !doc.markdown.trim() ||
             (!doc.titleAuto && !isUntitledTitle(doc.title))) return doc;
         const title = inferTitle(doc.markdown, doc.language);
@@ -217,9 +250,6 @@ export default function App() {
         return updated;
       });
       live.current = new Map(restored.map(doc => [doc.id, doc]));
-      // Retry only previously authorized cloud shares that changed while offline.
-      restored.forEach(queueSharedSync);
-      restored.forEach(doc => queueSiteSync(doc));
       const prefs = readPrefs();
       const first = restored.find(doc => doc.id === prefs.activeDocumentId) || restored[0];
       const chosenWorkspace = data.workspaces.find(ws => ws.id === prefs.activeWorkspaceId) ||
@@ -246,16 +276,32 @@ export default function App() {
       modeRef.current = restoredMode;
       setMode(restoredMode);
       setPreviewText(first.markdown);
-      setWords(first.markdown.length < 25000 ? wordCount(first.markdown) : 0);
-      worker?.postMessage({ type: 'index', documents: restored.map(({ id, workspaceId, title, markdown, updatedAt }) => ({ id, workspaceId, title, markdown, updatedAt })) });
-      if (first.markdown.length >= 25000) worker?.postMessage({ type: 'metrics', document: { id: first.id, markdown: first.markdown, updatedAt: first.updatedAt } });
+      // Yield a frame before cloning the entire workspace into the search worker
+      // or doing per-document cloud reconciliation. Use the current live map,
+      // not a stale startup snapshot, if an edit occurs before the callback.
+      startupFrame = requestAnimationFrame(() => {
+        startupTimer = window.setTimeout(() => {
+          if (!alive) return;
+          performance.mark('flow:workspace-ready');
+          if (performance.getEntriesByName('flow:boot-start', 'mark').length) {
+            performance.measure('flow:workspace-startup', 'flow:boot-start', 'flow:workspace-ready');
+          }
+          const current = [...live.current.values()];
+          worker?.postMessage({ type: 'index', documents: current.map(({ id, workspaceId, title, markdown, updatedAt }) => ({ id, workspaceId, title, markdown, updatedAt })) });
+          current.forEach(queueSharedSync);
+          current.forEach(doc => queueSiteSync(doc));
+        }, 0);
+      });
       setLoaded(true);
     }).catch(() => { if (alive) { setSaveState('error'); setNotice('Workspace could not be recovered. Existing data was not changed. Reload to retry.'); } });
     return () => {
       alive = false;
+      cancelAnimationFrame(startupFrame);
+      clearTimeout(startupTimer);
       worker?.terminate();
       workerRef.current = null;
       for (const timer of saveTimers.current.values()) clearTimeout(timer);
+      dirtySince.current.clear();
       for (const timer of visualTimers.current.values()) clearTimeout(timer);
       if (previewFrame.current !== null) cancelAnimationFrame(previewFrame.current);
       if (previewTimer.current !== null) clearTimeout(previewTimer.current);
@@ -326,6 +372,7 @@ export default function App() {
   const flush = useCallback((id: string) => {
     const timer = saveTimers.current.get(id);
     if (timer !== undefined) { clearTimeout(timer); saveTimers.current.delete(id); }
+    dirtySince.current.delete(id);
     const doc = live.current.get(id);
     if (!doc) return;
     const previous = saveQueue.current.get(id) || Promise.resolve();
@@ -334,7 +381,11 @@ export default function App() {
     void next.then(() => {
       if (saveQueue.current.get(id) === next) saveQueue.current.delete(id);
       const latest = live.current.get(id);
-      if (latest && latest.updatedAt === doc.updatedAt) {
+      if (latest === doc) {
+        // Only synchronize a locally committed revision; do not inspect share
+        // records or schedule cloud work on every editor keystroke.
+        queueSharedSync(doc);
+        queueSiteSync(doc);
         if (activeIdRef.current === id) {
           const started = saveStarted.current.get(id);
           if (started !== undefined) setSaveDuration(Math.max(1, Math.round(performance.now() - started)));
@@ -364,14 +415,16 @@ export default function App() {
 
   const scheduleSave = useCallback((doc: FlowDocument) => {
     live.current.set(doc.id, doc);
-    queueSharedSync(doc);
-    queueSiteSync(doc);
-    saveStarted.current.set(doc.id, performance.now());
+    if (doc.id === activeIdRef.current) window.dispatchEvent(new CustomEvent('flow-token-source', { detail: doc.id }));
+    const now = performance.now();
+    const firstDirty = dirtySince.current.get(doc.id) ?? now;
+    dirtySince.current.set(doc.id, firstDirty);
+    saveStarted.current.set(doc.id, now);
     setSaveDuration(0);
     setSaveState('saving');
     const old = saveTimers.current.get(doc.id);
     if (old !== undefined) clearTimeout(old);
-    saveTimers.current.set(doc.id, window.setTimeout(() => flush(doc.id), doc.markdown.length > 100000 ? 900 : 340));
+    saveTimers.current.set(doc.id, window.setTimeout(() => flush(doc.id), localSaveDelay(doc.markdown.length, now - firstDirty)));
     const visual = visualTimers.current.get(doc.id);
     if (visual !== undefined) clearTimeout(visual);
     visualTimers.current.set(doc.id, window.setTimeout(() => {
@@ -382,7 +435,7 @@ export default function App() {
           id: latest.id, workspaceId: latest.workspaceId, title: latest.title,
           markdown: latest.markdown, updatedAt: latest.updatedAt,
         } });
-      } else if (activeIdRef.current === latest.id) setWords(wordCount(latest.markdown));
+      }
       visualTimers.current.delete(doc.id);
     }, doc.markdown.length > 100000 ? 700 : 430));
   }, [flush]);
@@ -410,7 +463,6 @@ export default function App() {
       setDocs(items => items.map(item => item.id === doc.id ? next : item));
       if (activeIdRef.current === doc.id) {
         setPreviewText(value);
-        setWords(wordCount(value));
       }
     }).catch(() => {
       if (!cancelled) setNotice('Could not decode this Markdown file. The original is preserved.');
@@ -456,6 +508,21 @@ export default function App() {
       setDocs(items => items.map(item => item.id === next.id ? next : item));
     }
   }, [scheduleSave]);
+
+  const onSvgEdit = useCallback((source: string, next: string, line: number): boolean => {
+    const id = activeIdRef.current;
+    const current = live.current.get(id);
+    if (!current || current.asset) return false;
+    const view = editorRef.current;
+    const text = view?.state.doc.toString() ?? current.markdown;
+    const from = locateSvgSource(text, source, line);
+    if (from < 0) return false;
+    if (view) view.dispatch({ changes: { from, to: from + source.length, insert: next }, userEvent: 'input' });
+    const updated = view?.state.doc.toString() ?? text.slice(0, from) + next + text.slice(from + source.length);
+    onEditorChange(updated, id);
+    setPreviewText(updated);
+    return true;
+  }, [onEditorChange]);
 
   const onToggleTask = useCallback((lineNumber: number, checked: boolean) => {
     const id = activeIdRef.current;
@@ -508,11 +575,17 @@ export default function App() {
     modeRestore.current = null;
     if (previewScrollRef.current) previewScrollRef.current.scrollTop = 0;
     setWorkspaceId(doc.workspaceId);
-    setDocs(current => current.map(item => live.current.get(item.id) || item));
+    setDocs(current => {
+      let changed = false;
+      const next = current.map(item => {
+        const latest = live.current.get(item.id) || item;
+        if (latest !== item) changed = true;
+        return latest;
+      });
+      return changed ? next : current;
+    });
     setRecentIds(current => [id, ...current.filter(item => item !== id)].slice(0, 30));
     setPreviewText(doc.markdown);
-    setWords(doc.markdown.length < 25000 ? wordCount(doc.markdown) : 0);
-    if (doc.markdown.length >= 25000) workerRef.current?.postMessage({ type: 'metrics', document: { id: doc.id, markdown: doc.markdown, updatedAt: doc.updatedAt } });
     setSaveState('idle');
     if (window.innerWidth < 800) setSidebarOpen(false);
   }, [flush, cancelHeadingMotion]);
@@ -558,6 +631,7 @@ async function eraseDocument(doc: FlowDocument) {
     const saveTimer = saveTimers.current.get(doc.id);
     if (saveTimer !== undefined) clearTimeout(saveTimer);
     saveTimers.current.delete(doc.id);
+    dirtySince.current.delete(doc.id);
     const visualTimer = visualTimers.current.get(doc.id);
     if (visualTimer !== undefined) clearTimeout(visualTimer);
     visualTimers.current.delete(doc.id);
@@ -644,6 +718,7 @@ async function eraseDocument(doc: FlowDocument) {
         const timer = saveTimers.current.get(doc.id);
         if (timer !== undefined) clearTimeout(timer);
         saveTimers.current.delete(doc.id);
+    dirtySince.current.delete(doc.id);
         await saveQueue.current.get(doc.id)?.catch(() => {});
         const current = live.current.get(doc.id);
         if (!current) continue;
@@ -718,6 +793,7 @@ async function eraseDocument(doc: FlowDocument) {
       const timer = saveTimers.current.get(doc.id);
       if (timer !== undefined) clearTimeout(timer);
       saveTimers.current.delete(doc.id);
+    dirtySince.current.delete(doc.id);
       const visual = visualTimers.current.get(doc.id);
       if (visual !== undefined) clearTimeout(visual);
       visualTimers.current.delete(doc.id);
@@ -997,8 +1073,10 @@ async function eraseDocument(doc: FlowDocument) {
         const decoded = await readTextImport(file, file.name);
         binary = decoded === null;
         if (decoded !== null) {
-          const plainText = /\.txt$/i.test(file.name) && !languageForFile(file.name);
-          markdown = plainText ? formatPlainTextAsMarkdown(decoded, { atDocumentStart: true }) : decoded;
+          const plainText = !languageForFile(file.name) && !isMarkdownFile(file.name) &&
+            (/\.txt$/i.test(file.name) || file.type === 'text/plain');
+          const mixedMarkdown = isMarkdownFile(file.name) && normalizeMixedContent(decoded) !== decoded;
+          markdown = plainText || mixedMarkdown ? formatPlainTextAsMarkdown(decoded, { atDocumentStart: true }) : decoded;
         }
       }
       const now = Date.now();
@@ -1066,11 +1144,11 @@ async function eraseDocument(doc: FlowDocument) {
   }
   const active = live.current.get(activeId) || docs.find(doc => doc.id === activeId);
   const activeFileLanguage = active?.language || languageForFile(active?.fileName || '');
-  const activeRepairLanguage = active && !active.asset
-    ? repairLanguage(active.markdown.slice(0, 8192), activeFileLanguage) : null;
+  const activeRepairLanguage = useMemo(() => active && !active.asset
+    ? repairLanguage(active.markdown.slice(0, 8192), activeFileLanguage) : null, [active, activeFileLanguage]);
   const formatActionLabel = activeRepairLanguage === 'html' ? 'Auto HTML Fix'
     : 'Auto Python Fix';
-  const activeHtml = isHtmlPage(active);
+  const activeHtml = useMemo(() => isHtmlPage(active), [active]);
   useEffect(() => { setHtmlSurfaceTone('dark'); }, [activeId]);
   // HTML previews are automatically hosted; Markdown stays local unless shared.
   useEffect(() => {
@@ -1375,7 +1453,13 @@ async function eraseDocument(doc: FlowDocument) {
     whileTap: { scale: 0.985 },
     transition: { duration: 0.17, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
   };
-  if (!loaded) return <main className="boot"><FlowMark size={30} /><span>{saveState === 'error' ? 'Workspace could not be opened. Reload to retry.' : 'Opening workspace…'}</span></main>;
+  const treeActions = useTreeActions({
+    onOpen: selectDocument, onNewFolder: createFolder, onNewDocument: makeDocument,
+    onRenameFolder: renameFolder, onRenameDocument: renameDocument, onDuplicateDocument: duplicateDocument,
+    onMovePage: movePage, onDeleteFolder: id => { void eraseFolder(id); },
+    onDeleteDocument: id => { if (live.current.has(id)) void deleteTarget({ kind: 'document', id }); },
+  });
+  if (!loaded) return saveState === 'error' ? <main className="boot" role="alert"><FlowMark size={30} /><span>Workspace could not be opened. Reload to retry.</span></main> : <BootShell />;
   return <div className="flow-shell private-workspace" onDragOver={event => event.preventDefault()} onDrop={onDrop}>
     <motion.aside className={'sidebar' + (sidebarOpen ? ' is-open' : '')}
       initial={false} animate={{ width: sidebarOpen ? 232 : 0 }}
@@ -1409,13 +1493,7 @@ async function eraseDocument(doc: FlowDocument) {
           workspaces={workspaces} documents={matching} folders={folders} newFolderId={newFolderId}
           activeId={activeId} activeWorkspaceId={workspaceId}
           search={query} searchHits={searchResults} searchPending={searchPending}
-          onOpen={selectDocument} onNewFolder={createFolder} onNewDocument={makeDocument}
-          onRenameFolder={renameFolder} onRenameDocument={renameDocument} onDuplicateDocument={duplicateDocument}
-          onMovePage={movePage} onDeleteFolder={id => { void eraseFolder(id); }}
-          onDeleteDocument={id => {
-            const doc = live.current.get(id);
-            if (doc) void deleteTarget({ kind: 'document', id });
-          }}
+          {...treeActions}
         />
         <div className="sidebar-bottom">
           <a className="draw-sidebar-entry" href="/draw"><Icon name="edit" size={16} /> Draw screenshots</a>
@@ -1473,7 +1551,7 @@ async function eraseDocument(doc: FlowDocument) {
           </motion.button>
           <motion.button {...pressMotion} type="button" className="square-button theme-toggle settings-trigger"
             title="Settings" aria-label="Settings" aria-haspopup="dialog" aria-expanded={settingsOpen}
-            onClick={() => setSettingsOpen(true)}><Icon name="settings" size={18} /></motion.button>
+            onClick={() => setSettingsOpen(true)}><Icon name="sliders" size={17} /></motion.button>
           <input ref={fileRef} type="file" hidden multiple onChange={onFileSelected} aria-label="Import files" />
         </div>
       </header>
@@ -1507,7 +1585,7 @@ async function eraseDocument(doc: FlowDocument) {
               transformTiming={{ duration: 260, easing: 'ease-out' }}
               opacityTiming={{ duration: 160, easing: 'ease-out' }} /> ms</span>
           </motion.span>
-        <span className="word-stat">{active?.fileType === 'image' ? 'Image' : active?.fileType === 'binary' ? 'File' : `${words.toLocaleString()} words`}</span>
+        <TokenCounter key={activeId} documentId={activeId} readSource={readTokenSource} />
       </div>
       <motion.main ref={editorAreaRef} className={'editor-area mode-' + mode + (compact ? ' compact' : '') + (resizingSplit ? ' is-resizing' : '')} aria-label="Flow Markdown workspace"
         initial={false} animate={{ gridTemplateColumns: compact ? 'minmax(0, 1fr)' : gridColumns,
@@ -1534,7 +1612,7 @@ async function eraseDocument(doc: FlowDocument) {
             <Suspense fallback={<div className="preview-loading">Rendering…</div>}>
               {presentationMode !== 'write' && (active?.asset
                 ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} theme={theme} />
-                : <MarkdownPreview key={active?.id || 'preview'} markdown={previewText} sourceLanguage={active?.language} scrollRef={previewScrollRef} theme={theme} onToggleTask={onToggleTask} />)}
+                : <MarkdownPreview key={active?.id || 'preview'} markdown={previewText} sourceLanguage={active?.language} scrollRef={previewScrollRef} theme={theme} onToggleTask={onToggleTask} onSvgEdit={onSvgEdit} />)}
             </Suspense>
           </motion.div>
         </section>

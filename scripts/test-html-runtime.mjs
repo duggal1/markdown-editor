@@ -28,7 +28,7 @@ const handler = runInNewContext(
     .replace('export default async function handler', 'async function handler') +
     '\nhandler',
   {
-    ...blobOps, createHash, randomBytes, timingSafeEqual, once,
+    ...blobOps, headMany: paths => Promise.all(paths.map(path => blobOps.head(path))), createHash, randomBytes, timingSafeEqual, once,
     Buffer, Response, Blob, URL,
     process: { env: { BLOB_READ_WRITE_TOKEN: 'test-token' } },
     console,

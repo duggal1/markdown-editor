@@ -44,12 +44,18 @@ function database(): Promise<IDBDatabase> {
   }).catch(error => { dbPromise = undefined; throw error; });
   return dbPromise!;
 }
-async function getAll<T>(store: 'documents' | 'workspaces' | 'folders'): Promise<T[]> {
+type WorkspaceSnapshot = { workspaces: Workspace[]; folders: Folder[]; documents: FlowDocument[] };
+/** All three stores are read from one consistent IndexedDB transaction. */
+async function readWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
   const db = await database();
   return new Promise((resolve, reject) => {
-    const request = db.transaction(store, 'readonly').objectStore(store).getAll();
-    request.onsuccess = () => resolve(request.result as T[]);
-    request.onerror = () => reject(request.error);
+    const tx = db.transaction(['workspaces', 'folders', 'documents'], 'readonly');
+    const workspaces = tx.objectStore('workspaces').getAll();
+    const folders = tx.objectStore('folders').getAll();
+    const documents = tx.objectStore('documents').getAll();
+    tx.oncomplete = () => resolve({ workspaces: workspaces.result, folders: folders.result, documents: documents.result });
+    tx.onerror = () => reject(tx.error || Error('Workspace read failed'));
+    tx.onabort = () => reject(tx.error || Error('Workspace read aborted'));
   });
 }
 async function put(store: 'documents' | 'workspaces' | 'folders', value: FlowDocument | Workspace | Folder): Promise<void> {
@@ -180,15 +186,23 @@ export async function removeWorkspaceTree(
   queueBackupDeletion('workspaces', workspaceId);
 }
 
-export async function loadWorkspace(): Promise<{ workspaces: Workspace[]; folders: Folder[]; documents: FlowDocument[] }> {
+let workspaceLoad: Promise<WorkspaceSnapshot> | undefined;
+/** Deduplicate simultaneous startup reads, including React StrictMode remounts.
+ * Do not retain a stale snapshot after completion: IndexedDB remains authoritative.
+ */
+export function loadWorkspace(): Promise<WorkspaceSnapshot> {
+  if (!workspaceLoad) {
+    workspaceLoad = loadWorkspaceOnce().finally(() => { workspaceLoad = undefined; });
+  }
+  return workspaceLoad;
+}
+async function loadWorkspaceOnce(): Promise<WorkspaceSnapshot> {
   let workspaces: Workspace[] = [];
   let folders: Folder[] = [];
   let documents: FlowDocument[] = [];
   let readError: unknown = null;
   try {
-    [workspaces, folders, documents] = await Promise.all([
-      getAll<Workspace>('workspaces'), getAll<Folder>('folders'), getAll<FlowDocument>('documents'),
-    ]);
+    ({ workspaces, folders, documents } = await readWorkspaceSnapshot());
   } catch (error) {
     // Never interpret an unreadable IndexedDB as an empty workspace: it may
     // contain every document the user has ever created.
@@ -284,16 +298,4 @@ export async function loadWorkspace(): Promise<{ workspaces: Workspace[]; folder
   return { workspaces, folders, documents };
 }
 export { inferTitle } from './title';
-export function wordCount(value: string): number {
-  let words = 0;
-  let whitespace = true;
-  for (let i = 0; i < value.length; i++) {
-    const c = value.charCodeAt(i);
-    const blank = c === 32 || (c >= 9 && c <= 13) || c === 160 ||
-      c === 0x1680 || (c >= 0x2000 && c <= 0x200a) ||
-      c === 0x2028 || c === 0x2029 || c === 0x202f || c === 0x205f || c === 0x3000 || c === 0xfeff;
-    if (!blank && whitespace) words++;
-    whitespace = blank;
-  }
-  return words;
-}
+

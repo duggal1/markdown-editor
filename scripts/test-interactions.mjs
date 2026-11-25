@@ -229,3 +229,18 @@ assert.match(css, /\.topbar \.accent-theme-trigger\s*\{\s*grid-row:1; grid-colum
 assert.match(css, /\.accent-theme-menu \{/,
   'Theme menu must have a dedicated styled surface.');
 console.log('Motion, five-second save status, iOS geometry and preview cache checks passed.');
+assert.match(tree, /export default memo\(WorkspaceTree\)/, 'The file tree must not re-render on unrelated editor state');
+assert.match(app, /useTreeActions\(/, 'Tree events use stable callback identities');
+assert.match(app, /localSaveDelay\(doc\.markdown\.length, now - firstDirty\)/, 'Continuous editing has a bounded local save delay');
+const shareDialogSource = read('src/components/ShareDialog.tsx');
+assert.match(shareDialogSource, /className="share-copy-idle">Copy link/);
+assert.match(shareDialogSource, /className="share-copy-success"><Icon name="check"/);
+assert.match(css, /\.share-access \{[^}]*align-items:start/);
+assert.match(css, /\.share-revoke:is\(:hover,:focus-visible\):not\(:disabled\) \{[^}]*text-decoration:underline dotted/);
+assert.match(app, /setSettingsOpen\(true\)\}><Icon name="sliders"/);
+assert.match(css, /\.share-url-row input \{[^}]*color:var\(--share-url\)[^}]*'Geist Variable',sans-serif[^}]*-webkit-font-smoothing:antialiased/);
+assert.doesNotMatch(css, /\.share-url-row input \{[^}]*var\(--mono\)/);
+assert.match(shareDialogSource, /className="share-consent-control"[\s\S]*?type="checkbox"[\s\S]*?className="share-consent-mark"[\s\S]*?name="check"/);
+assert.match(css, /\.share-consent-control input:focus-visible \+ \.share-consent-mark/);
+assert.match(css, /--share-control:#202020;\s*--share-control-hover:#151515/);
+assert.match(css, /--share-control:#e8e8e8;\s*--share-control-hover:#f5f5f5/);

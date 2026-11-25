@@ -6,6 +6,16 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: flow
+          POSTGRES_PASSWORD: flow
+          POSTGRES_DB: flow
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,6 +28,9 @@ jobs:
       - run: npm run test:icons
       - run: npm run test:workspace-ui
       - run: npm run test:cloud
+      - run: npm run test:postgres
+        env:
+          DATABASE_URL: postgres://flow:flow@localhost:5432/flow
       - run: node scripts/test-backup.mjs
       - run: npm run test:preview
       - run: npm run test:html
@@ -25,6 +38,7 @@ jobs:
       - run: npm run test:glass
       - run: npm run test:long-scroll
       - run: npm run test:search
+      - run: npm run test:tokens
       - run: npm run test:interactions
       - run: npm run test:tasks
       - run: npm run test:titles
