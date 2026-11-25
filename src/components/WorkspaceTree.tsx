@@ -28,8 +28,8 @@ function TreeGlyph({ kind, open = false }: { kind: 'file' | 'folder'; open?: boo
   return <svg className="workspace-glyph" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor"
     strokeWidth="1.15" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
     {kind === 'file' ? <>
-      <path d="M4.25 1.75h4.7l3.3 3.3v7.7a1.5 1.5 0 0 1-1.5 1.5h-6.5a1.5 1.5 0 0 1-1.5-1.5v-9.5a1.5 1.5 0 0 1 1.5-1.5Z"/>
-      <path d="M8.75 1.9v2.5a.8.8 0 0 0 .8.8h2.5M5.3 8.2h4.4M5.3 10.7h3"/>
+      <path d="M4.5 2.25h4.3l3 3v7.1a1.4 1.4 0 0 1-1.4 1.4H4.5a1.4 1.4 0 0 1-1.4-1.4v-8.7a1.4 1.4 0 0 1 1.4-1.4Z"/>
+      <path d="M8.75 2.5v2.1a.75.75 0 0 0 .75.75h2.05"/>
     </> : open ? <>
       <path d="M1.75 6.2V4.3a1.3 1.3 0 0 1 1.3-1.3H6l1.5 1.5h5.25a1.5 1.5 0 0 1 1.5 1.5v.35"/>
       <path d="M3.2 6.5h10.05a1 1 0 0 1 .96 1.3l-1.4 4.5a1.35 1.35 0 0 1-1.28.95H3a1.25 1.25 0 0 1-1.2-1.6l1.4-5.15Z"/>

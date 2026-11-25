@@ -1,5 +1,6 @@
 import { needsBackupRecovery, queueBackup, queueBackupDeletion, restoreBackup, resumeBackup } from './backup';
 import { restoreDocument } from './document';
+import { sameEmptyDraft } from './emptyDraft';
 import type { AccentTheme } from './accentTheme';
 
 export type Theme = 'light' | 'dark';
@@ -152,6 +153,41 @@ export async function removeDoc(id: string): Promise<void> {
   try { localStorage.removeItem(FALLBACK + id); } catch { /* no-op */ }
   clearRecovery(id);
   queueBackupDeletion('documents', id);
+}
+/** Compare and delete inside one transaction, so an independently saved edit
+ * cannot be silently removed by an obsolete automatic-cleanup timer. */
+export async function removeEmptyDraft(expected: FlowDocument): Promise<boolean> {
+  const id = expected.id;
+  if (readPrefs().activeDocumentId === id || readJson<FlowDocument>(FALLBACK + id) ||
+    readJson<FlowDocument>(RECOVERY)?.id === id) return false;
+  const db = await database();
+  const removed = await new Promise<boolean>((resolve, reject) => {
+    const tx = db.transaction('documents', 'readwrite');
+    const docs = tx.objectStore('documents');
+    let deleted = false;
+    const request = docs.get(id);
+    request.onsuccess = () => {
+      const current = request.result as FlowDocument | undefined;
+      if (!current || !sameEmptyDraft(current, expected) || readPrefs().activeDocumentId === id) return;
+      // Also protect a subpage created in another tab after the UI snapshot.
+      const cursor = docs.openCursor();
+      cursor.onsuccess = () => {
+        const entry = cursor.result;
+        if (entry) {
+          if ((entry.value as FlowDocument).parentId === id) return;
+          entry.continue();
+        } else {
+          docs.delete(id);
+          deleted = true;
+        }
+      };
+    };
+    tx.oncomplete = () => resolve(deleted);
+    tx.onerror = () => reject(tx.error || Error('Draft cleanup failed'));
+    tx.onabort = () => reject(tx.error || Error('Draft cleanup aborted'));
+  });
+  if (removed) queueBackupDeletion('documents', id);
+  return removed;
 }
 export async function removeWorkspace(id: string): Promise<void> {
   await remove('workspaces', id);

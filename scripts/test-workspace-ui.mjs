@@ -69,7 +69,7 @@ console.log('Workspace controls, toast and dark native dialogs passed.');
 
 // Exercise the actual ranking helper, including legacy preferences and >30 files.
 const js = ts.transpileModule(read('src/lib/workspaceRecency.ts'), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { touchRecent, restoreRecent, rankDocuments } = await import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'));
+const { touchRecent, finishVisit, restoreRecent, rankDocuments } = await import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'));
 const docs = Array.from({ length: 45 }, (_, i) => ({ id: String(i), updatedAt: i }));
 let history = [];
 for (const doc of docs) history = touchRecent(history, doc.id);
@@ -77,12 +77,37 @@ assert.equal(history.length, 45);
 history = touchRecent(history, '0');
 assert.equal(rankDocuments(docs, history)[0].id, '0');
 assert.equal(touchRecent(history, '0'), history);
-assert.deepEqual(restoreRecent(['4', '4', 'missing', 2], '0', new Set(['0', '4'])), ['0', '4']);
+assert.deepEqual(restoreRecent(['4', '4', 'missing', 2], [docs[0], docs[4]]), ['4', '0']);
 assert.deepEqual(rankDocuments(docs.slice(0, 3), []).map(doc => doc.id), ['2', '1', '0']);
 assert.match(tree, /className="workspace-root" role="treeitem"/);
 assert.match(tree, /tree\.entries\.map/);
 assert.match(tree, /branchRank\(child\.id\)/);
 assert.match(app, /rankDocuments\(docs, recentIds\)/);
-assert.match(app, /setRecentIds\(ids => touchRecent\(ids, id\)\)/);
+assert.match(app, /finishVisit\(ids, previous, id, live.current.has\(previous\)\)/);
+assert.doesNotMatch(app, /touchRecent\(/);
 assert.doesNotMatch(app, /setRecentIds[^\n]*slice\(0, 30\)/);
 console.log('Global workspace root and durable recency ranking passed.');
+
+const stable = ['2', '1', '0'];
+assert.equal(finishVisit(stable, '0', '0', true), stable);
+assert.equal(finishVisit(stable, '0', '2', false), stable);
+assert.deepEqual(finishVisit(stable, '0', '2', true), ['0', '2', '1']);
+assert.deepEqual(rankDocuments([{...docs[0], updatedAt: 999}, docs[1], docs[2]], stable).map(doc => doc.id), stable);
+const draftJs = ts.transpileModule(read('src/lib/emptyDraft.ts'), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
+const { canExpireDraft, sameEmptyDraft, EMPTY_DRAFT_IDLE_MS } = await import('data:text/javascript;base64,' + Buffer.from(draftJs).toString('base64'));
+const draft = { id: 'draft', title: 'Untitled', titleAuto: true, markdown: '', workspaceId: 'w', createdAt: 1, updatedAt: 1 };
+assert.equal(EMPTY_DRAFT_IDLE_MS, 30000);
+assert.equal(canExpireDraft(draft, 'other', [draft], false), true);
+assert.equal(canExpireDraft(draft, 'draft', [draft], false), false);
+assert.equal(canExpireDraft(draft, 'other', [draft], true), false);
+assert.equal(canExpireDraft(draft, 'other', [draft, {...draft, id: 'child', parentId: 'draft'}], false), false);
+for (const patch of [{markdown:' '}, {markdown:'a'}, {titleAuto:false}, {title:'Notes'}, {fileName:'Untitled.md'}, {asset:new Blob(['x'])}, {fileType:'text'}]) {
+  assert.equal(canExpireDraft({...draft,...patch}, 'other', [draft], false), false);
+}
+assert.equal(sameEmptyDraft(draft, draft), true);
+assert.equal(sameEmptyDraft({...draft, updatedAt: 2}, draft), false);
+assert.equal(sameEmptyDraft({...draft, markdown: 'saved elsewhere'}, draft), false);
+assert.match(app, /Date.now\(\) \+ EMPTY_DRAFT_IDLE_MS/);
+assert.match(app, /removeEmptyDraft\(doc\)/);
+assert.match(read('src/lib/store.ts'), /sameEmptyDraft\(current, expected\)/);
+console.log('Departure-only recency and protected empty-draft eligibility passed.');
