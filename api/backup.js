@@ -1,8 +1,9 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { del, get, head, issueSignedToken, list, presignUrl, put, setTtl } from '@vercel/blob';
+import { del, get, head, headMany, issueSignedToken, list, presignUrl, put, setTtl } from '../server/storage.js';
 
 const LIMIT = 100 * 1024 * 1024;
-const PART = 5 * 1024 * 1024;
+const LEGACY_PART = 5 * 1024 * 1024;
+const PART = (process.env.FLOW_STORAGE_BACKEND === 'postgres' || (process.env.DATABASE_URL && !process.env.BLOB_READ_WRITE_TOKEN && !(process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID))) ? 2 * 1024 * 1024 : LEGACY_PART;
 const INLINE_BYTES = 128 * 1024;
 const KEY = /^[A-Za-z0-9_-]{43}$/;
 const ID = /^[A-Za-z0-9_-]{1,128}$/;
@@ -13,8 +14,8 @@ const digest = value => createHash('sha256').update(value).digest('hex');
 const cookie = (req, name) => (req.headers.cookie || '').split(';').map(s => s.trim())
   .find(s => s.startsWith(name + '='))?.slice(name.length + 1);
 const reply = (res, status, value) => res.status(status).json(value);
-const count = bytes => Math.ceil(bytes / PART);
-const partPaths = (root, version, bytes) => Array.from({ length: count(bytes) },
+const count = (bytes, partBytes = PART) => Math.ceil(bytes / partBytes);
+const partPaths = (root, version, bytes, partBytes = PART) => Array.from({ length: count(bytes, partBytes) },
   (_, i) => root + '/parts/' + version + '/' + i + '.bin');
 
 async function read(path) {
@@ -32,14 +33,14 @@ async function urls(paths, operation) {
     allowedContentTypes: ['application/octet-stream'], maximumSizeInBytes: PART,
   } : {};
   const token = await issueSignedToken({ pathname: '*', operations: [operation], validUntil, ...limits });
-  return Promise.all(paths.map(async pathname => (await presignUrl(token, {
+  return (await Promise.all(paths.map(async pathname => { const signed = await presignUrl(token, {
     operation, pathname, access: 'private', validUntil,
     ...(operation === 'put' ? { ...limits, addRandomSuffix: false, allowOverwrite: false, ttlDays: 30 } : {}),
-  })).presignedUrl));
+  }); return signed.presignedUrls || [signed.presignedUrl]; }))).flat();
 }
 async function retire(root, item) {
   if (!item?.version) return;
-  await Promise.allSettled(partPaths(root, item.version, item.bytes).map(path => setTtl(path, { ttlDays: 1 })));
+  await Promise.allSettled(partPaths(root, item.version, item.bytes, item.partBytes || LEGACY_PART).map(path => setTtl(path, { ttlDays: 1 })));
 }
 function validMeta(kind, id, meta) {
   if (!meta || typeof meta !== 'object' || Array.isArray(meta) || meta.id !== id ||
@@ -58,7 +59,7 @@ export default async function handler(req, res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Robots-Tag', 'noindex, nofollow');
   if (!['GET', 'POST', 'PUT', 'DELETE'].includes(req.method)) return reply(res, 405, { error: 'Method not allowed' });
-  if (!process.env.BLOB_READ_WRITE_TOKEN && !(process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID))
+  if (!process.env.DATABASE_URL && !process.env.BLOB_READ_WRITE_TOKEN && !(process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID))
     return reply(res, 503, { error: 'Cloud backup unavailable' });
   try {
     const origin = req.headers.origin;
@@ -131,7 +132,7 @@ export default async function handler(req, res) {
 
     if (req.method === 'GET') {
       if (!current || current.deleted) return reply(res, 404, { error: 'Backup not found' });
-      return reply(res, 200, { ...current, urls: await urls(partPaths(root, current.version, current.bytes), 'get') });
+      return reply(res, 200, { ...current, urls: await urls(partPaths(root, current.version, current.bytes, current.partBytes || LEGACY_PART), 'get') });
     }
     if (req.method === 'DELETE' && body.action === 'delete') {
       if (kind === 'documents') await del(alias);
@@ -162,7 +163,7 @@ export default async function handler(req, res) {
         access: 'private', addRandomSuffix: false, allowOverwrite: false,
         contentType: 'application/octet-stream', cacheControlMaxAge: 60,
       });
-      await write(path, { meta, bytes, checksum, version }, cas);
+      await write(path, { meta, bytes, checksum, version, partBytes: PART }, cas);
       await retire(root, current);
       return reply(res, 200, { committed: true });
     }
@@ -176,12 +177,12 @@ export default async function handler(req, res) {
       if (current && current.checksum === checksum && JSON.stringify(current.meta) === JSON.stringify(meta))
         return reply(res, 200, { unchanged: true });
       const version = randomBytes(12).toString('base64url');
-      const session = { meta, bytes, checksum, version, base: current?.version || null };
+      const session = { meta, bytes, checksum, version, partBytes: PART, base: current?.version || null };
       const [, signedUrls] = await Promise.all([
         write(root + '/sessions/' + version + '.json', session, { ttlDays: 2 }),
         urls(partPaths(root, version, bytes), 'put'),
       ]);
-      return reply(res, 200, { version, urls: signedUrls });
+      return reply(res, 200, { version, urls: signedUrls, chunkBytes: PART });
     }
     if (req.method === 'PUT' && body.action === 'commit' && VERSION.test(body.version || '')) {
       if (current?.version === body.version) return reply(res, 200, { committed: true });
@@ -189,10 +190,11 @@ export default async function handler(req, res) {
       const session = await read(sessionPath);
       if (!session || session.base !== (current?.version || null))
         return reply(res, 409, { error: 'Backup changed; retry' });
-      const paths = partPaths(root, session.version, session.bytes);
+      const partBytes = session.partBytes || LEGACY_PART;
+      const paths = partPaths(root, session.version, session.bytes, partBytes);
       // At most 20 parts for the 100 MiB limit. Validate every part before publishing.
-      const parts = await Promise.all(paths.map(p => head(p).catch(() => null)));
-      if (parts.some((part, i) => !part || part.size !== Math.min(PART, session.bytes - i * PART)))
+      const parts = await headMany(paths);
+      if (parts.some((part, i) => !part || part.size !== Math.min(partBytes, session.bytes - i * partBytes)))
         return reply(res, 409, { error: 'Backup upload incomplete' });
       await Promise.all(paths.map(p => setTtl(p, { ttlDays: null })));
       const { base, ...record } = session;

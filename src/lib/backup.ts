@@ -119,17 +119,18 @@ async function sync(job: Job) {
       return;
     }
   }
-  const ticket = await json<{ unchanged?: boolean; version?: string; urls?: string[] }>(
+  const ticket = await json<{ unchanged?: boolean; version?: string; urls?: string[]; chunkBytes?: number }>(
     await request('POST', 'begin', job, { meta, bytes: blob.size, checksum: hash }));
   if (!ticket.unchanged) {
     const urls = ticket.urls;
-    if (!ticket.version || !urls || urls.length !== Math.ceil(blob.size / PART) ||
-        !urls.every(url => typeof url === 'string' && url.startsWith('https://'))) throw new Error('Invalid backup upload session');
+    const partBytes = ticket.chunkBytes ?? PART;
+    if (![PART, 2 * 1024 * 1024].includes(partBytes) || !ticket.version || !urls || urls.length !== Math.ceil(blob.size / partBytes) ||
+        !urls.every(url => typeof url === 'string' && (url.startsWith('https://') || url.startsWith('/api/storage?ticket=')))) throw new Error('Invalid backup upload session');
     let cursor = 0;
     await Promise.all(Array.from({ length: Math.min(PART_CONCURRENCY, urls.length) }, async () => {
       while (cursor < urls.length) {
         const i = cursor++;
-        await uploadPart(urls[i], blob.slice(i * PART, (i + 1) * PART));
+        await uploadPart(urls[i], blob.slice(i * partBytes, (i + 1) * partBytes));
       }
     }));
     await json(await request('PUT', 'commit', job, { version: ticket.version }));
@@ -237,8 +238,8 @@ export async function restoreBackup(): Promise<Restored> {
       else if (entry.kind === 'folders') result.folders.push(record.meta as unknown as Folder);
       else {
         if (!Number.isSafeInteger(record.bytes) || record.bytes < 0 || record.bytes > LIMIT ||
-            record.urls.length !== Math.ceil(record.bytes / PART) ||
-            !record.urls.every(url => url.startsWith('https://'))) throw new Error('Invalid backup manifest');
+            !Array.isArray(record.urls) || record.urls.length > 100 || (record.bytes > 0 && record.urls.length === 0) ||
+            !record.urls.every(url => (url.startsWith('https://') || url.startsWith('/api/storage?ticket=')))) throw new Error('Invalid backup manifest');
         const parts = await Promise.all(record.urls.map(async url => {
           const part = await fetch(url, { signal, cache: 'no-store' });
           if (!part.ok) throw new Error('Backup download failed');

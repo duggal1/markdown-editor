@@ -41,8 +41,8 @@ async function fetchPage(signal: AbortSignal, onProgress: (percent: number) => v
     : 'The shared page could not be loaded.');
   const manifest = await response.json() as CloudManifest;
   if (typeof manifest.markdown === 'string') return manifest as PublicPage;
-  if (!Array.isArray(manifest.urls) || !manifest.urls.length ||
-      !manifest.urls.every(url => typeof url === 'string' && url.startsWith('https://')) ||
+  if (!Array.isArray(manifest.urls) || !manifest.urls.length || manifest.urls.length > 100 ||
+      !manifest.urls.every(url => typeof url === 'string' && (url.startsWith('https://') || url.startsWith('/api/storage?ticket='))) ||
       !Number.isSafeInteger(manifest.bytes) || manifest.bytes! < 0 ||
       manifest.bytes! > MAX_CLOUD_BYTES || !/^[a-f0-9]{64}$/.test(manifest.checksum || '')) {
     throw new Error('Cloud returned an invalid document');
