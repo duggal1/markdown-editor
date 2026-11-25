@@ -277,16 +277,45 @@ const components = {
 };
 // Send complete raw SVG blocks through the isolated SVG renderer instead of
 // stripping masks, filters, styles and references with Markdown's HTML sanitizer.
-type SvgMarkdownNode = { type: string; value?: string; lang?: string; children?: SvgMarkdownNode[] };
+type SvgMarkdownNode = {
+  type: string; value?: string; lang?: string; children?: SvgMarkdownNode[];
+  position?: { start: { offset?: number; line: number }; end: { offset?: number; line: number } };
+};
 function remarkSvgBlocks() {
-  return (tree: SvgMarkdownNode) => {
-    function visit(node: SvgMarkdownNode) {
-      if (node.type === 'html' && node.value && detectRawCode(node.value) === 'svg') {
-        node.type = 'code'; node.lang = 'svg';
+  return (tree: SvgMarkdownNode, file: { value: unknown }) => {
+    const source = String(file.value);
+    const children = tree.children;
+    if (!children) return;
+    // CommonMark HTML blocks can end at a blank line even inside an SVG.
+    // Recover the complete original block by source offsets, including nested
+    // svg elements, while leaving inline markup and fenced code alone.
+    for (let i = 0; i < children.length; i++) {
+      const node = children[i];
+      const from = node.position?.start.offset;
+      if (node.type !== 'html' || from === undefined || !/^<svg(?:\s|\/?>)/i.test(source.slice(from))) continue;
+      const tags = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\/?svg\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+      tags.lastIndex = from;
+      let depth = 0;
+      let end = from;
+      let match: RegExpExecArray | null;
+      while ((match = tags.exec(source))) {
+        const tag = match[0];
+        if (tag.startsWith('<!--') || tag.startsWith('<![')) continue;
+        if (tag.startsWith('</')) depth--;
+        else if (!/\/>$/.test(tag)) depth++;
+        if (depth === 0) { end = tags.lastIndex; break; }
       }
-      node.children?.forEach(visit);
+      if (end <= from) continue;
+      let last = i;
+      while (last + 1 < children.length && (children[last + 1].position?.start.offset ?? Infinity) < end) last++;
+      // Don't discard text sharing the closing SVG's source line.
+      const tail = children[last].position?.end.offset ?? end;
+      if (tail > end && source.slice(end, tail).trim()) continue;
+      children.splice(i, last - i + 1, {
+        type: 'code', lang: 'svg', value: source.slice(from, end),
+        position: node.position,
+      });
     }
-    visit(tree);
   };
 }
 const MarkdownChunk = memo(function MarkdownChunk({ markdown, lineOffset = 0 }: { markdown: string; lineOffset?: number }) {
