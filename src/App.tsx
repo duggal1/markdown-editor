@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type PointerEvent } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ChangeEvent, type DragEvent, type PointerEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { createPortal } from 'react-dom';
 import NumberFlow from '@number-flow/react';
@@ -27,6 +27,7 @@ import { editorPosition, previewPosition, restoreEditorPosition } from './lib/sc
 import { cancelNavigation } from './lib/scrollMotion';
 import PageOutline from './components/PageOutline';
 import BootShell from './components/BootShell';
+import { localSaveDelay } from './lib/saveSchedule';
 import type { SearchHit } from './lib/searchIndex';
 import {
   clearRecovery, loadWorkspace, readPrefs, removeDoc, removeFolder, removeWorkspaceTree,
@@ -35,6 +36,27 @@ import {
 } from './lib/store';
 
 const MarkdownPreview = lazy(() => import('./components/MarkdownPreview'));
+
+type TreeActions = Pick<ComponentProps<typeof WorkspaceTree>,
+  'onOpen' | 'onNewDocument' | 'onNewFolder' | 'onRenameFolder' | 'onRenameDocument' |
+  'onDuplicateDocument' | 'onMovePage' | 'onDeleteFolder' | 'onDeleteDocument'>;
+// Keep callback identities stable for the memoized tree, but dispatch to the
+// latest committed closures (workspace, folders and delete state can change).
+function useTreeActions(actions: TreeActions): TreeActions {
+  const latest = useRef(actions);
+  useLayoutEffect(() => { latest.current = actions; }, [actions]);
+  return useMemo<TreeActions>(() => ({
+    onOpen: (...args) => latest.current.onOpen(...args),
+    onNewDocument: (...args) => latest.current.onNewDocument(...args),
+    onNewFolder: (...args) => latest.current.onNewFolder(...args),
+    onRenameFolder: (...args) => latest.current.onRenameFolder(...args),
+    onRenameDocument: (...args) => latest.current.onRenameDocument(...args),
+    onDuplicateDocument: (...args) => latest.current.onDuplicateDocument(...args),
+    onMovePage: (...args) => latest.current.onMovePage(...args),
+    onDeleteFolder: (...args) => latest.current.onDeleteFolder(...args),
+    onDeleteDocument: (...args) => latest.current.onDeleteDocument(...args),
+  }), []);
+}
 
 // Warm the preview's module on idle without blocking the editor or changing
 // mobile layout. This removes a cold-import pause on the first preview.
@@ -151,6 +173,7 @@ export default function App() {
   const workerRef = useRef<Worker | null>(null);
   const searchRequest = useRef(0);
   const saveTimers = useRef(new Map<string, number>());
+  const dirtySince = useRef(new Map<string, number>());
   const saveQueue = useRef(new Map<string, Promise<void>>());
   const visualTimers = useRef(new Map<string, number>());
   const previewFrame = useRef<number | null>(null);
@@ -265,6 +288,10 @@ export default function App() {
       startupFrame = requestAnimationFrame(() => {
         startupTimer = window.setTimeout(() => {
           if (!alive) return;
+          performance.mark('flow:workspace-ready');
+          if (performance.getEntriesByName('flow:boot-start', 'mark').length) {
+            performance.measure('flow:workspace-startup', 'flow:boot-start', 'flow:workspace-ready');
+          }
           const current = [...live.current.values()];
           worker?.postMessage({ type: 'index', documents: current.map(({ id, workspaceId, title, markdown, updatedAt }) => ({ id, workspaceId, title, markdown, updatedAt })) });
           const active = live.current.get(activeIdRef.current);
@@ -282,6 +309,7 @@ export default function App() {
       worker?.terminate();
       workerRef.current = null;
       for (const timer of saveTimers.current.values()) clearTimeout(timer);
+      dirtySince.current.clear();
       for (const timer of visualTimers.current.values()) clearTimeout(timer);
       if (previewFrame.current !== null) cancelAnimationFrame(previewFrame.current);
       if (previewTimer.current !== null) clearTimeout(previewTimer.current);
@@ -352,6 +380,7 @@ export default function App() {
   const flush = useCallback((id: string) => {
     const timer = saveTimers.current.get(id);
     if (timer !== undefined) { clearTimeout(timer); saveTimers.current.delete(id); }
+    dirtySince.current.delete(id);
     const doc = live.current.get(id);
     if (!doc) return;
     const previous = saveQueue.current.get(id) || Promise.resolve();
@@ -360,7 +389,11 @@ export default function App() {
     void next.then(() => {
       if (saveQueue.current.get(id) === next) saveQueue.current.delete(id);
       const latest = live.current.get(id);
-      if (latest && latest.updatedAt === doc.updatedAt) {
+      if (latest === doc) {
+        // Only synchronize a locally committed revision; do not inspect share
+        // records or schedule cloud work on every editor keystroke.
+        queueSharedSync(doc);
+        queueSiteSync(doc);
         if (activeIdRef.current === id) {
           const started = saveStarted.current.get(id);
           if (started !== undefined) setSaveDuration(Math.max(1, Math.round(performance.now() - started)));
@@ -390,14 +423,15 @@ export default function App() {
 
   const scheduleSave = useCallback((doc: FlowDocument) => {
     live.current.set(doc.id, doc);
-    queueSharedSync(doc);
-    queueSiteSync(doc);
-    saveStarted.current.set(doc.id, performance.now());
+    const now = performance.now();
+    const firstDirty = dirtySince.current.get(doc.id) ?? now;
+    dirtySince.current.set(doc.id, firstDirty);
+    saveStarted.current.set(doc.id, now);
     setSaveDuration(0);
     setSaveState('saving');
     const old = saveTimers.current.get(doc.id);
     if (old !== undefined) clearTimeout(old);
-    saveTimers.current.set(doc.id, window.setTimeout(() => flush(doc.id), doc.markdown.length > 100000 ? 900 : 340));
+    saveTimers.current.set(doc.id, window.setTimeout(() => flush(doc.id), localSaveDelay(doc.markdown.length, now - firstDirty)));
     const visual = visualTimers.current.get(doc.id);
     if (visual !== undefined) clearTimeout(visual);
     visualTimers.current.set(doc.id, window.setTimeout(() => {
@@ -534,7 +568,15 @@ export default function App() {
     modeRestore.current = null;
     if (previewScrollRef.current) previewScrollRef.current.scrollTop = 0;
     setWorkspaceId(doc.workspaceId);
-    setDocs(current => current.map(item => live.current.get(item.id) || item));
+    setDocs(current => {
+      let changed = false;
+      const next = current.map(item => {
+        const latest = live.current.get(item.id) || item;
+        if (latest !== item) changed = true;
+        return latest;
+      });
+      return changed ? next : current;
+    });
     setRecentIds(current => [id, ...current.filter(item => item !== id)].slice(0, 30));
     setPreviewText(doc.markdown);
     setWords(doc.markdown.length < 25000 ? wordCount(doc.markdown) : 0);
@@ -584,6 +626,7 @@ async function eraseDocument(doc: FlowDocument) {
     const saveTimer = saveTimers.current.get(doc.id);
     if (saveTimer !== undefined) clearTimeout(saveTimer);
     saveTimers.current.delete(doc.id);
+    dirtySince.current.delete(doc.id);
     const visualTimer = visualTimers.current.get(doc.id);
     if (visualTimer !== undefined) clearTimeout(visualTimer);
     visualTimers.current.delete(doc.id);
@@ -670,6 +713,7 @@ async function eraseDocument(doc: FlowDocument) {
         const timer = saveTimers.current.get(doc.id);
         if (timer !== undefined) clearTimeout(timer);
         saveTimers.current.delete(doc.id);
+    dirtySince.current.delete(doc.id);
         await saveQueue.current.get(doc.id)?.catch(() => {});
         const current = live.current.get(doc.id);
         if (!current) continue;
@@ -744,6 +788,7 @@ async function eraseDocument(doc: FlowDocument) {
       const timer = saveTimers.current.get(doc.id);
       if (timer !== undefined) clearTimeout(timer);
       saveTimers.current.delete(doc.id);
+    dirtySince.current.delete(doc.id);
       const visual = visualTimers.current.get(doc.id);
       if (visual !== undefined) clearTimeout(visual);
       visualTimers.current.delete(doc.id);
@@ -1094,11 +1139,11 @@ async function eraseDocument(doc: FlowDocument) {
   }
   const active = live.current.get(activeId) || docs.find(doc => doc.id === activeId);
   const activeFileLanguage = active?.language || languageForFile(active?.fileName || '');
-  const activeRepairLanguage = active && !active.asset
-    ? repairLanguage(active.markdown.slice(0, 8192), activeFileLanguage) : null;
+  const activeRepairLanguage = useMemo(() => active && !active.asset
+    ? repairLanguage(active.markdown.slice(0, 8192), activeFileLanguage) : null, [active, activeFileLanguage]);
   const formatActionLabel = activeRepairLanguage === 'html' ? 'Auto HTML Fix'
     : 'Auto Python Fix';
-  const activeHtml = isHtmlPage(active);
+  const activeHtml = useMemo(() => isHtmlPage(active), [active]);
   useEffect(() => { setHtmlSurfaceTone('dark'); }, [activeId]);
   // HTML previews are automatically hosted; Markdown stays local unless shared.
   useEffect(() => {
@@ -1403,6 +1448,12 @@ async function eraseDocument(doc: FlowDocument) {
     whileTap: { scale: 0.985 },
     transition: { duration: 0.17, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
   };
+  const treeActions = useTreeActions({
+    onOpen: selectDocument, onNewFolder: createFolder, onNewDocument: makeDocument,
+    onRenameFolder: renameFolder, onRenameDocument: renameDocument, onDuplicateDocument: duplicateDocument,
+    onMovePage: movePage, onDeleteFolder: id => { void eraseFolder(id); },
+    onDeleteDocument: id => { if (live.current.has(id)) void deleteTarget({ kind: 'document', id }); },
+  });
   if (!loaded) return saveState === 'error' ? <main className="boot" role="alert"><FlowMark size={30} /><span>Workspace could not be opened. Reload to retry.</span></main> : <BootShell />;
   return <div className="flow-shell private-workspace" onDragOver={event => event.preventDefault()} onDrop={onDrop}>
     <motion.aside className={'sidebar' + (sidebarOpen ? ' is-open' : '')}
@@ -1437,13 +1488,7 @@ async function eraseDocument(doc: FlowDocument) {
           workspaces={workspaces} documents={matching} folders={folders} newFolderId={newFolderId}
           activeId={activeId} activeWorkspaceId={workspaceId}
           search={query} searchHits={searchResults} searchPending={searchPending}
-          onOpen={selectDocument} onNewFolder={createFolder} onNewDocument={makeDocument}
-          onRenameFolder={renameFolder} onRenameDocument={renameDocument} onDuplicateDocument={duplicateDocument}
-          onMovePage={movePage} onDeleteFolder={id => { void eraseFolder(id); }}
-          onDeleteDocument={id => {
-            const doc = live.current.get(id);
-            if (doc) void deleteTarget({ kind: 'document', id });
-          }}
+          {...treeActions}
         />
         <div className="sidebar-bottom">
           <a className="draw-sidebar-entry" href="/draw"><Icon name="edit" size={16} /> Draw screenshots</a>
