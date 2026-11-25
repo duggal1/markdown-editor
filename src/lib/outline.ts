@@ -1,5 +1,5 @@
 export type OutlineEntry = { line: number; level: number; title: string };
-/** Read only headings outside fenced code. Called on demand, not on scroll. */
+/** Read headings outside fenced code; called after edits or on reveal, never on scroll. */
 export function documentOutline(source: string): OutlineEntry[] {
   const entries: OutlineEntry[] = [];
   let offset = 0, number = 1;
@@ -19,4 +19,23 @@ export function documentOutline(source: string): OutlineEntry[] {
     offset = end + 1; number++;
   }
   return entries;
+}
+
+/** Binary search by source position; no layout or full outline walk on hover. */
+export function activeOutlineIndex(entries: OutlineEntry[], line: number): number {
+  let low = 0, high = entries.length;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (entries[mid].line <= line) low = mid + 1;
+    else high = mid;
+  }
+  return low - 1;
+}
+
+/** Keep the resting rail small, even for thousands of headings. The panel
+ * retains every heading; sampling affects only decorative marks. */
+export function outlineMarkers(entries: OutlineEntry[], max = 12): OutlineEntry[] {
+  if (entries.length <= max) return entries;
+  return Array.from({ length: max }, (_, i) =>
+    entries[Math.round(i * (entries.length - 1) / (max - 1))]);
 }
