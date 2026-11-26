@@ -39,10 +39,13 @@ async function rebuild(documents: SearchDocument[]) {
   cacheWrite(() => pruneDerivedTerms(ids));
   // Show title/content matches from completed batches, without waiting for every
   // large page. All expensive tokenization remains outside the UI thread.
-  for (let i = 0; i < documents.length; i++) {
-    await populate(documents[i], epoch);
+  const batchSize = 4;
+  for (let i = 0; i < documents.length; i += batchSize) {
+    // Overlap digest and IndexedDB reads, but bound the amount of source data
+    // in flight. populate checks the epoch and edit/delete guard after I/O.
+    await Promise.all(documents.slice(i, i + batchSize).map(doc => populate(doc, epoch)));
     if (epoch !== generation) return;
-    if ((i + 1) % 16 === 0) refresh();
+    if ((i + batchSize) % 16 === 0) refresh();
   }
   refresh();
 }
