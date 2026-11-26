@@ -80,3 +80,17 @@ assert.match(host, /return ready \? existing : \{ \.\.\.existing, syncedVersion:
   'A broken public route cannot be treated as Live by an old cached timestamp.');
 
 console.log('Delete batching, rollback, dialogs, server readiness and fullscreen state checks passed.');
+
+const backup = read('src/lib/backup.ts');
+assert.match(app, /name: 'HTML Sites'/);
+assert.match(app, /htmlFolderPromise \?\?=/);
+assert.match(app, /doc\.folderId = htmlFolder\.id/);
+assert.match(app, /void queueImportedHtmlBackup\(doc, htmlFolder, owner\)/);
+const open = app.slice(app.indexOf('function openFullHtml()'), app.indexOf('const matching = useMemo'));
+assert.match(open, /window\.open\(localHtmlUrl\(doc\.id, doc\.updatedAt\), '_blank'\)/);
+assert.doesNotMatch(open, /about:blank|await |verifyHostedHtml|publishHtml/);
+assert.match(player, /doc\.updatedAt >= expectedRevision/);
+assert.match(player, /Date\.now\(\) \+ 8000/);
+assert.match(backup, /enableBackup\('html'\)/);
+assert.match(backup, /backupScope\(\) === 'html'/);
+assert.match(read('api/backup.js'), /flow_backup_scope=/);

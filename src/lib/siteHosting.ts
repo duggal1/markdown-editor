@@ -22,8 +22,8 @@ export function isHtmlPage(doc: FlowDocument | null | undefined): boolean {
 export function siteUrl(id: string): string {
   return window.location.origin + (id.startsWith('html-') ? '/play/' : '/slug/') + encodeURIComponent(id);
 }
-export function localHtmlUrl(id: string): string {
-  return window.location.origin + '/play/local/' + encodeURIComponent(id);
+export function localHtmlUrl(id: string, revision?: number): string {
+  return window.location.origin + '/play/local/' + encodeURIComponent(id) + (revision === undefined ? '' : '?__flow_revision=' + encodeURIComponent(String(revision)));
 }
 export function readSiteRecord(documentId: string): SiteRecord | null {
   try {
