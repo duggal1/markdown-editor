@@ -23,6 +23,7 @@ const DATABASE = 'flow.workspace.v1';
 const PREFS = 'flow.preferences.v1';
 const RECOVERY = 'flow.last-edit.v1';
 const RECOVERY_ID = 'flow.last-edit.id.v1';
+const RECOVERY_PREFIX = 'flow.recovery.document.v2.';
 const FALLBACK = 'flow.document.';
 let dbPromise: Promise<IDBDatabase> | undefined;
 
@@ -91,47 +92,60 @@ export function readPrefs(): Partial<Preferences> {
 export function savePrefs(prefs: Preferences): void {
   try { localStorage.setItem(PREFS, JSON.stringify(prefs)); } catch { /* Storage blocked. */ }
 }
+function newestDocument(...candidates: (FlowDocument | null)[]): FlowDocument | null {
+  return candidates.reduce<FlowDocument | null>((best, candidate) =>
+    candidate && (!best || candidate.updatedAt > best.updatedAt) ? candidate : best, null);
+}
+function readRecoveryFor(id: string): FlowDocument | null {
+  const current = readJson<FlowDocument>(RECOVERY_PREFIX + id);
+  const legacy = readJson<FlowDocument>(RECOVERY);
+  return newestDocument(current, legacy?.id === id ? legacy : null);
+}
 export function saveRecovery(doc: FlowDocument): void {
-  // localStorage is synchronous; huge recovery snapshots can freeze the page.
-  // IndexedDB remains primary for large documents and binary assets.
-  if (doc.markdown.length > 240_000 || doc.asset) {
-    clearRecovery(doc.id);
-    return;
-  }
+  // Large sources use the asynchronous primary IndexedDB commit. Never stringify
+  // megabytes on the UI thread just to write a redundant emergency snapshot.
+  if (doc.markdown.length > 240_000 || doc.asset) return;
   try {
-    localStorage.setItem(RECOVERY, JSON.stringify(doc));
-    localStorage.setItem(RECOVERY_ID, doc.id);
+    const previous = readRecoveryFor(doc.id);
+    if (previous && previous.updatedAt > doc.updatedAt) return;
+    localStorage.setItem(RECOVERY_PREFIX + doc.id, JSON.stringify(doc));
   } catch { /* IndexedDB remains primary. */ }
 }
-export function clearRecovery(id: string): void {
-  // The marker avoids reparsing megabytes of recovery JSON after every save.
+export function clearRecovery(id: string, throughUpdatedAt = Infinity): void {
   try {
+    const current = readJson<FlowDocument>(RECOVERY_PREFIX + id);
+    if (current && current.updatedAt <= throughUpdatedAt) localStorage.removeItem(RECOVERY_PREFIX + id);
     const marker = localStorage.getItem(RECOVERY_ID);
-    if (marker ? marker !== id : readJson<FlowDocument>(RECOVERY)?.id !== id) return;
-    localStorage.removeItem(RECOVERY);
-    localStorage.removeItem(RECOVERY_ID);
+    if (marker && marker !== id) return;
+    const legacy = readJson<FlowDocument>(RECOVERY);
+    if (legacy?.id === id && legacy.updatedAt <= throughUpdatedAt) {
+      localStorage.removeItem(RECOVERY);
+      localStorage.removeItem(RECOVERY_ID);
+    }
   } catch { /* no-op */ }
 }
-/** Load exactly one document, without reading a workspace of potentially huge files. */
+/** Read the newest available revision without loading all workspace contents. */
 export async function loadDoc(id: string): Promise<FlowDocument | null> {
+  let stored: FlowDocument | null = null;
   try {
     const db = await database();
-    const stored = await new Promise<FlowDocument | null>((resolve, reject) => {
+    stored = await new Promise<FlowDocument | null>((resolve, reject) => {
       const request = db.transaction('documents', 'readonly').objectStore('documents').get(id);
       request.onsuccess = () => resolve((request.result as FlowDocument | undefined) || null);
       request.onerror = () => reject(request.error);
     });
-    if (stored) return stored;
   } catch { /* Emergency fallback after an IndexedDB failure. */ }
-  return readJson<FlowDocument>(FALLBACK + id) ||
-    (readJson<FlowDocument>(RECOVERY)?.id === id ? readJson<FlowDocument>(RECOVERY) : null);
+  return newestDocument(stored, readJson<FlowDocument>(FALLBACK + id), readRecoveryFor(id));
 }
 
 export async function saveDoc(doc: FlowDocument): Promise<void> {
   try {
     await put('documents', doc);
     // A successful primary commit supersedes any older emergency fallback.
-    try { localStorage.removeItem(FALLBACK + doc.id); } catch { /* IndexedDB is authoritative. */ }
+    try {
+      const fallback = readJson<FlowDocument>(FALLBACK + doc.id);
+      if (!fallback || fallback.updatedAt <= doc.updatedAt) localStorage.removeItem(FALLBACK + doc.id);
+    } catch { /* IndexedDB is authoritative. */ }
   }
   catch (error) {
     if (doc.asset) throw error; // Browser storage cannot safely JSON-serialize file data.
@@ -163,7 +177,7 @@ export async function removeDoc(id: string): Promise<void> {
 export async function removeEmptyDraft(expected: FlowDocument): Promise<boolean> {
   const id = expected.id;
   if (readPrefs().activeDocumentId === id || readJson<FlowDocument>(FALLBACK + id) ||
-    readJson<FlowDocument>(RECOVERY)?.id === id) return false;
+    readRecoveryFor(id)) return false;
   const db = await database();
   const removed = await new Promise<boolean>((resolve, reject) => {
     const tx = db.transaction('documents', 'readwrite');
@@ -181,7 +195,7 @@ export async function removeEmptyDraft(expected: FlowDocument): Promise<boolean>
           if ((entry.value as FlowDocument).parentId === id) return;
           entry.continue();
         } else if (readPrefs().activeDocumentId !== id && !readJson<FlowDocument>(FALLBACK + id) &&
-          readJson<FlowDocument>(RECOVERY)?.id !== id) {
+          !readRecoveryFor(id)) {
           docs.delete(id);
           deleted = true;
         }
@@ -250,24 +264,22 @@ async function loadWorkspaceOnce(): Promise<WorkspaceSnapshot> {
     readError = error;
   }
 
+  // Merge emergency records by ID and revision in linear time. A crash while
+  // switching pages can leave multiple drafts; never let one overwrite another.
+  const byId = new Map(documents.map(doc => [doc.id, doc]));
+  const mergeRecovery = (saved: FlowDocument | null) => {
+    if (!saved || typeof saved.id !== 'string' || typeof saved.markdown !== 'string' || !Number.isFinite(saved.updatedAt)) return;
+    const current = byId.get(saved.id);
+    if (!current || saved.updatedAt > current.updatedAt) byId.set(saved.id, saved);
+  };
   try {
     for (let index = 0; index < localStorage.length; index++) {
       const key = localStorage.key(index);
-      if (!key?.startsWith(FALLBACK)) continue;
-      const saved = readJson<FlowDocument>(key);
-      if (saved && typeof saved.id === 'string' && typeof saved.markdown === 'string') {
-        const existing = documents.findIndex(doc => doc.id === saved.id);
-        if (existing < 0) documents.push(saved);
-        else if (saved.updatedAt > documents[existing].updatedAt) documents[existing] = saved;
-      }
+      if (key && (key.startsWith(FALLBACK) || key.startsWith(RECOVERY_PREFIX))) mergeRecovery(readJson<FlowDocument>(key));
     }
   } catch { /* Local storage disabled. */ }
-  const recovered = readJson<FlowDocument>(RECOVERY);
-  if (recovered && typeof recovered.id === 'string' && typeof recovered.markdown === 'string') {
-    const existing = documents.findIndex(doc => doc.id === recovered.id);
-    if (existing < 0) documents.push(recovered);
-    else if (recovered.updatedAt > documents[existing].updatedAt) documents[existing] = recovered;
-  }
+  mergeRecovery(readJson<FlowDocument>(RECOVERY));
+  documents = [...byId.values()];
 
   // Recover before creating any defaults. Healthy local loads never wait for the cloud.
   if (needsBackupRecovery({ workspaces, folders, documents })) {

@@ -133,3 +133,10 @@ assert.match(tree, /className="workspace-sibling-folder" role="treeitem" aria-le
 assert.match(tree, /className="workspace-root" role="treeitem" aria-level=\{1\}/);
 assert.match(tree, /filetree-result-path/);
 assert.doesNotMatch(app, /rankDocuments\(/);
+
+// Recovery snapshots are per document and do not supersede a newer revision.
+const persistence = read('src/lib/store.ts');
+assert.match(persistence, /RECOVERY_PREFIX \+ doc\.id/);
+assert.match(persistence, /newestDocument\(stored, readJson<FlowDocument>\(FALLBACK \+ id\), readRecoveryFor\(id\)\)/);
+assert.match(persistence, /current\.updatedAt <= throughUpdatedAt/);
+assert.match(app, /clearRecovery\(id, doc\.updatedAt\)/);

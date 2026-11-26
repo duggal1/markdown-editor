@@ -397,7 +397,7 @@ export default function App() {
           setSaveState('saved');
         }
         saveStarted.current.delete(id);
-        clearRecovery(id);
+        clearRecovery(id, doc.updatedAt);
       }
     }).catch(() => {
       if (saveQueue.current.get(id) === next) saveQueue.current.delete(id);
