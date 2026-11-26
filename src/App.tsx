@@ -6,7 +6,7 @@ import type { EditorView } from '@codemirror/view';
 import MarkdownEditor, { formatEditor } from './components/MarkdownEditor';
 import { setTaskChecked, taskMarkerEdit } from './lib/taskList';
 import WorkspaceTree from './components/WorkspaceTree';
-import { finishVisit, rankDocuments, restoreRecent } from './lib/workspaceRecency';
+import { finishVisit, sortWorkspaceDocuments, restoreRecent } from './lib/workspaceRecency';
 import { canExpireDraft, EMPTY_DRAFT_IDLE_MS } from './lib/emptyDraft';
 import { FlowMark, Icon, SuppliedIcon } from './components/Icons';
 import { ACCENT_THEMES, applyAccentTheme, parseAccentTheme, type AccentTheme } from './lib/accentTheme';
@@ -378,6 +378,8 @@ export default function App() {
     dirtySince.current.delete(id);
     const doc = live.current.get(id);
     if (!doc) return;
+    // Preserve a small emergency snapshot before an asynchronous local commit. Large files use IndexedDB.
+    saveRecovery(doc);
     const previous = saveQueue.current.get(id) || Promise.resolve();
     const next = previous.catch(() => {}).then(() => saveDoc(doc));
     saveQueue.current.set(id, next);
@@ -710,6 +712,7 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
   }
   function createFolder(targetWorkspace: string) {
     if (!workspaces.some(ws => ws.id === targetWorkspace)) return;
+    // Workspace ID is storage ownership, never a folder parent.
     const folder: Folder = { id: uid(), workspaceId: targetWorkspace, name: 'New folder', createdAt: Date.now() };
     setFolders(items => [...items, folder]);
     setQuery('');
@@ -1198,14 +1201,14 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
     });
   }
   const matching = useMemo(() => {
-    if (!query.trim()) return rankDocuments(docs, recentIds);
+    if (!query.trim()) return sortWorkspaceDocuments(docs);
     const byId = new Map(docs.map(doc => [doc.id, doc]));
     // The worker returns relevance ranking. Do not sort by modification time.
     return searchResults.flatMap(hit => {
       const doc = byId.get(hit.id);
       return doc ? [doc] : [];
     });
-  }, [docs, query, searchResults, recentIds]);
+  }, [docs, query, searchResults]);
   useEffect(() => {
     const requestId = ++searchRequest.current;
     const text = query.trim();
@@ -1540,7 +1543,7 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
           <Icon name="edit" size={17}/> New page <kbd>+</kbd>
         </button>
         <WorkspaceTree
-          workspaces={workspaces} documents={matching} folders={folders} newFolderId={newFolderId}
+          workspaces={workspaces} documents={matching} allDocuments={docs} folders={folders} newFolderId={newFolderId}
           activeId={activeId} activeWorkspaceId={workspaceId}
           search={query} searchHits={searchResults} searchPending={searchPending}
           {...treeActions}

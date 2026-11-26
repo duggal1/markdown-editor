@@ -15,9 +15,7 @@ export function restoreRecent(ids: unknown, documents: readonly Rankable[]): str
   return [...unique, ...[...documents].sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id))
     .filter(doc => !seen.has(doc.id)).map(doc => doc.id)];
 }
-export function rankDocuments<T extends Rankable>(documents: readonly T[], recentIds: readonly string[]): T[] {
-  const ranks = new Map(recentIds.map((id, index) => [id, index]));
-  return [...documents].sort((a, b) =>
-    (ranks.get(a.id) ?? -1) - (ranks.get(b.id) ?? -1) ||
-    (b.createdAt ?? b.updatedAt) - (a.createdAt ?? a.updatedAt) || a.id.localeCompare(b.id));
+/** Navigation history is for Previous page only, never sidebar placement. */
+export function sortWorkspaceDocuments<T extends Rankable>(documents: readonly T[]): T[] {
+  return [...documents].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0) || a.id.localeCompare(b.id));
 }

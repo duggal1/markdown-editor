@@ -128,7 +128,11 @@ export async function loadDoc(id: string): Promise<FlowDocument | null> {
 }
 
 export async function saveDoc(doc: FlowDocument): Promise<void> {
-  try { await put('documents', doc); }
+  try {
+    await put('documents', doc);
+    // A successful primary commit supersedes any older emergency fallback.
+    try { localStorage.removeItem(FALLBACK + doc.id); } catch { /* IndexedDB is authoritative. */ }
+  }
   catch (error) {
     if (doc.asset) throw error; // Browser storage cannot safely JSON-serialize file data.
     try { localStorage.setItem(FALLBACK + doc.id, JSON.stringify(doc)); }

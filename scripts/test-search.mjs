@@ -94,3 +94,17 @@ assert.match(treeStyle, /:root\[data-theme='light'\] \.filetree-result\.is-activ
   'Selected search results must retain contrast in light mode.');
 assert.doesNotMatch(worker, /fetch\(|Pinecone|embeddings/i);
 console.log('Ranked local full-text search, content indexing, updates and Cmd+K tests passed.');
+
+// A cached miss/hit must be invalidated by an edit or deletion.
+index.reset([doc('a','Alpha','some text'),doc('b','Beta','some text')]);
+assert.equal(index.search('diligence').length,0);
+index.upsert(doc('a','Alpha','diligence evidence'));
+assert.equal(index.search('dilige')[0].id,'a');
+assert.equal(index.search('diligence')[0].id,'a');
+index.remove('a');
+assert.equal(index.search('diligence').length,0);
+assert.equal(index.search('dilige').length,0);
+index.reset([doc('b','Same','same',999),doc('a','Same','same',1)]);
+assert.equal(index.search('same')[0].id,'a','Equal relevance must not depend on edit recency');
+const cached = index.search('same'); cached[0].score = -100;
+assert.ok(index.search('same')[0].score > 0);
