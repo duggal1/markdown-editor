@@ -108,3 +108,15 @@ index.reset([doc('b','Same','same',999),doc('a','Same','same',1)]);
 assert.equal(index.search('same')[0].id,'a','Equal relevance must not depend on edit recency');
 const cached = index.search('same'); cached[0].score = -100;
 assert.ok(index.search('same')[0].score > 0);
+
+// A derived token cache reconstructs exactly the same posting weights.
+const preparedDoc = doc('persisted','Énergie Strategy','## Renewable energy\nAcquisition financing and cash flow.');
+const originalIndex = new PageSearchIndex(); originalIndex.upsert(preparedDoc);
+const restoredIndex = new PageSearchIndex(); restoredIndex.upsert(preparedDoc, originalIndex.preparedTerms(preparedDoc.id));
+assert.equal(JSON.stringify(restoredIndex.search('renewable energy')),JSON.stringify(originalIndex.search('renewable energy')));
+assert.equal(JSON.stringify(restoredIndex.search('acquis')),JSON.stringify(originalIndex.search('acquis')));
+const derivedCache = read('src/workers/searchCache.ts');
+assert.match(derivedCache, /SHA-256/);
+assert.match(derivedCache, /row\?\.digest === digest/);
+assert.match(worker, /epoch !== generation \|\| changed\.has\(doc\.id\)/);
+assert.match(worker, /forgetDerivedTerms\(message\.id\)/);

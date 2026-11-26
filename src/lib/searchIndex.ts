@@ -17,6 +17,7 @@ export type SearchHit = {
   source: 'title' | 'content';
 };
 type Weights = { title: number; heading: number; body: number };
+export type PreparedSearchTerms = { terms: Map<string, Weights>; wordCount: number };
 type RecordEntry = {
   document: SearchDocument;
   title: string;
@@ -104,24 +105,26 @@ export class PageSearchIndex {
     for (const document of documents) this.upsert(document);
   }
 
-  upsert(document: SearchDocument): void {
+  upsert(document: SearchDocument, prepared?: PreparedSearchTerms): void {
     const previous = this.documents.get(document.id)?.document;
     if (previous && previous.title === document.title && previous.markdown === document.markdown && previous.updatedAt === document.updatedAt && previous.workspaceId === document.workspaceId) return;
     this.remove(document.id);
     this.invalidate();
-    const counts = new Map<string, Weights>();
-    const add = (term: string, field: keyof Weights) => {
-      const weight = counts.get(term) || { title: 0, heading: 0, body: 0 };
-      weight[field] = Math.min(24, weight[field] + 1);
-      counts.set(term, weight);
-    };
-    for (const term of terms(document.title)) add(term, 'title');
-    for (const match of document.markdown.matchAll(HEADING)) {
-      for (const term of terms(match[1])) add(term, 'heading');
-    }
     const body = normalize(document.markdown);
-    let wordCount = 0;
-    for (const match of body.matchAll(WORDS)) { add(match[0], 'body'); wordCount++; }
+    const counts = prepared?.terms ?? new Map<string, Weights>();
+    let wordCount = prepared?.wordCount ?? 0;
+    if (!prepared) {
+      const add = (term: string, field: keyof Weights) => {
+        const weight = counts.get(term) || { title: 0, heading: 0, body: 0 };
+        weight[field] = Math.min(24, weight[field] + 1);
+        counts.set(term, weight);
+      };
+      for (const term of terms(document.title)) add(term, 'title');
+      for (const match of document.markdown.matchAll(HEADING)) {
+        for (const term of terms(match[1])) add(term, 'heading');
+      }
+      for (const match of body.matchAll(WORDS)) { add(match[0], 'body'); wordCount++; }
+    }
     const entry: RecordEntry = {
       document,
       title: normalize(document.title),
@@ -139,6 +142,11 @@ export class PageSearchIndex {
       }
       matching.set(document.id, weights);
     }
+  }
+
+  preparedTerms(id: string): PreparedSearchTerms | undefined {
+    const entry = this.documents.get(id);
+    return entry && { terms: entry.terms, wordCount: entry.wordCount };
   }
 
   remove(id: string): void {

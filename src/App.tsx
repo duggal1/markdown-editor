@@ -1213,7 +1213,7 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
     const requestId = ++searchRequest.current;
     const text = query.trim();
     setSearchResults([]);
-    if (!text) { setSearchPending(false); return; }
+    if (!text) { workerRef.current?.postMessage({ type: 'cancel' }); setSearchPending(false); return; }
     setSearchPending(true);
     const timer = window.setTimeout(() => {
       if (workerRef.current) {
