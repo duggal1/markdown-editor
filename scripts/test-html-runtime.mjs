@@ -207,8 +207,11 @@ assert.match(hosting, /\{ html: doc\.markdown \} : \{\}/,
 
 assert.match(hosting, /id.startsWith\('html-'\) \? '\/play\/' : '\/slug\/'/,
   'New slugs should be /play/ and previous public URLs must remain valid.');
-assert.match(app, /verifyHostedHtml\(current.id\)/,
-  'Full HTML should prefer the same verified share link after synchronization.');
+const openFull = app.slice(app.indexOf('function openFullHtml()'), app.indexOf('const matching = useMemo'));
+assert.match(openFull, /window\.open\(localHtmlUrl\(doc\.id, doc\.updatedAt\), '_blank'\)/,
+  'Full HTML should open the local preview immediately.');
+assert.doesNotMatch(openFull, /await |verifyHostedHtml|publishHtml|about:blank/,
+  'Local preview must not wait for public hosting.');
 assert.match(player, /const PUBLIC_PREFIX = PATH\[0\] === 'slug' \? '\/slug\/' : '\/play\/'/,
   'Hosted subroutes must stay scoped under the current public URL prefix.');
 console.log('HTML hosting, 10MB chunking, route reload, safety, runtime, and exact iPhone SVG tests passed.');
