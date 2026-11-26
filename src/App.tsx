@@ -33,7 +33,7 @@ import TokenCounter from './components/TokenCounter';
 import { localSaveDelay } from './lib/saveSchedule';
 import type { SearchHit } from './lib/searchIndex';
 import {
-  clearRecovery, loadDoc, loadWorkspace, readPrefs, removeDoc, removeEmptyDraft, removeFolder, removeWorkspaceTree,
+  clearRecovery, isLocallyCommitted, loadDoc, loadWorkspace, readPrefs, removeDoc, removeEmptyDraft, removeFolder, removeWorkspaceTree,
   saveDoc, saveFolder, savePrefs, saveRecovery, uid,
   type FlowDocument, type Folder, type Mode, type Theme, type Workspace,
 } from './lib/store';
@@ -383,6 +383,9 @@ export default function App() {
     dirtySince.current.delete(id);
     const doc = live.current.get(id);
     if (!doc) return;
+    // Clean navigation must not serialize, rewrite or re-upload a committed revision.
+    // Recovered drafts and failed writes are deliberately not marked committed.
+    if (isLocallyCommitted(doc) && !saveQueue.current.has(id)) return;
     // Preserve a small emergency snapshot before an asynchronous local commit. Large files use IndexedDB.
     saveRecovery(doc);
     const previous = saveQueue.current.get(id) || Promise.resolve();
@@ -414,7 +417,7 @@ export default function App() {
   useEffect(() => {
     const finish = () => {
       const doc = live.current.get(activeIdRef.current);
-      if (doc) saveRecovery(doc);
+      if (doc && !isLocallyCommitted(doc)) saveRecovery(doc);
       for (const id of [...saveTimers.current.keys()]) flush(id);
     };
     window.addEventListener('pagehide', finish);
@@ -590,13 +593,10 @@ export default function App() {
     if (previewScrollRef.current) previewScrollRef.current.scrollTop = 0;
     setWorkspaceId(doc.workspaceId);
     setDocs(current => {
-      let changed = false;
-      const next = current.map(item => {
-        const latest = live.current.get(item.id) || item;
-        if (latest !== item) changed = true;
-        return latest;
-      });
-      return changed ? next : current;
+      // Most visits do not edit anything. Avoid allocating an entire new array
+      // in that case, while still reconciling any late editor cleanup or save.
+      if (!current.some(item => (live.current.get(item.id) || item) !== item)) return current;
+      return current.map(item => live.current.get(item.id) || item);
     });
     setPreviewText(doc.markdown);
     setSaveState('idle');
