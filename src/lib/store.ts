@@ -26,6 +26,11 @@ const RECOVERY_ID = 'flow.last-edit.id.v1';
 const RECOVERY_PREFIX = 'flow.recovery.document.v2.';
 const FALLBACK = 'flow.document.';
 let dbPromise: Promise<IDBDatabase> | undefined;
+// Identity, not timestamps: an edited/recovered copy must be committed again.
+const committedDocuments = new WeakSet<object>();
+export function isLocallyCommitted(doc: FlowDocument): boolean {
+  return committedDocuments.has(doc);
+}
 
 export function uid(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -55,7 +60,10 @@ async function readWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
     const workspaces = tx.objectStore('workspaces').getAll();
     const folders = tx.objectStore('folders').getAll();
     const documents = tx.objectStore('documents').getAll();
-    tx.oncomplete = () => resolve({ workspaces: workspaces.result, folders: folders.result, documents: documents.result });
+    tx.oncomplete = () => {
+      for (const doc of documents.result) committedDocuments.add(doc);
+      resolve({ workspaces: workspaces.result, folders: folders.result, documents: documents.result });
+    };
     tx.onerror = () => reject(tx.error || Error('Workspace read failed'));
     tx.onabort = () => reject(tx.error || Error('Workspace read aborted'));
   });
@@ -65,7 +73,10 @@ async function put(store: 'documents' | 'workspaces' | 'folders', value: FlowDoc
   return new Promise((resolve, reject) => {
     const tx = db.transaction(store, 'readwrite');
     tx.objectStore(store).put(value);
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => {
+      if (store === 'documents') committedDocuments.add(value);
+      resolve();
+    };
     tx.onerror = () => reject(tx.error);
     tx.onabort = () => reject(tx.error);
   });
@@ -135,6 +146,7 @@ export async function loadDoc(id: string): Promise<FlowDocument | null> {
       request.onerror = () => reject(request.error);
     });
   } catch { /* Emergency fallback after an IndexedDB failure. */ }
+  if (stored) committedDocuments.add(stored);
   return newestDocument(stored, readJson<FlowDocument>(FALLBACK + id), readRecoveryFor(id));
 }
 

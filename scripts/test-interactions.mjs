@@ -251,3 +251,11 @@ assert.match(shareDialogSource, /navigator\.clipboard\?\.writeText/);
 assert.match(shareDialogSource, /input\.select\(\);\s*try \{ successful = document\.execCommand\('copy'\); \}/);
 assert.match(shareDialogSource, /if \(!successful\) \{[\s\S]*?return;\s*\}[\s\S]*?setCopied\(true\)/);
 assert.match(shareDialogSource, /ref=\{linkInputRef\} data-dialog-initial-focus/);
+
+// A clean page visit must not trigger another write; recovered/edited copies are not committed by identity.
+const perfStore = read('src/lib/store.ts');
+assert.match(perfStore, /const committedDocuments = new WeakSet<object>\(\)/);
+assert.match(perfStore, /tx\.oncomplete = \(\) => \{\s*if \(store === 'documents'\) committedDocuments\.add\(value\)/);
+assert.match(app, /if \(isLocallyCommitted\(doc\) && !saveQueue\.current\.has\(id\)\) return;/);
+assert.match(app, /if \(doc && !isLocallyCommitted\(doc\)\) saveRecovery\(doc\)/);
+assert.match(read('src/workers/search.ts'), /const batchSize = 4;[\s\S]*?await Promise\.all\(documents\.slice/);
