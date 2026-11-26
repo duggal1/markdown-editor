@@ -1722,11 +1722,11 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
       {shareOpen && active && (activeHtml || Boolean(readSiteRecord(active.id))
         ? <HtmlSiteDialog key={active.id} documentId={active.id}
             title={live.current.get(active.id)?.title || active.title}
-            getCurrent={() => live.current.get(activeIdRef.current) || null}
+            getCurrent={() => live.current.get(active.id) || null}
             onClose={() => setShareOpen(false)} />
         : <ShareDialog key={active.id} documentId={active.id}
             title={live.current.get(active.id)?.title || active.title}
-            getCurrent={() => live.current.get(activeIdRef.current) || null}
+            getCurrent={() => live.current.get(active.id) || null}
             onClose={() => setShareOpen(false)} />)}
       {settingsOpen && <DialogFrame id="settings-dialog" title="Settings" icon="settings"
         describedBy="settings-description" onClose={() => setSettingsOpen(false)} footer={<button type="button" className="flow-dialog-button flow-dialog-done" onClick={() => setSettingsOpen(false)}>Done</button>}>

@@ -114,6 +114,9 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
       <span className="flow-dialog-footer-spacer" />
       <button type="button" className="share-done" onClick={onClose} disabled={operation === 'revoke'}>Done</button>
     </>}>
+    <div className="flow-dialog-document flow-share-document">
+      <Icon name="file" size={16} /><span title={title}>{title || 'Untitled page'}</span>
+    </div>
     <div className="share-access">
       <Icon name="globe" size={17} />
       <div className="share-access-text">

@@ -146,3 +146,5 @@ All unfiled pages render under one protected, collapsible `workspace` root. Each
 
 ## Stable tree and abandoned drafts
 Selecting or editing a page never promotes it while it is active. Record the completed visit only when navigating away to another page. Seed legacy history once so live edits do not reorder untouched files, and keep Previous page navigation independent of the current row. Use the pared-back folded-corner outline without internal text lines. A zero-length, automatically titled Untitled draft may be removed after 30 seconds away from it; reopen cancels the timer. Never expire active, named, imported, linked, nonempty or parent pages. Recheck the stored draft in an IndexedDB write transaction before deletion. Browser suspension may delay cleanup; never delete based on age alone.
+
+- Local UUID preview paths use a reversible 22-character base64url token (prefixed by ~), with legacy UUID paths retained. No network lookup is needed. The player Share action opens the verified public publishing dialog; only server-committed public URLs may be copied. Sharing is explicit, never automatic public exposure.

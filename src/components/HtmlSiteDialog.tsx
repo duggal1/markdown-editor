@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import DialogFrame from './DialogFrame';
 import { Icon } from './Icons';
@@ -25,6 +25,9 @@ export default function HtmlSiteDialog({ documentId, title, getCurrent, onClose 
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const linkInput = useRef<HTMLInputElement>(null);
+  const copyTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => { if (copyTimer.current !== undefined) window.clearTimeout(copyTimer.current); }, []);
   useEffect(() => {
     const existing = readSiteRecord(documentId);
     if (!existing) return;
@@ -109,12 +112,24 @@ export default function HtmlSiteDialog({ documentId, title, getCurrent, onClose 
     } finally { setBusy(false); }
   }
   async function copy() {
-    if (!record?.syncedVersion || !verified) return;
+    if (!published || !record || busy) return;
+    let success = false;
     try {
       await navigator.clipboard.writeText(siteUrl(record.id));
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1600);
-    } catch { setError('Could not copy link. Select the URL and copy it manually.'); }
+      success = true;
+    } catch {
+      const input = linkInput.current;
+      if (input?.isConnected) {
+        input.focus();
+        input.select();
+        try { success = document.execCommand('copy'); } catch { /* Manual selection remains. */ }
+      }
+    }
+    if (!success) { setError('Could not copy link. Select the URL and copy it manually.'); return; }
+    setError('');
+    setCopied(true);
+    if (copyTimer.current !== undefined) window.clearTimeout(copyTimer.current);
+    copyTimer.current = window.setTimeout(() => setCopied(false), 1600);
   }
   async function revoke() {
     setBusy(true);
@@ -130,7 +145,7 @@ export default function HtmlSiteDialog({ documentId, title, getCurrent, onClose 
     } finally { setBusy(false); }
   }
   const published = Boolean(record?.syncedVersion && verified && status === 'synced');
-  return <DialogFrame id="html-site-dialog" title="Publish HTML" icon="link"
+  return <DialogFrame id="html-site-dialog" title="Share HTML" icon="link"
     describedBy="html-site-description" busy={busy} onClose={onClose}
     footer={<>
       {record && <motion.button {...press} type="button" className="flow-dialog-button flow-dialog-danger"
@@ -141,7 +156,7 @@ export default function HtmlSiteDialog({ documentId, title, getCurrent, onClose 
       {(!published || status === 'error') && <motion.button {...press} type="button"
         className="flow-dialog-button flow-dialog-contrast" disabled={busy}
         onClick={() => { void publish(); }}>
-        {busy ? 'Publishing…' : record ? 'Retry publish' : 'Publish'}
+        {busy ? 'Publishing…' : record ? 'Retry publish' : 'Create public link'}
       </motion.button>}
     </>}>
     <div className="flow-dialog-file">
@@ -150,11 +165,10 @@ export default function HtmlSiteDialog({ documentId, title, getCurrent, onClose 
         <strong title={title}>{title || 'Untitled HTML'}</strong>
         <small>Interactive HTML</small>
       </span>
-      <span className="flow-dialog-readonly">Public link</span>
     </div>
-    <span id="html-site-description" className="html-site-visually-hidden">
-      Public HTML is accessible to anyone with the link.
-    </span>
+    <p id="html-site-description" className="flow-share-description">
+      {published ? 'Anyone with the link can open this interactive page.' : 'Publish this page to create a short, public link. Local previews stay private.'}
+    </p>
     {record && <p className="flow-dialog-status" data-status={status} role="status"
       aria-live="polite">
       <span className="flow-dialog-status-dot" aria-hidden="true" />
@@ -163,14 +177,15 @@ export default function HtmlSiteDialog({ documentId, title, getCurrent, onClose 
           : 'Live'}
     </p>}
     {published && record && <>
-      <label className="flow-dialog-label" htmlFor="html-site-url">Public link</label>
       <div className="flow-dialog-link">
-        <input id="html-site-url" value={siteUrl(record.id)} readOnly
-          onFocus={event => event.currentTarget.select()} />
+        <label className="flow-share-link-label" htmlFor="html-site-url">Public link</label>
+        <input ref={linkInput} id="html-site-url" value={siteUrl(record.id)} title={siteUrl(record.id)} readOnly
+          spellCheck={false} onFocus={event => event.currentTarget.select()} />
         <motion.button {...press} type="button" className="flow-dialog-button flow-dialog-contrast"
-          onClick={() => { void copy(); }}>
-          <Icon name={copied ? 'check' : 'copy'} size={14} /> {copied ? 'Copied' : 'Copy'}
+          onClick={() => { void copy(); }} disabled={busy}>
+          <Icon name={copied ? 'check' : 'copy'} size={15} /> {copied ? 'Copied' : 'Copy link'}
         </motion.button>
+        <span className="settings-sr-only" role="status">{copied ? 'Link copied' : ''}</span>
       </div>
 
     </>}

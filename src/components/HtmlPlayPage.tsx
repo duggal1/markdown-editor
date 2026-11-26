@@ -5,7 +5,9 @@ import RuntimeSelect, { type RuntimeOption } from './RuntimeSelect';
 import IPhoneFrame from './IPhoneFrame';
 import { tabletViewport, fitDevice, type TabletOrientation } from '../lib/deviceViewport';
 import { htmlPreviewDocument } from '../lib/htmlPreview';
-import { loadDoc } from '../lib/store';
+import { loadDoc, type FlowDocument } from '../lib/store';
+import { decodeLocalHtmlId } from '../lib/localHtmlId';
+import HtmlSiteDialog from './HtmlSiteDialog';
 import { isHtmlPage } from '../lib/siteHosting';
 
 type PreviewDevice = 'desktop' | 'phone' | 'tablet';
@@ -15,7 +17,8 @@ const PRESETS: Record<Exclude<Resolution, 'auto'>, [number, number]> = {
 };
 const PATH = window.location.pathname.split('/').filter(Boolean);
 const LOCAL = PATH[0] === 'play' && PATH[1] === 'local';
-const ID = LOCAL ? PATH[2] || '' : PATH[1] || '';
+const LOCAL_TOKEN = LOCAL ? PATH[2] || '' : '';
+const ID = LOCAL ? decodeLocalHtmlId(LOCAL_TOKEN) : PATH[1] || '';
 const PUBLIC_PREFIX = PATH[0] === 'slug' ? '/slug/' : '/play/';
 const launchUrl = new URL(window.location.href);
 const expectedRevision = LOCAL ? Number(launchUrl.searchParams.get('__flow_revision') || 0) : 0;
@@ -58,6 +61,10 @@ export default function HtmlPlayPage() {
   const [glass, setGlass] = useState<'dark' | 'light'>('dark');
   const [source, setSource] = useState<string | null>(null);
   const [title, setTitle] = useState('HTML preview');
+  const [localDocument, setLocalDocument] = useState<FlowDocument | null>(null);
+  const [shareDocument, setShareDocument] = useState<FlowDocument | null>(null);
+  const [openingShare, setOpeningShare] = useState(false);
+  const [shareError, setShareError] = useState('');
   const [error, setError] = useState('');
   const [routePath, setRoutePath] = useState(FIRST_ROUTE);
   const [frameRoute, setFrameRoute] = useState(FIRST_ROUTE);
@@ -142,6 +149,7 @@ export default function HtmlPlayPage() {
           if (!doc || !isHtmlPage(doc) || doc.updatedAt < expectedRevision) throw new Error('The latest HTML revision could not be loaded. Return to the editor and reopen the preview.');
           if (launchUrl.href !== window.location.href) history.replaceState(history.state, '', launchUrl.href);
           if (active) {
+            setLocalDocument(doc);
             setSource(doc.markdown);
             setTitle(doc.title || 'HTML preview');
             document.title = (doc.title || 'HTML preview') + ' · Flow';
@@ -195,7 +203,7 @@ export default function HtmlPlayPage() {
       } else if (event.data.type === 'flow-runtime-route') {
         const route = safeRoute(event.data.path);
         if (!route) return;
-        const prefix = LOCAL ? '/play/local/' + ID : PUBLIC_PREFIX + ID;
+        const prefix = LOCAL ? '/play/local/' + LOCAL_TOKEN : PUBLIC_PREFIX + ID;
         const next = prefix + (route === '/' ? '' : route);
         if (next !== window.location.pathname + window.location.search + window.location.hash) {
           if (event.data.mode === 'replace') window.history.replaceState(null, '', next);
@@ -267,11 +275,29 @@ export default function HtmlPlayPage() {
   }
   function moveDrag(event: PointerEvent<HTMLButtonElement>) {
     if (!dragging.current) return;
-    const max = Math.max(8, window.innerWidth - (expanded ? 264 : 170) - 8);
+    const max = Math.max(8, window.innerWidth - (expanded ? 264 : LOCAL ? 205 : 170) - 8);
     setLeft(Math.max(8, Math.min(max, dragging.current.left + event.clientX - dragging.current.x)));
   }
   function stopDrag() { dragging.current = null; }
   useEffect(() => { sendSettings(); }, [fpsLimit, html, device, orientation, reload]);
+
+  async function openShare() {
+    if (!LOCAL || !localDocument || openingShare) return;
+    setOpeningShare(true);
+    setShareError('');
+    try {
+      const latest = await loadDoc(ID);
+      if (!latest || !isHtmlPage(latest) || latest.updatedAt < localDocument.updatedAt) {
+        throw new Error('The latest HTML is unavailable. Reopen the preview.');
+      }
+      setLocalDocument(latest);
+      setSource(latest.markdown);
+      setTitle(latest.title || 'HTML preview');
+      setShareDocument(latest);
+    } catch (cause) {
+      setShareError(cause instanceof Error ? cause.message : 'Could not open sharing.');
+    } finally { setOpeningShare(false); }
+  }
 
   const frame = html && <iframe key={frameRoute + ':' + reload}
     ref={iframe} title={title} srcDoc={html}
@@ -331,6 +357,11 @@ export default function HtmlPlayPage() {
             <Icon name="caretDown" size={12} />
           </motion.span>
         </motion.button>
+        {LOCAL && <motion.button type="button" aria-label="Share HTML" title="Share HTML · create a public link"
+          disabled={!localDocument || openingShare} onClick={() => { void openShare(); }}
+          whileTap={reduce ? undefined : { scale: .92 }} transition={spring}>
+          <Icon name="link" size={16} />
+        </motion.button>}
         <motion.button type="button" className="html-play-hide"
           title="Hide controls (Ctrl/⌘ Shift H)" aria-label="Hide runtime controls"
           onClick={() => setControlsVisible(false)}
@@ -392,6 +423,9 @@ export default function HtmlPlayPage() {
         </motion.div>}
       </AnimatePresence>
     </div>}
+    {shareError && <p className="flow-share-preview-error" role="alert">{shareError}</p>}
+    {shareDocument && <HtmlSiteDialog key={shareDocument.id} documentId={shareDocument.id}
+      title={shareDocument.title} getCurrent={() => shareDocument} onClose={() => setShareDocument(null)} />}
     <span className="html-play-accessible-route" aria-live="polite">{routePath === '/' ? '' : routePath}</span>
   </main>;
 }

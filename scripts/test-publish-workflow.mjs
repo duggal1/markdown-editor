@@ -94,3 +94,23 @@ assert.match(player, /Date\.now\(\) \+ 8000/);
 assert.match(backup, /enableBackup\('html'\)/);
 assert.match(backup, /backupScope\(\) === 'html'/);
 assert.match(read('api/backup.js'), /flow_backup_scope=/);
+
+// A compact local token is reversible and never confused with a public slug.
+const { encodeLocalHtmlId, decodeLocalHtmlId } = await import('../src/lib/localHtmlId.ts');
+const uuid = '9d9b6978-78ad-430a-b98e-f10770dd2c5f';
+const token = encodeLocalHtmlId(uuid);
+assert.match(token, /^~[A-Za-z0-9_-]{22}$/);
+assert.equal(decodeLocalHtmlId(token), uuid);
+assert.equal(decodeLocalHtmlId(uuid), uuid, 'Old preview links still resolve');
+assert.equal(encodeLocalHtmlId('legacy-id'), 'legacy-id');
+assert.equal(decodeLocalHtmlId('~invalid'), '~invalid');
+for (let i = 0; i < 100; i++) {
+  const id = crypto.randomUUID();
+  assert.equal(decodeLocalHtmlId(encodeLocalHtmlId(id)), id);
+}
+assert.match(player, /decodeLocalHtmlId\(LOCAL_TOKEN\)/);
+assert.match(player, /aria-label="Share HTML"/);
+assert.match(player, /<HtmlSiteDialog key=\{shareDocument.id\}/);
+assert.match(htmlDialog, /navigator.clipboard.writeText\(siteUrl\(record.id\)\)/);
+assert.match(htmlDialog, /if \(!published \|\| !record \|\| busy\) return;/);
+assert.doesNotMatch(htmlDialog, /localHtmlUrl|\/play\/local\//);
