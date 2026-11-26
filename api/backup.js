@@ -82,6 +82,7 @@ export default async function handler(req, res) {
       res.setHeader('Set-Cookie', [
         'flow_backup_key=' + token + '; Path=/; Max-Age=34560000; Secure; HttpOnly; SameSite=Strict',
         'flow_backup=1; Path=/; Max-Age=34560000; Secure; SameSite=Strict',
+        'flow_backup_scope=' + (body.action === 'session' && body.scope === 'html' ? 'html' : 'all') + '; Path=/; Max-Age=34560000; Secure; SameSite=Strict',
       ]);
       return reply(res, 200, { enabled: true });
     }

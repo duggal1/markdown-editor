@@ -94,3 +94,29 @@ assert.match(treeStyle, /:root\[data-theme='light'\] \.filetree-result\.is-activ
   'Selected search results must retain contrast in light mode.');
 assert.doesNotMatch(worker, /fetch\(|Pinecone|embeddings/i);
 console.log('Ranked local full-text search, content indexing, updates and Cmd+K tests passed.');
+
+// A cached miss/hit must be invalidated by an edit or deletion.
+index.reset([doc('a','Alpha','some text'),doc('b','Beta','some text')]);
+assert.equal(index.search('diligence').length,0);
+index.upsert(doc('a','Alpha','diligence evidence'));
+assert.equal(index.search('dilige')[0].id,'a');
+assert.equal(index.search('diligence')[0].id,'a');
+index.remove('a');
+assert.equal(index.search('diligence').length,0);
+assert.equal(index.search('dilige').length,0);
+index.reset([doc('b','Same','same',999),doc('a','Same','same',1)]);
+assert.equal(index.search('same')[0].id,'a','Equal relevance must not depend on edit recency');
+const cached = index.search('same'); cached[0].score = -100;
+assert.ok(index.search('same')[0].score > 0);
+
+// A derived token cache reconstructs exactly the same posting weights.
+const preparedDoc = doc('persisted','Énergie Strategy','## Renewable energy\nAcquisition financing and cash flow.');
+const originalIndex = new PageSearchIndex(); originalIndex.upsert(preparedDoc);
+const restoredIndex = new PageSearchIndex(); restoredIndex.upsert(preparedDoc, originalIndex.preparedTerms(preparedDoc.id));
+assert.equal(JSON.stringify(restoredIndex.search('renewable energy')),JSON.stringify(originalIndex.search('renewable energy')));
+assert.equal(JSON.stringify(restoredIndex.search('acquis')),JSON.stringify(originalIndex.search('acquis')));
+const derivedCache = read('src/workers/searchCache.ts');
+assert.match(derivedCache, /SHA-256/);
+assert.match(derivedCache, /row\?\.digest === digest/);
+assert.match(worker, /epoch !== generation \|\| changed\.has\(doc\.id\)/);
+assert.match(worker, /forgetDerivedTerms\(message\.id\)/);

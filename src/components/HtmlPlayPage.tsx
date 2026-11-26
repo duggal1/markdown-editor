@@ -17,7 +17,10 @@ const PATH = window.location.pathname.split('/').filter(Boolean);
 const LOCAL = PATH[0] === 'play' && PATH[1] === 'local';
 const ID = LOCAL ? PATH[2] || '' : PATH[1] || '';
 const PUBLIC_PREFIX = PATH[0] === 'slug' ? '/slug/' : '/play/';
-const FIRST_ROUTE = '/' + PATH.slice(LOCAL ? 3 : 2).join('/') + window.location.search + window.location.hash;
+const launchUrl = new URL(window.location.href);
+const expectedRevision = LOCAL ? Number(launchUrl.searchParams.get('__flow_revision') || 0) : 0;
+if (LOCAL) launchUrl.searchParams.delete('__flow_revision');
+const FIRST_ROUTE = '/' + PATH.slice(LOCAL ? 3 : 2).join('/') + launchUrl.search + launchUrl.hash;
 
 function currentRoute(): string {
   const parts = window.location.pathname.split('/').filter(Boolean);
@@ -122,8 +125,22 @@ export default function HtmlPlayPage() {
     async function load() {
       try {
         if (LOCAL) {
-          const doc = await loadDoc(ID);
-          if (!doc || !isHtmlPage(doc)) throw new Error('This HTML page is not available on this device.');
+          const deadline = Date.now() + 8000;
+          let doc: Awaited<ReturnType<typeof loadDoc>> = null;
+          while (active && Date.now() < deadline) {
+            let timeout = 0;
+            try {
+              doc = await Promise.race([
+                loadDoc(ID),
+                new Promise<null>(resolve => { timeout = window.setTimeout(() => resolve(null), Math.max(1, deadline - Date.now())); }),
+              ]);
+            } finally { window.clearTimeout(timeout); }
+            if (doc && isHtmlPage(doc) && doc.updatedAt >= expectedRevision) break;
+            await new Promise(resolve => window.setTimeout(resolve, 80));
+          }
+          if (!active) return;
+          if (!doc || !isHtmlPage(doc) || doc.updatedAt < expectedRevision) throw new Error('The latest HTML revision could not be loaded. Return to the editor and reopen the preview.');
+          if (launchUrl.href !== window.location.href) history.replaceState(history.state, '', launchUrl.href);
           if (active) {
             setSource(doc.markdown);
             setTitle(doc.title || 'HTML preview');

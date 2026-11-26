@@ -6,7 +6,7 @@ import type { EditorView } from '@codemirror/view';
 import MarkdownEditor, { formatEditor } from './components/MarkdownEditor';
 import { setTaskChecked, taskMarkerEdit } from './lib/taskList';
 import WorkspaceTree from './components/WorkspaceTree';
-import { finishVisit, rankDocuments, restoreRecent } from './lib/workspaceRecency';
+import { finishVisit, sortWorkspaceDocuments, restoreRecent } from './lib/workspaceRecency';
 import { canExpireDraft, EMPTY_DRAFT_IDLE_MS } from './lib/emptyDraft';
 import { FlowMark, Icon, SuppliedIcon } from './components/Icons';
 import { ACCENT_THEMES, applyAccentTheme, parseAccentTheme, type AccentTheme } from './lib/accentTheme';
@@ -14,10 +14,9 @@ import { downloadMarkdown } from './lib/document';
 import ShareDialog from './components/ShareDialog';
 import HtmlSiteDialog from './components/HtmlSiteDialog';
 import DialogFrame from './components/DialogFrame';
-import { backupStatus, enableBackup, getRecoveryKey, recoverWithKey, resumeBackup } from './lib/backup';
+import { backupStatus, backupScope, enableBackup, getRecoveryKey, recoverWithKey, resumeBackup, queueImportedHtmlBackup } from './lib/backup';
 import { queueSharedSync, readShareRecord, revokeCloudShare } from './lib/sharing';
-import { isHtmlPage, localHtmlUrl, publishHtml, queueSiteSync, readSiteRecord, revokeHtml,
-  siteUrl, verifyHostedHtml } from './lib/siteHosting';
+import { isHtmlPage, localHtmlUrl, queueSiteSync, readSiteRecord, revokeHtml } from './lib/siteHosting';
 import { detectRawCode, isMarkdownFile, languageForFile, normalizeMixedContent } from './lib/code';
 import { svgPreviewDocument } from './lib/svgPreview';
 import { locateSvgSource } from './lib/svgPalette';
@@ -293,6 +292,11 @@ export default function App() {
           worker?.postMessage({ type: 'index', documents: current.map(({ id, workspaceId, title, markdown, updatedAt }) => ({ id, workspaceId, title, markdown, updatedAt })) });
           current.forEach(queueSharedSync);
           current.forEach(doc => queueSiteSync(doc));
+           const htmlFolders = new Map(data.folders.filter(folder => folder.name.trim().toLowerCase() === 'html sites').map(folder => [folder.id, folder]));
+           for (const doc of current) {
+             const folder = doc.folderId ? htmlFolders.get(doc.folderId) : undefined;
+             if (folder && isHtmlPage(doc)) void queueImportedHtmlBackup(doc, folder, data.workspaces.find(ws => ws.id === folder.workspaceId)).catch(() => {});
+           }
         }, 0);
       });
       setLoaded(true);
@@ -378,6 +382,8 @@ export default function App() {
     dirtySince.current.delete(id);
     const doc = live.current.get(id);
     if (!doc) return;
+    // Preserve a small emergency snapshot before an asynchronous local commit. Large files use IndexedDB.
+    saveRecovery(doc);
     const previous = saveQueue.current.get(id) || Promise.resolve();
     const next = previous.catch(() => {}).then(() => saveDoc(doc));
     saveQueue.current.set(id, next);
@@ -395,7 +401,7 @@ export default function App() {
           setSaveState('saved');
         }
         saveStarted.current.delete(id);
-        clearRecovery(id);
+        clearRecovery(id, doc.updatedAt);
       }
     }).catch(() => {
       if (saveQueue.current.get(id) === next) saveQueue.current.delete(id);
@@ -710,6 +716,7 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
   }
   function createFolder(targetWorkspace: string) {
     if (!workspaces.some(ws => ws.id === targetWorkspace)) return;
+    // Workspace ID is storage ownership, never a folder parent.
     const folder: Folder = { id: uid(), workspaceId: targetWorkspace, name: 'New folder', createdAt: Date.now() };
     setFolders(items => [...items, folder]);
     setQuery('');
@@ -1068,7 +1075,19 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
     let completed = 0;
     setImportProgress({ done: 0, total });
     setNotice('Importing 0 / ' + total + ' files…');
-    const targetWorkspace = workspaceId;
+    const targetWorkspace = workspaceId || workspaces[0]?.id;
+    let htmlFolderPromise: Promise<Folder> | undefined;
+    function htmlDestination(): Promise<Folder> {
+      return htmlFolderPromise ??= (async () => {
+        const existing = folders.find(folder => folder.name.trim().toLowerCase() === 'html sites');
+        if (existing) return existing;
+        if (!targetWorkspace) throw new Error('Workspace is not ready');
+        const folder: Folder = { id: uid(), workspaceId: targetWorkspace, name: 'HTML Sites', createdAt: Date.now() };
+        await saveFolder(folder);
+        setFolders(items => [...items, folder]);
+        return folder;
+      })();
+    }
 
     async function importOne(file: File) {
       if (file.size > 50 * 1024 * 1024) throw new Error(file.name + ' exceeds the 50 MB limit');
@@ -1108,7 +1127,19 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
         asset: image || binary ? file : undefined,
         titleAuto: false, createdAt: now, updatedAt: now,
       };
+      const htmlFolder = isHtmlPage(doc) ? await htmlDestination() : undefined;
+      if (htmlFolder) {
+        doc.workspaceId = htmlFolder.workspaceId;
+        doc.folderId = htmlFolder.id;
+        doc.language = 'html';
+      }
       await saveDoc(doc);
+      if (htmlFolder) {
+        const owner = workspaces.find(ws => ws.id === htmlFolder.workspaceId);
+        void queueImportedHtmlBackup(doc, htmlFolder, owner).catch(() => {
+          setNotice('HTML saved locally. Cloud backup could not start; retrying on the next visit.');
+        });
+      }
       live.current.set(doc.id, doc);
       imported.push(doc);
       workerRef.current?.postMessage({ type: 'upsert', document: {
@@ -1167,50 +1198,29 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
     : 'Auto Python Fix';
   const activeHtml = useMemo(() => isHtmlPage(active), [active]);
   useEffect(() => { setHtmlSurfaceTone('dark'); }, [activeId]);
-  // HTML previews are automatically hosted; Markdown stays local unless shared.
-  useEffect(() => {
-    if (!loaded || mode === 'write' || !activeHtml || !active) return;
-    void publishHtml(active).catch(() => { /* Publish status appears in the HTML dialog. */ });
-  }, [loaded, mode, activeId, activeHtml]);
-
+  // Local previews never wait for cloud publishing.
   function openFullHtml() {
     const doc = live.current.get(activeIdRef.current);
-    if (!isHtmlPage(doc)) return;
-    const tab = window.open('about:blank', '_blank');
+    if (!doc || !isHtmlPage(doc)) return;
+    const tab = window.open(localHtmlUrl(doc.id, doc.updatedAt), '_blank');
     if (!tab) { setNotice('Your browser blocked the HTML preview tab. Allow popups and retry.'); return; }
     tab.opener = null;
-    flush(doc!.id);
-    void (async () => {
-      await (saveQueue.current.get(doc!.id) || saveDoc(doc!));
-      const current = readSiteRecord(doc!.id);
-      const ready = current?.syncedVersion === doc!.updatedAt &&
-        await verifyHostedHtml(current.id).catch(() => false);
-      // Public and local previews now share one player. Prefer the canonical
-      // shareable URL once the remote snapshot has actually committed.
-      if (ready && current) tab.location.replace(siteUrl(current.id));
-      else {
-        tab.location.replace(localHtmlUrl(doc!.id));
-        void publishHtml(doc!).catch(() => { /* Local HTML remains available. */ });
-      }
-    })().catch(() => {
-      tab.close();
-      setNotice('Could not save HTML before opening the full preview.');
-    });
+    flush(doc.id);
   }
   const matching = useMemo(() => {
-    if (!query.trim()) return rankDocuments(docs, recentIds);
+    if (!query.trim()) return sortWorkspaceDocuments(docs);
     const byId = new Map(docs.map(doc => [doc.id, doc]));
     // The worker returns relevance ranking. Do not sort by modification time.
     return searchResults.flatMap(hit => {
       const doc = byId.get(hit.id);
       return doc ? [doc] : [];
     });
-  }, [docs, query, searchResults, recentIds]);
+  }, [docs, query, searchResults]);
   useEffect(() => {
     const requestId = ++searchRequest.current;
     const text = query.trim();
     setSearchResults([]);
-    if (!text) { setSearchPending(false); return; }
+    if (!text) { workerRef.current?.postMessage({ type: 'cancel' }); setSearchPending(false); return; }
     setSearchPending(true);
     const timer = window.setTimeout(() => {
       if (workerRef.current) {
@@ -1540,7 +1550,7 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
           <Icon name="edit" size={17}/> New page <kbd>+</kbd>
         </button>
         <WorkspaceTree
-          workspaces={workspaces} documents={matching} folders={folders} newFolderId={newFolderId}
+          workspaces={workspaces} documents={matching} allDocuments={docs} folders={folders} newFolderId={newFolderId}
           activeId={activeId} activeWorkspaceId={workspaceId}
           search={query} searchHits={searchResults} searchPending={searchPending}
           {...treeActions}
@@ -1552,8 +1562,9 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
             onClick={() => { void turnOnBackup(); }}><Icon name="download" size={16} /> Enable cloud backup</button>
             : <div className="sidebar-bottom-action" role="status" title="Private cloud backup; public sharing is separate">
               <Icon name={cloudState === 'synced' ? 'check' : 'history'} size={16} />
-              {cloudState === 'synced' ? 'Cloud backup synced' : cloudState === 'error' ? 'Backup failed · retrying' : 'Backing up…'}
+              {cloudState === 'synced' ? (backupScope() === 'html' ? 'HTML backup synced' : 'Cloud backup synced') : cloudState === 'error' ? 'Backup failed · retrying' : 'Backing up…'}
             </div>}
+          {cloudState !== 'off' && backupScope() === 'html' && <button className="sidebar-bottom-action" disabled={!loaded} onClick={() => { void turnOnBackup(); }}><Icon name="download" size={16} /> Back up all pages</button>}
           {cloudState === 'off'
             ? <button className="sidebar-bottom-action" onClick={() => { void recoverCloudWorkspace(); }}>
                 <Icon name="history" size={16} /> Restore cloud backup</button>

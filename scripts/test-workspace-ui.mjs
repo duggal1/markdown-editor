@@ -69,31 +69,31 @@ console.log('Workspace controls, toast and dark native dialogs passed.');
 
 // Exercise the actual ranking helper, including legacy preferences and >30 files.
 const js = ts.transpileModule(read('src/lib/workspaceRecency.ts'), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { touchRecent, finishVisit, restoreRecent, rankDocuments } = await import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'));
+const { touchRecent, finishVisit, restoreRecent, sortWorkspaceDocuments } = await import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'));
 const docs = Array.from({ length: 45 }, (_, i) => ({ id: String(i), updatedAt: i }));
 let history = [];
 for (const doc of docs) history = touchRecent(history, doc.id);
 assert.equal(history.length, 45);
 history = touchRecent(history, '0');
-assert.equal(rankDocuments(docs, history)[0].id, '0');
+assert.deepEqual(sortWorkspaceDocuments(docs.map(doc => ({...doc, createdAt:doc.updatedAt}))).map(doc => doc.id), docs.map(doc => doc.id));
 assert.equal(touchRecent(history, '0'), history);
 assert.deepEqual(restoreRecent(['4', '4', 'missing', 2], [docs[0], docs[4]]), ['4', '0']);
-assert.deepEqual(rankDocuments(docs.slice(0, 3), []).map(doc => doc.id), ['2', '1', '0']);
+assert.deepEqual(sortWorkspaceDocuments(docs.slice(0, 3)).map(doc => doc.id), ['0', '1', '2']);
 assert.match(tree, /className="workspace-root" role="treeitem"/);
 assert.match(tree, /tree\.roots\.map\(doc => row\(doc, 1\)\)/);
 assert.match(tree, /tree\.topLevelFolders\.map\(folder =>/);
-assert.match(tree, /branchRank\(child\.id\)/);
-assert.match(app, /rankDocuments\(docs, recentIds\)/);
+assert.doesNotMatch(tree, /branchRank/);
+assert.match(app, /sortWorkspaceDocuments\(docs\)/);
 assert.match(app, /finishVisit\(ids, previous, id, live.current.has\(previous\)\)/);
 assert.doesNotMatch(app, /touchRecent\(/);
 assert.doesNotMatch(app, /setRecentIds[^\n]*slice\(0, 30\)/);
-console.log('Global workspace root and durable recency ranking passed.');
+console.log('Global workspace root and stable creation order passed.');
 
 const stable = ['2', '1', '0'];
 assert.equal(finishVisit(stable, '0', '0', true), stable);
 assert.equal(finishVisit(stable, '0', '2', false), stable);
 assert.deepEqual(finishVisit(stable, '0', '2', true), ['0', '2', '1']);
-assert.deepEqual(rankDocuments([{...docs[0], updatedAt: 999}, docs[1], docs[2]], stable).map(doc => doc.id), stable);
+assert.deepEqual(sortWorkspaceDocuments([{...docs[0], createdAt:0, updatedAt:999}, {...docs[1],createdAt:1}, {...docs[2],createdAt:2}]).map(doc => doc.id), ['0','1','2']);
 const draftJs = ts.transpileModule(read('src/lib/emptyDraft.ts'), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
 const { canExpireDraft, sameEmptyDraft, EMPTY_DRAFT_IDLE_MS } = await import('data:text/javascript;base64,' + Buffer.from(draftJs).toString('base64'));
 const draft = { id: 'draft', title: 'Untitled', titleAuto: true, markdown: '', workspaceId: 'w', createdAt: 1, updatedAt: 1 };
@@ -111,7 +111,7 @@ assert.equal(sameEmptyDraft({...draft, markdown: 'saved elsewhere'}, draft), fal
 assert.match(app, /Date.now\(\) \+ EMPTY_DRAFT_IDLE_MS/);
 assert.match(app, /removeEmptyDraft\(doc\)/);
 assert.match(read('src/lib/store.ts'), /sameEmptyDraft\(current, expected\)/);
-console.log('Departure-only recency and protected empty-draft eligibility passed.');
+console.log('Previous-page history and protected empty-draft eligibility passed.');
 
  // Verify sibling folder rendering is outside the protected root, while
  // documents stay scoped to their persisted folder ID.
@@ -128,3 +128,15 @@ assert.match(tree, /onDrop=\{e => dropped\(e, undefined, folder\.id\)\}/);
 assert.match(app, /const targetFolder = parent \? parent\.folderId : folder\?\.id/);
 assert.match(app, /setFolders\(items => \[\.\.\.items, folder\]\);\s*setQuery\(''\);\s*setNewFolderId\(folder\.id\)/);
 console.log('Top-level sibling folder hierarchy and explicit destination routing passed.');
+
+assert.match(tree, /className="workspace-sibling-folder" role="treeitem" aria-level=\{1\}/);
+assert.match(tree, /className="workspace-root" role="treeitem" aria-level=\{1\}/);
+assert.match(tree, /filetree-result-path/);
+assert.doesNotMatch(app, /rankDocuments\(/);
+
+// Recovery snapshots are per document and do not supersede a newer revision.
+const persistence = read('src/lib/store.ts');
+assert.match(persistence, /RECOVERY_PREFIX \+ doc\.id/);
+assert.match(persistence, /newestDocument\(stored, readJson<FlowDocument>\(FALLBACK \+ id\), readRecoveryFor\(id\)\)/);
+assert.match(persistence, /current\.updatedAt <= throughUpdatedAt/);
+assert.match(app, /clearRecovery\(id, doc\.updatedAt\)/);

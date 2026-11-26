@@ -17,6 +17,7 @@ export type SearchHit = {
   source: 'title' | 'content';
 };
 type Weights = { title: number; heading: number; body: number };
+export type PreparedSearchTerms = { terms: Map<string, Weights>; wordCount: number };
 type RecordEntry = {
   document: SearchDocument;
   title: string;
@@ -52,7 +53,7 @@ function snippetFor(record: RecordEntry, query: string, tokens: string[]): {
     index = Number.isFinite(best) ? best : -1;
   }
   if (index < 0) {
-    const firstText = text.split(/\n/).find(line => line.trim() && !/^\s*(?:---|\x60{3,}|~{3,})/.test(line)) || '';
+    const firstText = text.slice(0, 4096).split(/\n/).find(line => line.trim() && !/^\s*(?:---|\x60{3,}|~{3,})/.test(line)) || '';
     return { snippet: cleanSnippet(firstText).slice(0, 150), source: 'title' };
   }
   // Only slice the small, matched window rather than formatting large pages.
@@ -74,34 +75,62 @@ export class PageSearchIndex {
   private documents = new Map<string, RecordEntry>();
   private postings = new Map<string, Map<string, Weights>>();
   private totalWords = 0;
+  private vocabulary: string[] | null = null;
+  private queryCache = new Map<string, SearchHit[]>();
+
+  private invalidate(): void {
+    this.vocabulary = null;
+    this.queryCache.clear();
+  }
+
+  private prefixTerms(prefix: string): string[] {
+    const list = this.vocabulary ??= [...this.postings.keys()].sort();
+    let lo = 0, hi = list.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (list[mid] < prefix) lo = mid + 1; else hi = mid;
+    }
+    const result: string[] = [];
+    for (let i = lo; i < list.length && list[i].startsWith(prefix) && result.length < 28; i++) {
+      if (list[i] !== prefix) result.push(list[i]);
+    }
+    return result;
+  }
 
   reset(documents: SearchDocument[]): void {
     this.documents.clear();
     this.postings.clear();
     this.totalWords = 0;
+    this.invalidate();
     for (const document of documents) this.upsert(document);
   }
 
-  upsert(document: SearchDocument): void {
+  upsert(document: SearchDocument, prepared?: PreparedSearchTerms): void {
+    const previous = this.documents.get(document.id)?.document;
+    if (previous && previous.title === document.title && previous.markdown === document.markdown && previous.updatedAt === document.updatedAt && previous.workspaceId === document.workspaceId) return;
     this.remove(document.id);
-    const counts = new Map<string, Weights>();
-    const add = (term: string, field: keyof Weights) => {
-      const weight = counts.get(term) || { title: 0, heading: 0, body: 0 };
-      weight[field] = Math.min(24, weight[field] + 1);
-      counts.set(term, weight);
-    };
-    for (const term of terms(document.title)) add(term, 'title');
-    for (const match of document.markdown.matchAll(HEADING)) {
-      for (const term of terms(match[1])) add(term, 'heading');
+    this.invalidate();
+    const body = normalize(document.markdown);
+    const counts = prepared?.terms ?? new Map<string, Weights>();
+    let wordCount = prepared?.wordCount ?? 0;
+    if (!prepared) {
+      const add = (term: string, field: keyof Weights) => {
+        const weight = counts.get(term) || { title: 0, heading: 0, body: 0 };
+        weight[field] = Math.min(24, weight[field] + 1);
+        counts.set(term, weight);
+      };
+      for (const term of terms(document.title)) add(term, 'title');
+      for (const match of document.markdown.matchAll(HEADING)) {
+        for (const term of terms(match[1])) add(term, 'heading');
+      }
+      for (const match of body.matchAll(WORDS)) { add(match[0], 'body'); wordCount++; }
     }
-    const bodyWords = terms(document.markdown);
-    for (const term of bodyWords) add(term, 'body');
     const entry: RecordEntry = {
       document,
       title: normalize(document.title),
-      body: normalize(document.markdown),
+      body,
       terms: counts,
-      wordCount: bodyWords.length,
+      wordCount,
     };
     this.documents.set(document.id, entry);
     this.totalWords += entry.wordCount;
@@ -115,9 +144,15 @@ export class PageSearchIndex {
     }
   }
 
+  preparedTerms(id: string): PreparedSearchTerms | undefined {
+    const entry = this.documents.get(id);
+    return entry && { terms: entry.terms, wordCount: entry.wordCount };
+  }
+
   remove(id: string): void {
     const existing = this.documents.get(id);
     if (!existing) return;
+    this.invalidate();
     for (const term of existing.terms.keys()) {
       const list = this.postings.get(term);
       list?.delete(id);
@@ -129,6 +164,9 @@ export class PageSearchIndex {
 
   search(rawQuery: string, limit = MAX_RESULTS): SearchHit[] {
     const phrase = normalize(rawQuery.trim());
+    const cacheKey = JSON.stringify([phrase, limit]);
+    const cached = this.queryCache.get(cacheKey);
+    if (cached) { this.queryCache.delete(cacheKey); this.queryCache.set(cacheKey, cached); return cached.map(hit => ({ ...hit })); }
     const words = [...new Set(terms(rawQuery))].slice(0, MAX_QUERY_TERMS);
     if (!words.length) return [];
     const count = this.documents.size;
@@ -143,12 +181,9 @@ export class PageSearchIndex {
       const variants: Array<{ values: Map<string, Weights>; factor: number }> = [];
       if (postings) variants.push({ values: postings, factor: 1 });
       if (token.length >= 3 && (!postings || postings.size < 4)) {
-        let added = 0;
-        for (const [term, values] of this.postings) {
-          if (term !== token && term.startsWith(token)) {
-            variants.push({ values, factor: 0.65 });
-            if (++added >= 28) break;
-          }
+        for (const term of this.prefixTerms(token)) {
+          const values = this.postings.get(term);
+          if (values) variants.push({ values, factor: 0.65 });
         }
       }
       const matchedIds = new Set<string>();
@@ -170,7 +205,7 @@ export class PageSearchIndex {
       for (const id of matchedIds) scores.get(id)!.matched++;
     }
 
-    return [...scores.entries()].map(([id, value]) => {
+    const hits = [...scores.entries()].map(([id, value]) => {
       const record = this.documents.get(id)!;
       const fullMatch = value.matched === words.length;
       let score = value.score * (fullMatch ? 1.6 : 0.3) +
@@ -178,12 +213,15 @@ export class PageSearchIndex {
       if (record.title === phrase) score += 75;
       else if (record.title.includes(phrase)) score += 27;
       if (phrase.length > 2 && record.body.includes(phrase)) score += 18;
-      const excerpt = snippetFor(record, phrase, words);
-      return { id, score, snippet: excerpt.snippet, source: excerpt.source,
-        updatedAt: record.document.updatedAt };
-    }).sort((a, b) => b.score - a.score ||
-      b.updatedAt - a.updatedAt || a.id.localeCompare(b.id))
+      return { id, score };
+    }).sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
       .slice(0, Math.max(1, Math.min(limit, MAX_RESULTS)))
-      .map(({ updatedAt: _updatedAt, ...hit }) => hit);
+      .map(hit => ({ ...hit, ...snippetFor(this.documents.get(hit.id)!, phrase, words) }));
+    this.queryCache.set(cacheKey, hits);
+    if (this.queryCache.size > 64) {
+      const oldest = this.queryCache.keys().next().value;
+      if (oldest !== undefined) this.queryCache.delete(oldest);
+    }
+    return hits.map(hit => ({ ...hit }));
   }
 }

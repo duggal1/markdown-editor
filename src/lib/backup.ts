@@ -1,4 +1,5 @@
 import type { FlowDocument, Folder, Workspace } from './store';
+import { isHtmlPage } from './siteHosting';
 
 export type BackupKind = 'documents' | 'workspaces' | 'folders';
 type Value = FlowDocument | Folder | Workspace;
@@ -26,6 +27,9 @@ const pause = (ms: number) => new Promise(resolve => window.setTimeout(resolve, 
 
 export function backupEnabled() {
   return typeof document !== 'undefined' && document.cookie.split(';').some(item => item.trim() === 'flow_backup=1');
+}
+export function backupScope(): 'html' | 'all' {
+  return typeof document !== 'undefined' && document.cookie.split(';').some(item => item.trim() === 'flow_backup_scope=html') ? 'html' : 'all';
 }
 export function backupStatus(): BackupState { return backupEnabled() ? (state === 'off' ? 'pending' : state) : 'off'; }
 function announce(next: BackupState) {
@@ -62,8 +66,8 @@ async function json<T>(response: Response): Promise<T> {
   }
   return response.json() as Promise<T>;
 }
-export async function enableBackup() {
-  await json(await request('POST', 'session'));
+export async function enableBackup(scope: 'html' | 'all' = 'all') {
+  await json(await request('POST', 'session', undefined, { scope }));
   if (!backupEnabled()) throw new Error('Browser blocked the backup cookie');
   announce('pending');
 }
@@ -177,7 +181,7 @@ async function drain() {
   announce(failed ? 'error' : pending.size || running.size ? 'pending' : 'synced');
   if (pending.size) schedule(failed ? 30000 : 250);
 }
-export function queueBackup(kind: BackupKind, value: Value) {
+function enqueueBackup(kind: BackupKind, value: Value) {
   if (!backupEnabled()) return;
   const job = { kind, id: value.id, value };
   if (readEntries(TOMBSTONES).some(item => key(item) === key(job))) return;
@@ -185,8 +189,29 @@ export function queueBackup(kind: BackupKind, value: Value) {
   announce('pending');
   schedule();
 }
+export function queueBackup(kind: BackupKind, value: Value) {
+  if (backupScope() === 'html') {
+    if (kind === 'documents' && !isHtmlPage(value as FlowDocument)) return;
+    if (kind === 'folders' && (value as Folder).name.trim().toLowerCase() !== 'html sites' &&
+        !readEntries(INDEX).some(entry => entry.kind === kind && entry.id === value.id)) return;
+    if (kind === 'workspaces' && !readEntries(INDEX).some(entry => entry.kind === kind && entry.id === value.id)) return;
+  }
+  enqueueBackup(kind, value);
+}
+let htmlSession: Promise<void> | undefined;
+export async function queueImportedHtmlBackup(doc: FlowDocument, folder: Folder, workspace?: Workspace) {
+  if (!isHtmlPage(doc)) return;
+  if (!backupEnabled()) {
+    htmlSession ??= enableBackup('html').finally(() => { htmlSession = undefined; });
+    await htmlSession;
+  }
+  if (workspace) enqueueBackup('workspaces', workspace);
+  enqueueBackup('folders', folder);
+  enqueueBackup('documents', doc);
+}
 export function queueBackupDeletion(kind: BackupKind, id: string) {
   if (!backupEnabled()) return;
+  if (backupScope() === 'html' && !pending.has(kind + '/' + id) && !running.has(kind + '/' + id) && !readEntries(INDEX).some(entry => entry.kind === kind && entry.id === id)) return;
   const job = { kind, id, value: null };
   updateEntries(TOMBSTONES, job, true);
   updateEntries(INDEX, job, false);
@@ -201,8 +226,14 @@ export function resumeBackup(data: Restored) {
   const tombstones = readEntries(TOMBSTONES);
   const deleted = new Set(tombstones.map(key));
   for (const entry of tombstones) pending.set(key(entry), { ...entry, value: null });
+  const htmlOnly = backupScope() === 'html';
+  const htmlDocs = htmlOnly ? data.documents.filter(doc => isHtmlPage(doc)) : data.documents;
+  const htmlFolderIds = new Set(htmlDocs.map(doc => doc.folderId));
+  const htmlFolders = htmlOnly ? data.folders.filter(folder => htmlFolderIds.has(folder.id) || folder.name.trim().toLowerCase() === 'html sites') : data.folders;
+  const htmlWorkspaceIds = new Set([...htmlDocs, ...htmlFolders].map(value => value.workspaceId));
+  const scoped = { documents: htmlDocs, folders: htmlFolders, workspaces: htmlOnly ? data.workspaces.filter(ws => htmlWorkspaceIds.has(ws.id)) : data.workspaces };
   for (const kind of ['workspaces', 'folders', 'documents'] as const) {
-    for (const value of data[kind]) {
+    for (const value of scoped[kind]) {
       const job = { kind, id: value.id, value };
       const id = key(job);
       if (!deleted.has(id) && !pending.has(id) && synced.get(id) !== value) pending.set(id, job);

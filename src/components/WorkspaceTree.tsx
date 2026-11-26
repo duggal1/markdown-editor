@@ -6,7 +6,7 @@ import type { SearchHit } from '../lib/searchIndex';
 import './workspace-tree.css';
 
 type Props = {
-  workspaces: Workspace[]; folders: Folder[]; documents: FlowDocument[];
+  workspaces: Workspace[]; folders: Folder[]; documents: FlowDocument[]; allDocuments: FlowDocument[];
   activeId: string; activeWorkspaceId: string; search: string; searchHits: SearchHit[];
   searchPending: boolean; newFolderId: string | null;
   onOpen: (id: string) => void;
@@ -53,7 +53,7 @@ function Rename({ title, onSave, onCancel }: { title: string; onSave: (s: string
     onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); finish(e.key === 'Enter'); } }} />;
 }
 function WorkspaceTree({
-  workspaces, folders, documents, activeId, activeWorkspaceId, search, searchHits, searchPending, newFolderId,
+  workspaces, folders, documents, allDocuments, activeId, activeWorkspaceId, search, searchHits, searchPending, newFolderId,
   onOpen, onNewDocument, onNewFolder, onRenameFolder, onRenameDocument, onDuplicateDocument, onMovePage, onDeleteFolder, onDeleteDocument,
 }: Props) {
   const [closed, setClosed] = useState<Set<string>>(new Set());
@@ -62,6 +62,9 @@ function WorkspaceTree({
   const [drop, setDrop] = useState<string | null>(null);
   const [moving, setMoving] = useState<string | null>(null);
   const byId = useMemo(() => new Map(documents.map(doc => [doc.id, doc])), [documents]);
+  const allById = useMemo(() => new Map(allDocuments.map(doc => [doc.id, doc])), [allDocuments]);
+  const folderNames = useMemo(() => new Map(folders.map(folder => [folder.id, folder.name])), [folders]);
+  const hitsById = useMemo(() => new Map(searchHits.map(hit => [hit.id, hit])), [searchHits]);
   const folderIds = useMemo(() => new Set(folders.map(folder => folder.id)), [folders]);
   const tree = useMemo(() => {
     const children = new Map<string, FlowDocument[]>();
@@ -80,26 +83,11 @@ function WorkspaceTree({
       if (!key) roots.push(doc);
       else { const list = children.get(key) || []; list.push(doc); children.set(key, list); }
     }
-    // A branch inherits its most recently used descendant's rank. Keep real
-    // parent/folder relationships intact instead of flattening nested pages.
-    const rank = new Map(documents.map((doc, index) => [doc.id, index]));
-    const branchRanks = new Map<string, number>();
-    function branchRank(id: string): number {
-      const cached = branchRanks.get(id);
-      if (cached !== undefined) return cached;
-      let best = rank.get(id) ?? Infinity;
-      for (const child of children.get(id) || []) best = Math.min(best, branchRank(child.id));
-      branchRanks.set(id, best);
-      return best;
-    }
-    for (const siblings of children.values()) siblings.sort((a, b) => branchRank(a.id) - branchRank(b.id));
-    roots.sort((a, b) => branchRank(a.id) - branchRank(b.id));
-    // Folder positions are stable, independent of file recency. New folders
-    // are visible above the legacy workspace even when it has many pages.
+    // Input order is stable creation order. Never promote a branch on open/edit.
     const topLevelFolders = [...folders].sort((a, b) => b.createdAt - a.createdAt || a.id.localeCompare(b.id));
     return { children, roots, topLevelFolders };
   }, [documents, byId, folderIds, folders]);
-  const defaultWorkspace = activeWorkspaceId || workspaces[0]?.id || '';
+  const defaultWorkspace = workspaces.some(ws => ws.id === activeWorkspaceId) ? activeWorkspaceId : workspaces[0]?.id || '';
   const searching = !!search.trim();
   const toggle = (id: string) => setClosed(old => {
     const next = new Set(old); if (next.has(id)) next.delete(id); else next.add(id); return next;
@@ -162,10 +150,24 @@ function WorkspaceTree({
     return <button type="button" className="filetree-more" aria-label={'Actions for ' + title} aria-haspopup="menu"
       aria-expanded={menu?.id === id} onClick={e => openMenu(e, id, kind)}><Icon name="more" size={16}/></button>;
   }
+  function breadcrumb(doc: FlowDocument): string {
+    const parts: string[] = [];
+    const seen = new Set([doc.id]);
+    let current = doc;
+    while (current.parentId && !seen.has(current.parentId)) {
+      const parent = allById.get(current.parentId);
+      if (!parent) break;
+      seen.add(parent.id);
+      parts.unshift(parent.title);
+      current = parent;
+    }
+    parts.unshift((current.folderId && folderNames.get(current.folderId)) || 'workspace');
+    return parts.join(' / ');
+  }
   function row(doc: FlowDocument, depth = 0): React.ReactNode {
     const children = tree.children.get(doc.id) || [];
     const expanded = !closed.has(doc.id);
-    return <div className="private-page-group" key={doc.id} role="treeitem" aria-selected={doc.id === activeId}
+    return <div className="private-page-group" key={doc.id} role="treeitem" aria-selected={doc.id === activeId} aria-level={depth + 1}
       aria-expanded={children.length ? expanded : undefined}>
       <div className={'filetree-row private-page-row' + (doc.id === activeId ? ' is-active' : '') + (drop === doc.id ? ' is-drop' : '')}
         style={{ paddingInlineStart: 5 + Math.min(depth, 12) * 14 }}
@@ -203,19 +205,23 @@ function WorkspaceTree({
         {documents.map(doc => <div key={doc.id} role="treeitem" aria-selected={doc.id === activeId} className={'filetree-result' + (doc.id === activeId ? ' is-active' : '')}>
           <button type="button" className="filetree-result-open" onClick={() => onOpen(doc.id)}><TreeGlyph kind="file"/>
             <span className="filetree-result-copy"><span className="filetree-result-title">{doc.title}</span>
-              <span className="filetree-result-snippet">{searchHits.find(hit => hit.id === doc.id)?.snippet}</span></span>
+              <span className="filetree-result-path" title={breadcrumb(doc)}>{breadcrumb(doc)}</span>
+              <span className="filetree-result-snippet">{hitsById.get(doc.id)?.snippet}</span></span>
           </button></div>)}
         {!documents.length && <div className="filetree-empty">{searchPending ? 'Searching…' : 'No matching pages'}</div>}
       </> : <>
         {tree.topLevelFolders.map(folder => {
           const open = !closed.has(folder.id);
-          return <div key={folder.id} className="workspace-sibling-folder" role="treeitem" aria-expanded={open}>
+          return <div key={folder.id} className="workspace-sibling-folder" role="treeitem" aria-level={1} aria-expanded={open}>
             <div className={'filetree-row private-page-row private-folder-row' + (drop === folder.id ? ' is-drop' : '')}
-              style={{ paddingInlineStart: 5 }}
+              style={{ paddingInlineStart: 2 }}
               onDragOver={e => dragOver(e, folder.id)} onDrop={e => dropped(e, undefined, folder.id)}
               onDragLeave={() => setDrop(old => old === folder.id ? null : old)}>
-              <button type="button" className={'private-page-icon' + (open ? ' is-open' : '')} onClick={() => toggle(folder.id)}
-                aria-label={(open ? 'Collapse ' : 'Expand ') + folder.name}><span className="private-file-icon"><TreeGlyph kind="folder" open={open}/></span><span className="private-chevron"><Icon name="chevron" size={13}/></span></button>
+              <button type="button" className="workspace-folder-toggle" onClick={() => toggle(folder.id)}
+                aria-label={(open ? 'Collapse ' : 'Expand ') + folder.name}>
+                <span className={'workspace-root-chevron' + (open ? ' is-open' : '')}><Icon name="chevron" size={12}/></span>
+                <TreeGlyph kind="folder" open={open}/>
+              </button>
               {editing === folder.id ? <Rename title={folder.name} onSave={value => { onRenameFolder(folder.id, value); setEditing(null); }} onCancel={() => setEditing(null)}/>
                 : <button type="button" className="filetree-label" onClick={() => toggle(folder.id)}>{folder.name}</button>}
               <button type="button" className="private-add-child" aria-label={'Add page to ' + folder.name} onClick={() => { expand(folder.id); onNewDocument(folder.workspaceId, folder.id); }}><Icon name="plus" size={14}/></button>
@@ -224,7 +230,7 @@ function WorkspaceTree({
             {open && <div role="group">{(tree.children.get('folder:' + folder.id) || []).map(doc => row(doc, 1))}</div>}
           </div>;
         })}
-        <div className="workspace-root" role="treeitem" aria-expanded={!closed.has(ROOT)}>
+        <div className="workspace-root" role="treeitem" aria-level={1} aria-expanded={!closed.has(ROOT)}>
           <div className={'filetree-row workspace-root-row' + (drop === ROOT ? ' is-drop' : '')}
             onDragOver={e => dragOver(e, ROOT)} onDrop={e => { dropped(e); expand(ROOT); }}
             onDragLeave={() => setDrop(old => old === ROOT ? null : old)}>
