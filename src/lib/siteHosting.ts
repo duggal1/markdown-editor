@@ -1,4 +1,5 @@
 import { detectRawCode } from './code';
+import { encodeLocalHtmlId } from './localHtmlId';
 import type { FlowDocument } from './store';
 
 export type SiteRecord = { id: string; secret: string; syncedVersion: number };
@@ -23,7 +24,7 @@ export function siteUrl(id: string): string {
   return window.location.origin + (id.startsWith('html-') ? '/play/' : '/slug/') + encodeURIComponent(id);
 }
 export function localHtmlUrl(id: string, revision?: number): string {
-  return window.location.origin + '/play/local/' + encodeURIComponent(id) + (revision === undefined ? '' : '?__flow_revision=' + encodeURIComponent(String(revision)));
+  return window.location.origin + '/play/local/' + encodeURIComponent(encodeLocalHtmlId(id)) + (revision === undefined ? '' : '?__flow_revision=' + encodeURIComponent(String(revision)));
 }
 export function readSiteRecord(documentId: string): SiteRecord | null {
   try {
