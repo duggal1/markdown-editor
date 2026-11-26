@@ -1,14 +1,15 @@
-import { memo, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, SuppliedIcon } from './Icons';
 import type { FlowDocument, Folder, Workspace } from '../lib/store';
 import type { SearchHit } from '../lib/searchIndex';
+import { WORKSPACE_ROOT as ROOT, readClosedTree, writeClosedTree, toggleTreeNode, expandTreeNodes, pageRevealPath } from '../lib/treeDisclosure';
 import './workspace-tree.css';
 
 type Props = {
   workspaces: Workspace[]; folders: Folder[]; documents: FlowDocument[]; allDocuments: FlowDocument[];
   activeId: string; activeWorkspaceId: string; search: string; searchHits: SearchHit[];
-  searchPending: boolean; newFolderId: string | null;
+  searchPending: boolean; newFolderId: string | null; reveal: { id: string } | null;
   onOpen: (id: string) => void;
   onNewDocument: (workspaceId: string, folderId?: string, parentId?: string) => void;
   onNewFolder: (workspaceId: string) => void;
@@ -21,7 +22,6 @@ type Props = {
 };
 type Menu = { id: string; kind: 'page' | 'folder'; x: number; y: number };
 const MIME = 'application/x-flow-document-id';
-const ROOT = 'workspace-root';
 
 // Purpose-drawn 16px navigation glyphs, separate from the general icon system.
 function TreeGlyph({ kind, open = false }: { kind: 'file' | 'folder'; open?: boolean }) {
@@ -53,10 +53,12 @@ function Rename({ title, onSave, onCancel }: { title: string; onSave: (s: string
     onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); finish(e.key === 'Enter'); } }} />;
 }
 function WorkspaceTree({
-  workspaces, folders, documents, allDocuments, activeId, activeWorkspaceId, search, searchHits, searchPending, newFolderId,
+  workspaces, folders, documents, allDocuments, activeId, activeWorkspaceId, search, searchHits, searchPending, newFolderId, reveal,
   onOpen, onNewDocument, onNewFolder, onRenameFolder, onRenameDocument, onDuplicateDocument, onMovePage, onDeleteFolder, onDeleteDocument,
 }: Props) {
-  const [closed, setClosed] = useState<Set<string>>(new Set());
+  const [closed, setClosed] = useState<Set<string>>(() => readClosedTree());
+  const closedRef = useRef(closed);
+  const lastReveal = useRef<typeof reveal>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [drop, setDrop] = useState<string | null>(null);
@@ -89,13 +91,19 @@ function WorkspaceTree({
   }, [documents, byId, folderIds, folders]);
   const defaultWorkspace = workspaces.some(ws => ws.id === activeWorkspaceId) ? activeWorkspaceId : workspaces[0]?.id || '';
   const searching = !!search.trim();
-  const toggle = (id: string) => setClosed(old => {
-    const next = new Set(old); if (next.has(id)) next.delete(id); else next.add(id); return next;
-  });
-  const expand = (id: string) => setClosed(old => { const next = new Set(old); next.delete(id); return next; });
+  const updateClosed = useCallback((update: (old: Set<string>) => Set<string>) => {
+    const next = update(closedRef.current);
+    if (next === closedRef.current) return;
+    closedRef.current = next;
+    // Write during the interaction so an immediate refresh cannot lose it.
+    writeClosedTree(next);
+    setClosed(next);
+  }, []);
+  const toggle = (id: string) => updateClosed(old => toggleTreeNode(old, id));
+  const expand = useCallback((id: string) => updateClosed(old => expandTreeNodes(old, [id])), [updateClosed]);
   useEffect(() => {
     if (newFolderId) { setEditing(newFolderId); expand(newFolderId); }
-  }, [newFolderId]);
+  }, [newFolderId, expand]);
   useEffect(() => {
     if (!menu) return;
     const dismiss = (e: PointerEvent) => { if (!(e.target instanceof Element) || !e.target.closest('.filetree-menu,.filetree-more')) setMenu(null); };
@@ -107,29 +115,14 @@ function WorkspaceTree({
     return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape); window.removeEventListener('resize', scroll); };
   }, [menu]);
   useEffect(() => {
-    const next = new Set<string>();
-    let doc = byId.get(activeId);
-    while (doc?.parentId && !next.has(doc.parentId)) {
-      next.add(doc.parentId); doc = byId.get(doc.parentId);
-    }
-    if (doc?.folderId) next.add(doc.folderId);
-    if (next.size) setClosed(old => new Set([...old].filter(id => !next.has(id))));
-  }, [activeId, byId]);
-  useEffect(() => {
-    // Selecting a page inside a sibling folder must not reopen workspace.
-    if (activeId && tree.roots.some(root => {
-      let current = byId.get(activeId);
-      const seen = new Set<string>();
-      while (current && !seen.has(current.id)) {
-        if (current.id === root.id) return true;
-        seen.add(current.id);
-        current = current.parentId ? byId.get(current.parentId) : undefined;
-      }
-      return false;
-    })) expand(ROOT);
-    // Only a new selection should open a collapsed root, not title edits.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId]);
+    // Startup restores activeId without a reveal request. A completed request
+    // is consumed once; edits, search results and title changes cannot reopen it.
+    if (!reveal || lastReveal.current === reveal) return;
+    const path = pageRevealPath(reveal.id, allById, folderIds);
+    if (!path) return;
+    lastReveal.current = reveal;
+    updateClosed(old => expandTreeNodes(old, path));
+  }, [reveal, allById, folderIds, updateClosed]);
   function openMenu(e: MouseEvent<HTMLButtonElement>, id: string, kind: Menu['kind']) {
     const rect = e.currentTarget.getBoundingClientRect();
     setMenu(old => old?.id === id ? null : { id, kind, x: Math.max(8, Math.min(rect.left, innerWidth - 208)),

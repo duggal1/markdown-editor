@@ -107,6 +107,7 @@ export default function App() {
   const [docs, setDocs] = useState<FlowDocument[]>([]);
   const live = useRef(new Map<string, FlowDocument>());
   const [activeId, setActiveId] = useState('');
+  const [treeReveal, setTreeReveal] = useState<{ id: string } | null>(null);
   const activeIdRef = useRef('');
   const [workspaceId, setWorkspaceId] = useState('');
   const [theme, setTheme] = useState<Theme>('dark');
@@ -265,7 +266,7 @@ export default function App() {
       setSplitPercent(width);
       setStoredSplitPercent(width);
       splitNext.current = width;
-      // Never restore stale collapsed preferences on a new visit.
+      // Restoring the active document must not change saved tree disclosure.
       activeIdRef.current = first.id;
       setActiveId(first.id);
       setWorkspaceId(chosenWorkspace.id);
@@ -583,6 +584,7 @@ export default function App() {
     if (previewTimer.current !== null) { clearTimeout(previewTimer.current); previewTimer.current = null; }
     if (previewFrame.current !== null) { cancelAnimationFrame(previewFrame.current); previewFrame.current = null; }
     setActiveId(id);
+    setTreeReveal({ id });
     cancelHeadingMotion();
     targetLine.current = null;
     lastSyncLine.current = -1;
@@ -1551,7 +1553,7 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
         </button>
         <WorkspaceTree
           workspaces={workspaces} documents={matching} allDocuments={docs} folders={folders} newFolderId={newFolderId}
-          activeId={activeId} activeWorkspaceId={workspaceId}
+          activeId={activeId} activeWorkspaceId={workspaceId} reveal={treeReveal}
           search={query} searchHits={searchResults} searchPending={searchPending}
           {...treeActions}
         />
