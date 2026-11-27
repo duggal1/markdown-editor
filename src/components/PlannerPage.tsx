@@ -96,7 +96,7 @@ export default function PlannerPage({ kind, markdown, memory, onEdit }: Props) {
   const [includeMemory, setIncludeMemory] = useState(false);
   const [suggestions, setSuggestions] = useState<PlannerItem[] | null>(null);
   const [stream, setStream] = useState({ reasoning: '', content: '' });
-  const [thinkingOpen, setThinkingOpen] = useState(true);
+  const [thinkingOpen, setThinkingOpen] = useState(false);
   const [stopped, setStopped] = useState(false);
   const [generation, setGeneration] = useState(0);
   const streamBuffer = useRef({ reasoning: '', content: '' });
@@ -124,7 +124,7 @@ export default function PlannerPage({ kind, markdown, memory, onEdit }: Props) {
   async function generate() {
     if (!prompt.trim() || request.current) return;
     const controller = new AbortController(); request.current = controller;
-    setBusy(true); setError(''); setSuggestions(null); setThinkingOpen(true); setStopped(false); setGeneration(value => value + 1);
+    setBusy(true); setError(''); setSuggestions(null); setThinkingOpen(false); setStopped(false); setGeneration(value => value + 1);
     streamBuffer.current = { reasoning: '', content: '' }; setStream({ ...streamBuffer.current });
     try {
       let repositories = '';
@@ -151,6 +151,7 @@ export default function PlannerPage({ kind, markdown, memory, onEdit }: Props) {
         if (event.type === 'done') { result = event.items; return; }
         if (event.type !== 'reasoning' && event.type !== 'content') return;
         streamBuffer.current[event.type] += event.text;
+        if (event.type === 'reasoning') streamBuffer.current.reasoning = streamBuffer.current.reasoning.slice(-8000);
         if (streamFrame.current === null) streamFrame.current = requestAnimationFrame(() => {
           streamFrame.current = null; setStream({ ...streamBuffer.current });
         });
@@ -161,7 +162,7 @@ export default function PlannerPage({ kind, markdown, memory, onEdit }: Props) {
       setNeedsAccess(false); setSuggestions(result);
     } catch (cause) {
       if (controller.signal.aborted) { if (request.current === controller) setStopped(true); }
-      else setError(cause instanceof Error ? cause.message : 'Generation failed');
+      else setError(cause instanceof TypeError ? 'Connection interrupted. No items were saved. Retry to generate again.' : cause instanceof Error ? cause.message : 'Generation failed. No items were saved.');
     } finally {
       if (request.current === controller) {
         if (streamFrame.current !== null) { cancelAnimationFrame(streamFrame.current); streamFrame.current = null; }
@@ -195,7 +196,7 @@ export default function PlannerPage({ kind, markdown, memory, onEdit }: Props) {
       {githubError && <div className="planner-github-error" role="status"><span>{githubError}</span>{github && <button type="button" disabled={busy || githubLoading} onClick={() => setGithubRevision(value => value + 1)}>Retry</button>}</div>}
     </div>
       </div>
-      <textarea ref={promptRef} aria-label={kind === 'todo' ? 'Describe your tasks' : 'Describe what to remember'} value={prompt} maxLength={12000}
+      <textarea disabled={busy} ref={promptRef} aria-label={kind === 'todo' ? 'Describe your tasks' : 'Describe what to remember'} value={prompt} maxLength={12000}
         onChange={e => setPrompt(e.target.value)} placeholder={kind === 'todo' ? 'What needs to get done?' : 'What should you remember?'}
         onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void generate(); } }}/>
       {needsAccess && <label className="planner-access">Private access key<input type="password" autoComplete="off" value={access} onChange={e => setAccess(e.target.value)} placeholder="Enter your deployment access key"/></label>}
