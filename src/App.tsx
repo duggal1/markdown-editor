@@ -823,12 +823,12 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
       setNotice('Deletion could not finish. The page has been restored. Check its share links.');
     }
   }
-  async function turnOnBackup() {
+  async function turnOnBackup(throwOnError = false) {
     try {
       await enableBackup();
       resumeBackup({ workspaces, folders, documents: [...live.current.values()] });
       setCloudState(backupStatus());
-    } catch { setNotice('Cloud backup could not be enabled. Local files are unchanged.'); }
+    } catch (error) { setNotice('Cloud sync could not be enabled. Local files are unchanged.'); if (throwOnError) throw error; }
   }
   async function copyRecoveryKey() {
     try {
@@ -1699,12 +1699,12 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
           <a className="draw-sidebar-entry" href="/draw"><Icon name="edit" size={16} /> Draw screenshots</a>
           {cloudState === 'off' ? <button className="sidebar-bottom-action" disabled={!loaded}
             title="Privately back up every workspace and page to cloud storage. No public links are created."
-            onClick={() => { void turnOnBackup(); }}><Icon name="download" size={16} /> Enable cloud backup</button>
+            onClick={() => { void turnOnBackup(); }}><Icon name="download" size={16} /> Enable cloud sync</button>
             : <div className="sidebar-bottom-action" role="status" title="Private cloud backup; public sharing is separate">
               <Icon name={cloudState === 'synced' ? 'check' : 'history'} size={16} />
-              {cloudState === 'synced' ? (backupScope() === 'html' ? 'HTML backup synced' : 'Cloud backup synced') : cloudState === 'error' ? 'Backup failed · retrying' : 'Backing up…'}
+              {cloudState === 'synced' ? (backupScope() === 'html' ? 'HTML backup synced' : 'Cloud synced') : cloudState === 'error' ? 'Cloud sync failed · retrying' : 'Syncing…'}
             </div>}
-          {cloudState !== 'off' && backupScope() === 'html' && <button className="sidebar-bottom-action" disabled={!loaded} onClick={() => { void turnOnBackup(); }}><Icon name="download" size={16} /> Back up all pages</button>}
+          {cloudState !== 'off' && backupScope() === 'html' && <button className="sidebar-bottom-action" disabled={!loaded} onClick={() => { void turnOnBackup(); }}><Icon name="download" size={16} /> Sync all notes</button>}
           {cloudState === 'off'
             ? <button className="sidebar-bottom-action" onClick={() => { void recoverCloudWorkspace(); }}>
                 <Icon name="history" size={16} /> Restore cloud backup</button>
@@ -1867,7 +1867,7 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
             title={live.current.get(active.id)?.title || active.title}
             getCurrent={() => live.current.get(active.id) || null}
             onClose={() => setShareOpen(false)} />
-        : <ShareDialog key={active.id} documentId={active.id}
+        : <ShareDialog key={active.id} onConnectCloud={() => turnOnBackup(true)} documentId={active.id}
             title={live.current.get(active.id)?.title || active.title}
             getCurrent={() => live.current.get(active.id) || null}
             onClose={() => setShareOpen(false)} />)}
