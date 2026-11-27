@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { del, get, head, headMany, issueSignedToken, list, presignUrl, put, setTtl } from '../server/storage.js';
+import { del, get, headMany, issueSignedToken, list, presignUrl, put, setTtlMany, readVersioned } from '../server/storage.js';
 
 const LIMIT = 100 * 1024 * 1024;
 const LEGACY_PART = 5 * 1024 * 1024;
@@ -40,7 +40,7 @@ async function urls(paths, operation) {
 }
 async function retire(root, item) {
   if (!item?.version) return;
-  await Promise.allSettled(partPaths(root, item.version, item.bytes, item.partBytes || LEGACY_PART).map(path => setTtl(path, { ttlDays: 1 })));
+  await setTtlMany(partPaths(root, item.version, item.bytes, item.partBytes || LEGACY_PART), { ttlDays: 1 }).catch(() => {});
 }
 function validMeta(kind, id, meta) {
   if (!meta || typeof meta !== 'object' || Array.isArray(meta) || meta.id !== id ||
@@ -126,8 +126,7 @@ export default async function handler(req, res) {
       return reply(res, 200, { id: aliasId });
     }
     // Read the ETag before the value. An intervening write makes the CAS fail, never overwrite it.
-    const etag = await head(path).then(item => item?.etag).catch(() => undefined);
-    const current = await read(path);
+    const { etag, value: current } = await readVersioned(path);
     const cas = current ? { allowOverwrite: true, ifMatch: etag } : { allowOverwrite: false };
     if (current && !etag) return reply(res, 409, { error: 'Backup changed; retry' });
 
@@ -146,6 +145,11 @@ export default async function handler(req, res) {
     if (current?.deleted) return reply(res, 409, { error: 'Record was deleted' });
     if (req.method === 'POST' && body.action === 'inline') {
       const { meta, markdown, bytes, checksum } = body;
+      if (body.publish && kind !== 'documents') return reply(res, 400, { error: 'Only documents may be published' });
+      const finish = async extra => {
+        if (body.publish) await write(alias, { backupPath: path, backupRoot: root }, { allowOverwrite: true });
+        return reply(res, 200, { committed: true, ...extra, ...(body.publish ? { id: aliasId } : {}) });
+      };
       if (!validMeta(kind, id, meta) || typeof markdown !== 'string' ||
           (kind !== 'documents' && markdown !== '') || meta.assetType !== undefined ||
           !Number.isSafeInteger(bytes) || bytes < 0 || bytes > INLINE_BYTES ||
@@ -155,7 +159,7 @@ export default async function handler(req, res) {
       if (kind === 'documents' && current?.meta.updatedAt > meta.updatedAt)
         return reply(res, 409, { error: 'A newer backup exists' });
       if (current && current.checksum === checksum && JSON.stringify(current.meta) === JSON.stringify(meta))
-        return reply(res, 200, { committed: true, unchanged: true });
+        return await finish({ unchanged: true });
       const version = randomBytes(12).toString('base64url');
       const paths = partPaths(root, version, bytes);
       // Same manifest and private paths as multipart uploads. Keep the part
@@ -166,7 +170,7 @@ export default async function handler(req, res) {
       });
       await write(path, { meta, bytes, checksum, version, partBytes: PART }, cas);
       await retire(root, current);
-      return reply(res, 200, { committed: true });
+      return await finish({});
     }
     if (req.method === 'POST' && body.action === 'begin') {
       const { meta, bytes, checksum } = body;
@@ -197,7 +201,7 @@ export default async function handler(req, res) {
       const parts = await headMany(paths);
       if (parts.some((part, i) => !part || part.size !== Math.min(partBytes, session.bytes - i * partBytes)))
         return reply(res, 409, { error: 'Backup upload incomplete' });
-      await Promise.all(paths.map(p => setTtl(p, { ttlDays: null })));
+      await setTtlMany(paths, { ttlDays: null });
       const { base, ...record } = session;
       await write(path, record, cas);
       await Promise.all([del(sessionPath).catch(() => {}), retire(root, current)]);
