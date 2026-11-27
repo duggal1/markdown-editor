@@ -5,7 +5,7 @@
   height:100%; min-height:0; overflow:auto; overscroll-behavior:contain; container-type:inline-size;
   background:var(--surface); color:var(--text);
   scrollbar-width:none; scrollbar-color:transparent transparent;
-  --planner-field:#141414; --planner-well:#101010; --planner-control:#1b1b1b;
+  --planner-field:#101010; --planner-well:#0c0c0c; --planner-control:#1b1b1b;
   --planner-hover:#101010; --planner-press:#222; --planner-focus:#525252;
   --planner-shimmer-base:#888; --planner-shimmer-peak:#fafafa;
   --planner-ease:cubic-bezier(.16,1,.3,1);
