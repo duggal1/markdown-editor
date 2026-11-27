@@ -47,7 +47,7 @@ const ItemRow = memo(function ItemRow({ row, kind, onEdit }: { row: PlannerRow; 
       }}/> : <button type="button" className="planner-row-text" onClick={() => { canceled.current = false; setDraft(row.text); setEditing(true); }}>{row.text}</button>}
     <button type="button" className="planner-remove" aria-label={'Remove ' + row.text} title="Remove item"
       onPointerDown={event => { if (editing) event.preventDefault(); }}
-      onClick={() => { canceled.current = true; setEditing(false); onEdit(source => editPlannerRow(source, kind, row, null)); }}><Icon name="x" size={14}/></button>
+      onClick={() => { canceled.current = true; setEditing(false); onEdit(source => editPlannerRow(source, kind, row, null)); }}><Icon name="close" size={14}/></button>
   </div>;
 }, (a, b) => a.kind === b.kind && a.onEdit === b.onEdit && a.row.line === b.row.line && a.row.text === b.row.text && a.row.category === b.row.category && a.row.done === b.row.done);
 
