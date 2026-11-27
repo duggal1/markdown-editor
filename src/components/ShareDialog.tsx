@@ -1,17 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { createCloudShare, queueSharedSync, readShareRecord, revokeCloudShare, shareUrl, type ShareRecord, type ShareStatus } from '../lib/sharing';
-import { backupEnabled } from '../lib/backup';
+import { backupEnabled, backupScope } from '../lib/backup';
+import { isMarkdownFile } from '../lib/code';
 import type { FlowDocument } from '../lib/store';
 import DialogFrame from './DialogFrame';
 import { Icon } from './Icons';
 
-export default function ShareDialog({ documentId, title, getCurrent, onClose }: {
-  documentId: string; title: string; getCurrent: () => FlowDocument | null; onClose: () => void;
+export default function ShareDialog({ documentId, title, getCurrent, onClose, onConnectCloud }: {
+  documentId: string; title: string; getCurrent: () => FlowDocument | null; onClose: () => void; onConnectCloud: () => Promise<void>;
 }) {
   const [record, setRecord] = useState<ShareRecord | null>(() => readShareRecord(documentId));
   const [consent, setConsent] = useState(false);
-  const backedUp = backupEnabled();
-  const attempted = useRef(false);
+  const doc = getCurrent();
+  const markdownNote = !!doc && !doc.asset && (!doc.language || doc.language === 'markdown' || !!doc.fileName && isMarkdownFile(doc.fileName));
+  const backedUp = backupEnabled() && (!markdownNote || backupScope() === 'all');
+  const [connecting, setConnecting] = useState(false);
   const inFlight = useRef(false);
   const [operation, setOperation] = useState<'create' | 'revoke' | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
@@ -20,7 +23,7 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef<number | undefined>(undefined);
   const linkInputRef = useRef<HTMLInputElement>(null);
-  const busy = operation !== null;
+  const busy = operation !== null || connecting;
   const link = record ? shareUrl(record.id) : '';
 
   useEffect(() => {
@@ -39,7 +42,7 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
   }, [documentId]);
 
   async function enable() {
-    if ((!consent && !backedUp) || inFlight.current) return;
+    if ((markdownNote ? !backedUp : !consent && !backedUp) || inFlight.current) return;
     const doc = getCurrent();
     if (!doc || doc.asset) { setError('Only text pages can be shared.'); return; }
     inFlight.current = true;
@@ -55,12 +58,13 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
       setError(cause instanceof Error ? cause.message : 'Could not create link. Try again.');
     } finally { inFlight.current = false; setOperation(null); }
   }
-  useEffect(() => {
-    if (backedUp && !record && !attempted.current) {
-      attempted.current = true;
-      void enable();
-    }
-  }, [backedUp, record]);
+  // Opening the dialog is never consent to public sharing.
+  async function connectCloud() {
+    setConnecting(true); setError('');
+    try { await onConnectCloud(); }
+    catch { setError('Could not connect cloud sync. Your local notes are unchanged.'); }
+    finally { setConnecting(false); }
+  }
 
   async function copyLink() {
     if (!link || busy) return;
@@ -121,7 +125,7 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
       <Icon name="globe" size={17} />
       <div className="share-access-text">
         <strong>{record ? 'Anyone with the link' : 'Share a read-only link'}</strong>
-        <p id="share-dialog-description">{record ? 'Can view · Cannot edit' : 'Only this page will be visible to link holders.'}</p>
+        <p id="share-dialog-description">{record ? 'Can view · Cannot edit' : 'Only this page will be visible after you create a link.'}</p>
       </div>
     </div>
     {record ? <>
@@ -138,17 +142,18 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose }: 
       </div>
       <p className="share-status" role="status" aria-live="polite">
         {status === 'syncing' ? 'Syncing changes' + (progress === null ? '…' : ' · ' + progress + '%') : status === 'error'
-          ? 'Sync failed. Your local page is safe.' : 'Changes sync while Flow is open.'}
+          ? 'Sync failed. Your local page is safe.' : 'Changes update automatically while Flow is open.'}
       </p>
     </> : <>
-      {!backedUp && <label className="share-consent">
+      {markdownNote && !backedUp && <div className="share-cloud-connect"><p className="share-status">Connect private cloud sync once. Your notes stay private until you create a link.</p><button type="button" className="share-create" data-dialog-initial-focus disabled={busy} onClick={() => { void connectCloud(); }}>{connecting ? 'Connecting…' : 'Connect cloud sync'}</button></div>}
+      {!markdownNote && !backedUp && <label className="share-consent">
         <span className="share-consent-control">
           <input type="checkbox" checked={consent} onChange={event => setConsent(event.target.checked)} disabled={busy} data-dialog-initial-focus />
           <span className="share-consent-mark" aria-hidden="true"><Icon name="check" size={12} /></span>
         </span>
         <span>Upload to cloud</span>
       </label>}
-      <button type="button" className="share-create" disabled={busy || (!backedUp && !consent)} onClick={() => { void enable(); }}>
+      <button type="button" className="share-create" data-dialog-initial-focus={backedUp ? true : undefined} disabled={busy || (markdownNote ? !backedUp : !backedUp && !consent)} onClick={() => { void enable(); }}>
         {operation === 'create' ? <span className="share-spinner" aria-hidden="true" /> : <Icon name="link" size={16} />}
         {operation === 'create' ? 'Creating link…' : error ? 'Retry' : 'Create link'}
       </button>

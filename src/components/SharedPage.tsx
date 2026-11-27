@@ -32,15 +32,17 @@ async function fetchPart(url: string, signal: AbortSignal, index: number): Promi
   throw new Error('Cloud download failed for part ' + (index + 1));
 }
 
-async function fetchPage(signal: AbortSignal, onProgress: (percent: number) => void): Promise<PublicPage> {
+class ShareUnavailable extends Error {}
+async function fetchPage(signal: AbortSignal, onProgress: (percent: number) => void, etag: string): Promise<{page: PublicPage | null; etag: string}> {
   const response = await fetch('/api/share?id=' + encodeURIComponent(id), {
-    cache: 'no-store', signal,
+    cache: 'no-store', signal, headers: etag ? { 'If-None-Match': etag } : {},
   });
-  if (!response.ok) throw new Error(response.status === 404
-    ? 'This link does not exist or sharing has been disabled.'
-    : 'The shared page could not be loaded.');
+  if (response.status === 304) return { page: null, etag };
+  if (response.status === 404) throw new ShareUnavailable('This link does not exist or sharing has been disabled.');
+  if (!response.ok) throw new Error('The shared page could not be loaded.');
+  const nextTag = response.headers.get('ETag') || '';
   const manifest = await response.json() as CloudManifest;
-  if (typeof manifest.markdown === 'string') return manifest as PublicPage;
+  if (typeof manifest.markdown === 'string') return { page: manifest as PublicPage, etag: nextTag };
   if (!Array.isArray(manifest.urls) || !manifest.urls.length || manifest.urls.length > 100 ||
       !manifest.urls.every(url => typeof url === 'string' && (url.startsWith('https://') || url.startsWith('/api/storage?ticket='))) ||
       !Number.isSafeInteger(manifest.bytes) || manifest.bytes! < 0 ||
@@ -66,8 +68,8 @@ async function fetchPage(signal: AbortSignal, onProgress: (percent: number) => v
     byte => byte.toString(16).padStart(2, '0')).join('');
   if (actual !== manifest.checksum) throw new Error('Cloud document failed integrity verification');
   const markdown = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  return { title: manifest.title, markdown, language: manifest.language,
-    updatedAt: manifest.updatedAt };
+  return { page: { title: manifest.title, markdown, language: manifest.language,
+    updatedAt: manifest.updatedAt }, etag: nextTag };
 }
 
 export default function SharedPage() {
@@ -78,19 +80,35 @@ export default function SharedPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const theme = readPrefs().theme === 'light' ? 'light' : 'dark';
   useEffect(() => {
-    const controller = new AbortController();
-    void fetchPage(controller.signal, setProgress)
-      .then(data => {
-        if (controller.signal.aborted) return;
-        setPage(data);
-        document.title = data.title + ' · Flow';
-      })
-      .catch(cause => {
-        if (!controller.signal.aborted) {
-          setError(cause instanceof Error ? cause.message : 'Page unavailable');
-        }
-      });
-    return () => controller.abort();
+    let disposed = false, loaded = false, etag = '', timer: number | undefined;
+    let controller: AbortController | null = null;
+    const refresh = async () => {
+      if (disposed || controller || document.visibilityState === 'hidden') return;
+      controller = new AbortController();
+      const current = controller;
+      const deadline = window.setTimeout(() => current.abort(), 30000);
+      try {
+        const result = await fetchPage(current.signal, value => { if (!disposed && !loaded) setProgress(value); }, etag);
+        if (disposed) return;
+        etag = result.etag;
+        if (result.page) { setPage(result.page); document.title = result.page.title + ' · Flow'; loaded = true; }
+        setError('');
+      } catch (cause) {
+        if (disposed) return;
+        if (cause instanceof ShareUnavailable) { setPage(null); loaded = false; etag = ''; }
+        if (!loaded) setError(cause instanceof Error ? cause.message : 'Page unavailable');
+      } finally {
+        clearTimeout(deadline);
+        controller = null;
+        if (!disposed) timer = window.setTimeout(refresh, 5000);
+      }
+    };
+    const wake = () => { if (document.visibilityState === 'visible') { clearTimeout(timer); void refresh(); } };
+    document.addEventListener('visibilitychange', wake);
+    window.addEventListener('online', wake);
+    void refresh();
+    return () => { disposed = true; clearTimeout(timer); controller?.abort();
+      document.removeEventListener('visibilitychange', wake); window.removeEventListener('online', wake); };
   }, []);
   async function copyMarkdown() {
     if (!page) return;
