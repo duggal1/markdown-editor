@@ -2891,3 +2891,14 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 
 .share-cloud-connect { display:grid; gap:10px; }
 .share-cloud-connect .share-status { margin:0; }
+
+/* Compact sharing controls, scoped to Flow's two share dialogs. */
+#share-dialog .share-url-row,#html-site-dialog .flow-dialog-link { border-radius:24px; border:1px solid #202020; padding:8px; gap:6px; }
+#share-dialog .share-url-row { flex-wrap:nowrap; align-items:center; border-radius:999px; padding:4px 4px 4px 13px; }
+#share-dialog .share-url-row input { flex:1 1 0; width:0; height:28px; }
+#share-dialog .share-url-row input:focus-visible { outline:0; }
+#share-dialog .share-url-row:focus-within { border-color:#343434; }
+#share-dialog .share-url-row .share-copy { flex:0 0 auto; width:auto; min-width:90px; height:30px; min-height:30px; padding:0 12px; }
+#share-dialog .share-create { width:fit-content; min-height:30px; height:30px; padding-inline:13px; font-size:12px; border-radius:999px; }
+:root[data-theme='light'] #share-dialog .share-url-row,:root[data-theme='light'] #html-site-dialog .flow-dialog-link { border-color:#e6e6e6; }
+@media(max-width:480px) { #share-dialog .share-url-row .share-copy,#share-dialog .share-create { min-height:44px; } }
