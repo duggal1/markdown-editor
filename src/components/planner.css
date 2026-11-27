@@ -18,7 +18,7 @@
 .planner-composer { background:var(--neutral-100); border-radius:16px; padding:15px; }
 .planner-composer-label { display:flex; gap:8px; align-items:center; font-size:12px; font-weight:500; }
 .planner-spark { color:var(--accent); font-size:17px; line-height:1; }
-.planner-composer textarea { display:block; width:100%; min-height:75px; padding:12px 0 8px; resize:vertical; outline:none; font-size:14px; line-height:1.55; }
+.planner-composer textarea { display:block; width:100%; min-height:75px; padding:12px 0 8px; resize:none; outline:none; font-size:14px; line-height:1.55; }
 .planner-composer textarea:focus-visible { outline:none; }
 .planner-page input::placeholder,.planner-page textarea::placeholder { color:var(--muted); opacity:1; }
 .planner-composer-footer,.planner-review-actions { display:flex; align-items:center; justify-content:space-between; gap:8px; }

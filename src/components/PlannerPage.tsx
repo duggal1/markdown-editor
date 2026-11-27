@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from './Icons';
-import { appendPlannerItems, editPlannerRow, plannerRows, type PlannerItem, type PlannerKind, type PlannerRow } from '../lib/planner';
+import { appendPlannerItems, editPlannerRow, plannerRows, selectPlannerContext, type PlannerItem, type PlannerKind, type PlannerRow } from '../lib/planner';
 import { setTaskChecked } from '../lib/taskList';
 import './planner.css';
 
@@ -19,7 +19,8 @@ function Check({ done }: { done: boolean }) {
 const ItemRow = memo(function ItemRow({ row, kind, onEdit }: { row: PlannerRow; kind: PlannerKind; onEdit: Props['onEdit'] }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(row.text);
-  function finish() { if (draft.trim()) onEdit(source => editPlannerRow(source, kind, row, draft)); setEditing(false); }
+  const canceled = useRef(false);
+  function finish() { if (!canceled.current && draft.trim()) onEdit(source => editPlannerRow(source, kind, row, draft)); setEditing(false); }
   return <div className={'planner-row' + (row.done ? ' is-done' : '')}>
     {kind === 'todo' ? <button type="button" className="planner-check" role="checkbox" aria-checked={row.done} aria-label={row.text}
       onClick={() => onEdit(source => {
@@ -29,11 +30,11 @@ const ItemRow = memo(function ItemRow({ row, kind, onEdit }: { row: PlannerRow; 
     {editing ? <input className="planner-inline-input" aria-label="Edit item" autoFocus maxLength={1200} value={draft}
       onChange={e => setDraft(e.target.value)} onBlur={finish} onKeyDown={e => {
         if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
-        if (e.key === 'Escape') { e.preventDefault(); setEditing(false); }
-      }}/> : <button type="button" className="planner-row-text" onClick={() => { setDraft(row.text); setEditing(true); }}>{row.text}</button>}
+        if (e.key === 'Escape') { e.preventDefault(); canceled.current = true; setEditing(false); }
+      }}/> : <button type="button" className="planner-row-text" onClick={() => { canceled.current = false; setDraft(row.text); setEditing(true); }}>{row.text}</button>}
     <button type="button" className="planner-remove" aria-label={'Remove ' + row.text} onClick={() => onEdit(source => editPlannerRow(source, kind, row, null))}><Icon name="trash" size={14}/></button>
   </div>;
-});
+}, (a, b) => a.kind === b.kind && a.onEdit === b.onEdit && a.row.line === b.row.line && a.row.text === b.row.text && a.row.category === b.row.category && a.row.done === b.row.done);
 
 export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: Props) {
   const [filter, setFilter] = useState<'all' | 'open' | 'done'>('all');
@@ -43,7 +44,7 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
   const [error, setError] = useState('');
   const [access, setAccess] = useState(readAccess);
   const [needsAccess, setNeedsAccess] = useState(false);
-  const [includeMemory, setIncludeMemory] = useState(true);
+  const [includeMemory, setIncludeMemory] = useState(false);
   const [suggestions, setSuggestions] = useState<PlannerItem[] | null>(null);
   const [effort, setEffort] = useState('');
   const request = useRef<AbortController | null>(null);
@@ -70,7 +71,7 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
     try {
       const response = await fetch('/api/planner', { method: 'POST', credentials: 'same-origin', signal: controller.signal,
         headers: { 'Content-Type': 'application/json', 'X-Flow-Planner-Key': access },
-        body: JSON.stringify({ kind, input: prompt, existing: markdown.slice(-6000), memory: kind === 'todo' && includeMemory ? memory.slice(-6000) : '' }) });
+        body: JSON.stringify({ kind, input: prompt, existing: selectPlannerContext(markdown, kind, prompt), memory: kind === 'todo' && includeMemory ? selectPlannerContext(memory, 'memory', prompt) : '' }) });
       const result = await response.json();
       if (controller.signal.aborted) return;
       if (response.status === 401) setNeedsAccess(true);
@@ -101,7 +102,7 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
       </div>
     </header>
     <section className="planner-composer" aria-label="AI planner">
-      <div className="planner-composer-label"><span className="planner-spark" aria-hidden="true">✳</span> {kind === 'todo' ? 'Plan with AI' : 'Organize memory'}</div>
+      <div className="planner-composer-label"><svg className="planner-spark" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1v14M1 8h14M3 3l10 10M13 3 3 13" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg> {kind === 'todo' ? 'Plan with AI' : 'Organize memory'}</div>
       <textarea aria-label={kind === 'todo' ? 'Describe your tasks' : 'Describe what to remember'} value={prompt} maxLength={12000}
         onChange={e => setPrompt(e.target.value)} placeholder={kind === 'todo' ? 'What needs to get done? Paste a brain dump or describe a plan…' : 'What should you remember? Add a decision, preference or context…'}
         onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void generate(); } }}/>

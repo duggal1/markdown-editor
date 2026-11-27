@@ -200,14 +200,17 @@ function WorkspaceTree({
   function plannerFolder(folder: Folder) {
     const id = 'planner-folder-' + folder.id;
     const open = !closed.has(id);
-    return <div role="treeitem" aria-level={2} aria-expanded={open}>
-      <button type="button" className="planner-tree-row" style={{ paddingInlineStart: 16 }} onClick={() => {
-        toggle(id); if (!open) onOpenPlanner('todo', folder.workspaceId, folder.id);
-      }} aria-label={(open ? 'Collapse ' : 'Expand ') + 'To-do in ' + folder.name}>
-        <span className={'planner-tree-chevron' + (open ? ' is-open' : '')}><Icon name="chevron" size={12}/></span>
-        <Icon name="check" size={15}/><span>To-do</span>
-      </button>
-      {open && <div role="group">{plannerLink('todo', folder.workspaceId, folder.id, 2)}{plannerLink('memory', folder.workspaceId, folder.id, 2)}</div>}
+    const active = activeId === plannerId('todo', folder.workspaceId, folder.id);
+    return <div role="treeitem" aria-level={2} aria-expanded={open} aria-selected={active}>
+      <div className="planner-tree-branch">
+        <button type="button" className={'planner-tree-chevron' + (open ? ' is-open' : '')}
+          aria-label={(open ? 'Collapse ' : 'Expand ') + 'To-do in ' + folder.name} onClick={() => toggle(id)}><Icon name="chevron" size={12}/></button>
+        <button type="button" className="planner-tree-row" aria-current={active ? 'page' : undefined}
+          onClick={() => onOpenPlanner('todo', folder.workspaceId, folder.id)}>
+          <TreeGlyph kind="folder" open={open}/><span>To-do</span>
+        </button>
+      </div>
+      {open && <div role="group">{plannerLink('memory', folder.workspaceId, folder.id, 2)}</div>}
     </div>;
   }
   return <>

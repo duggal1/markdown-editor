@@ -7,7 +7,6 @@ import MarkdownEditor, { formatEditor } from './components/MarkdownEditor';
 import { setTaskChecked, taskMarkerEdit } from './lib/taskList';
 import WorkspaceTree from './components/WorkspaceTree';
 import { plannerId, type PlannerKind } from './lib/planner';
-const PlannerPage = lazy(() => import('./components/PlannerPage'));
 import { finishVisit, sortWorkspaceDocuments, restoreRecent } from './lib/workspaceRecency';
 import { canExpireDraft, EMPTY_DRAFT_IDLE_MS } from './lib/emptyDraft';
 import { FlowMark, Icon, SuppliedIcon } from './components/Icons';
@@ -41,6 +40,7 @@ import {
 } from './lib/store';
 
 const MarkdownPreview = lazy(() => import('./components/MarkdownPreview'));
+const PlannerPage = lazy(() => import('./components/PlannerPage'));
 
 type TreeActions = Pick<ComponentProps<typeof WorkspaceTree>,
   'onOpen' | 'onOpenPlanner' | 'onSelectFolder' | 'onNewPageInSelection' | 'onNewDocument' | 'onNewFolder' | 'onRenameFolder' | 'onRenameDocument' |
@@ -572,6 +572,15 @@ export default function App() {
     const current = live.current.get(id);
     if (!current || current.asset) return;
 
+    if (current.plannerKind === 'todo') {
+      const next = setTaskChecked(current.markdown, lineNumber, checked);
+      if (next === current.markdown) return;
+      onEditorChange(next, id);
+      setPreviewText(next);
+      flush(id);
+      return;
+    }
+
     // CodeMirror is the editable source of truth in Write, Split and Preview.
     // Dispatching a one-character transaction preserves native undo/redo.
     const view = editorRef.current;
@@ -599,7 +608,7 @@ export default function App() {
     setPreviewText(next);
     const updated = live.current.get(id);
     if (updated) setDocs(items => items.map(doc => doc.id === id ? updated : doc));
-  }, [onEditorChange]);
+  }, [onEditorChange, flush]);
 
   const selectDocument = useCallback((id: string) => {
     const doc = live.current.get(id);
@@ -665,6 +674,10 @@ export default function App() {
     if (activeIdRef.current === id) setPreviewText(next);
     flush(id);
   }, [onEditorChange, flush]);
+
+  const editActivePlanner = useCallback((change: (source: string) => string) => {
+    editPlanner(activeId, change);
+  }, [activeId, editPlanner]);
 
   const makeDocument = useCallback((targetWorkspace?: string, targetFolder?: string, parentId?: string) => {
     if (!workspaces.length) return;
@@ -1660,7 +1673,7 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
           <motion.button {...pressMotion} className="square-button sidebar-toggle" title={sidebarOpen ? 'Hide sidebar' : 'Open sidebar'} aria-label={sidebarOpen ? 'Hide sidebar' : 'Open sidebar'}
             onClick={() => setSidebarOpen(current => !current)}><Icon name="sidebar" size={18} /></motion.button>
           <span className="private-breadcrumb"><Icon name="file" size={15}/>{active
-            ? <LivePageTitle key={active.id} title={active.title || 'Untitled'} onRename={title => renameDocument(active.id, title)}/>
+            ? active.plannerKind ? <span>{active.title}</span> : <LivePageTitle key={active.id} title={active.title || 'Untitled'} onRename={title => renameDocument(active.id, title)}/>
             : <span>Untitled</span>}</span>
           <span className="private-visibility"><SuppliedIcon kind="lock" size={14}/>{active && (readShareRecord(active.id) || readSiteRecord(active.id)) ? 'Shared' : <span className="private-visibility-label">Private</span>}</span>
 
@@ -1739,7 +1752,7 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
           onTouchStartCapture={claimEditorScroll}
           onKeyDownCapture={claimEditorScroll}>
           {active?.plannerKind ? <Suspense fallback={<div className="preview-loading">Opening planner…</div>}><PlannerPage key={active.id} kind={active.plannerKind} markdown={active.markdown} memory={plannerMemory}
-            scope={folders.find(folder => folder.id === active.folderId)?.name || 'Workspace'} onEdit={change => editPlanner(active.id, change)} /></Suspense> : active?.asset ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} theme={theme} /> : active && <MarkdownEditor key={active.id} documentId={active.id} initialText={active.markdown}
+            scope={folders.find(folder => folder.id === active.folderId)?.name || 'Workspace'} onEdit={editActivePlanner} /></Suspense> : active?.asset ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} theme={theme} /> : active && <MarkdownEditor key={active.id} documentId={active.id} initialText={active.markdown}
             fileLanguage={activeFileLanguage} viewRef={editorRef} onChange={onEditorChange} onPosition={onEditorPosition} />}
         </section>
         <section className="preview-pane" data-glass={activeHtml ? htmlSurfaceTone : undefined}
@@ -1800,7 +1813,7 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
             }}><Icon name="download" size={15}/><span>Export as PDF</span><small>.pdf</small></button>
         </motion.div>}
       </AnimatePresence>, document.body)}
-      {shareOpen && active && (activeHtml || Boolean(readSiteRecord(active.id))
+      {shareOpen && active && !active.plannerKind && (activeHtml || Boolean(readSiteRecord(active.id))
         ? <HtmlSiteDialog key={active.id} documentId={active.id}
             title={live.current.get(active.id)?.title || active.title}
             getCurrent={() => live.current.get(active.id) || null}

@@ -2,7 +2,7 @@
 
 The workspace tree contains a To-do and Memory entry. Each folder contains a virtual To-do section with its own task and memory documents. Entries materialize on first open; no new database or duplicate task table. Markdown is canonical, so normal preview, export, private backup and worker search use the same records. Folder deletion follows Flow's existing preserve-document behavior.
 
-Manual edits update the shared live document synchronously, update the normal preview and search worker, then enter the existing serialized persistence queue. AI proposes additions in a review panel; applying merges them into the latest document, without replacing previous items. The user may choose whether to include saved root and folder memory in task generation. Only the current input, bounded current document and opted-in memory go to Reflection. No automatic memory extraction or external background calls.
+Manual edits update the shared live document synchronously, update the normal preview and search worker, then enter the existing serialized persistence queue. AI proposes additions in a review panel; applying merges them into the latest document, without replacing previous items. Saved root and folder memory is off by default for AI requests; the user can turn it on. Bounded lexical retrieval ranks entries from the whole source instead of taking a fixed tail. Only the current input, bounded current document and opted-in memory go to Reflection. No automatic memory extraction or external background calls.
 
 ## Deployment
 

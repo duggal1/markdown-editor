@@ -84,3 +84,21 @@ export function editPlannerRow(markdown: string, kind: PlannerKind, row: Planner
   else lines[row.line - 1] = (kind === 'todo' ? '- [' + (current.done ? 'x' : ' ') + '] ' : '- ') + text;
   return lines.join('\n');
 }
+
+/** Retrieve relevant entries from the whole document, not an arbitrary tail.
+ * Deterministic lexical ranking avoids a second model call and caps disclosure. */
+export function selectPlannerContext(markdown: string, kind: PlannerKind, input: string, limit = 6000): string {
+  const tokens = new Set((input.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) || []).filter(word => !['the','and','for','with','this','that','from','have','want','need','make','add'].includes(word)));
+  const candidates = plannerRows(markdown, kind).map((row, index) => {
+    const words = new Set((row.category + ' ' + row.text).toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) || []);
+    let score = 0; for (const token of tokens) if (words.has(token)) score++;
+    return { row, index, score };
+  }).sort((a, b) => b.score - a.score || b.index - a.index);
+  const result: string[] = []; let remaining = limit;
+  for (const { row } of candidates) {
+    const line = row.category + ': ' + (kind === 'todo' ? (row.done ? '[x] ' : '[ ] ') : '') + row.text;
+    if (line.length + 1 > remaining) continue;
+    result.push(line); remaining -= line.length + 1;
+  }
+  return result.join('\n');
+}

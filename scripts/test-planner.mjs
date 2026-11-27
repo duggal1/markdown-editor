@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { plannerId, plannerRows, appendPlannerItems, editPlannerRow } from '../src/lib/planner.ts';
+import { plannerId, plannerRows, appendPlannerItems, editPlannerRow, selectPlannerContext } from '../src/lib/planner.ts';
 import { setTaskChecked } from '../src/lib/taskList.ts';
 import { generatePlanner, reasoningEffort, validateItems, MODEL } from '../server/planner.js';
 assert.notEqual(plannerId('todo','ws'),plannerId('memory','ws'));
@@ -15,6 +15,8 @@ assert.equal(editPlannerRow(checked,'todo',row,'Wrong'),checked);
 assert.equal(plannerRows(editPlannerRow(checked,'todo',plannerRows(checked,'todo')[0],null),'todo').length,2);
 const memory=appendPlannerItems('', 'memory',[{category:'Preferences',text:'Use native UI'}]);
 assert.equal(plannerRows(memory,'memory')[0].text,'Use native UI');
+const contexts = appendPlannerItems('', 'memory', [{category:'Projects',text:'Jupiter uses Swift'}, {category:'Other',text:'A long unrelated entry'}]);
+assert.match(selectPlannerContext(contexts,'memory','Jupiter Swift',32),/Jupiter uses Swift/);
 assert.equal(plannerRows('~~~md\n- [ ] not a task\n~~~','todo').length,0);
 assert.equal(reasoningEffort('Buy milk'),'low');
 assert.equal(reasoningEffort('Break down the dependencies and milestones'),'medium');
