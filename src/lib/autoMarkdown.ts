@@ -11,7 +11,7 @@ const headingMarker = /^ {0,3}#{1,6}\s+\S/;
 const listMarker = /^ {0,3}(?:[-+*]\s+|\d{1,9}[.)]\s+)\S/;
 const markup = /^(?: {0,3}(?:#{1,6}\s|[-+*]\s|\d{1,9}[.)]\s|>|<|\||\[[^\]]+\]:|(?:-{3,}|\*{3,}|_{3,})\s*$)| {4}|\t)/;
 const inlineMarkup = /[\x60]|\[[^\]]+\]\(|\*\*|__|\\[\\*#_]|<[^>]+>|\s{2}$/;
-const requirement = /^(?:["'(]?\s*)(?:so\s+)?(?:we (?:also )?(?:need|must|should|want|have to|can|will)|(?:i|you) (?:also )?(?:need|want|must|should|have to)|(?:it|this|that|they|the .{1,45}?) (?:must|should|needs? to|has to)|(?:make sure|ensure|add|remove|keep|fix|build|implement|preserve|support|include|avoid|do not|don't|use|replace|reduce|improve|create|test|enable|disable)\b)/i;
+const requirement = /^(?:["'(]?\s*)(?:so\s+)?(?:we (?:(?:also|already|really|still) )?(?:need|must|should|want|have to|can|will)|(?:i|you) (?:also )?(?:need|want|must|should|have to)|(?:it|this|that|they|the .{1,45}?) (?:must|should|needs? to|has to)|(?:make sure|ensure|add|remove|keep|fix|build|implement|preserve|support|include|avoid|do not|don't|use|replace|reduce|improve|create|test|enable|disable)\b)/i;
 const additive = /^(?:also|in addition|another (?:thing|requirement|feature|issue)|one more thing)[,:]?\s+/i;
 const sequence = /^(?:first(?:ly| of all)?|second(?:ly)?|third(?:ly)?|fourth(?:ly)?|fifth(?:ly)?|finally|lastly|next)(?:[,:]\s*|\s+)/i;
 

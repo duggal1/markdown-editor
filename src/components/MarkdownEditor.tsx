@@ -10,6 +10,7 @@ import { tags } from '@lezer/highlight';
 import { detectRawCode, type CodeLanguage } from '../lib/code';
 import { bulkInsertionBoundary, finishBulkInsertion, formatPlainTextAsMarkdown, shouldAutoFormatPaste } from '../lib/autoMarkdown';
 import { formatMarkdownAction, WORKER_THRESHOLD } from '../lib/autoMarkdownAction';
+import { formatBulkTransaction } from '../lib/autoMarkdownInput';
 import { listEnterIntent } from '../lib/listEditing';
 import { repairLanguage } from '../lib/codeRepair';
 import { blockCommands } from '../lib/blockCommands';
@@ -260,12 +261,12 @@ function MarkdownEditor({
                 const formatted = finishBulkInsertion(text, formatPlainTextAsMarkdown(text, options), boundary);
                 if (formatted === text) return false;
                 event.preventDefault();
-                target.dispatch({ ...target.state.replaceSelection(formatted), userEvent: 'input.paste' });
+                target.dispatch({ ...target.state.replaceSelection(formatted), userEvent: 'input.paste.autoMarkdown' });
                 return true;
               }
               // Insert immediately, even if the worker fails or navigation intervenes.
               event.preventDefault();
-              target.dispatch({ ...target.state.replaceSelection(text), userEvent: 'input.paste' });
+              target.dispatch({ ...target.state.replaceSelection(text), userEvent: 'input.paste.autoMarkdown' });
               const snapshot = target.state.doc;
               const insertedEnd = target.state.selection.main.head;
               void formatMarkdownAction(text, options).then(result => {
@@ -278,29 +279,7 @@ function MarkdownEditor({
           }),
           // Native dictation and accessibility tools often insert a long single
           // transaction instead of emitting a clipboard paste.
-          EditorState.transactionFilter.of(tr => {
-            if (!tr.docChanged || !tr.isUserEvent('input') || tr.isUserEvent('input.paste') ||
-                tr.isUserEvent('input.compose') || tr.isUserEvent('input.format') ||
-                tr.startState.selection.ranges.length !== 1) return tr;
-            const edits: { fromA: number; toA: number; fromB: number; toB: number; text: string }[] = [];
-            tr.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
-              if (inserted.length >= 80 && inserted.length < WORKER_THRESHOLD)
-                edits.push({ fromA, toA, fromB, toB, text: inserted.toString() });
-              else edits.push({ fromA, toA, fromB, toB, text: '' });
-            });
-            if (edits.length !== 1) return tr;
-            const edit = edits[0];
-            const doc = tr.startState.doc;
-            const boundary = bulkInsertionBoundary(doc.sliceString(doc.lineAt(edit.fromA).from, edit.fromA),
-              doc.sliceString(edit.toA, doc.lineAt(edit.toA).to));
-            if (!edit.text || !boundary || !proseContext(tr.startState, edit.fromA, edit.toA) ||
-                repairLanguage(edit.text, fileLanguage) || !shouldAutoFormatPaste(edit.text)) return tr;
-            const formatted = finishBulkInsertion(edit.text,
-              formatPlainTextAsMarkdown(edit.text, { atDocumentStart: edit.fromA === 0 }), boundary);
-            if (formatted === edit.text) return tr;
-            return [tr, { changes: { from: edit.fromB, to: edit.toB, insert: formatted },
-              selection: { anchor: edit.fromB + formatted.length }, sequential: true }];
-          }),
+          EditorState.transactionFilter.of(tr => formatBulkTransaction(tr, proseContext, fileLanguage)),
           // Disable only Markdown's implicit Enter continuation. Preserve
           // its Backspace handling, plus normal Tab indentation.
           Prec.highest(keymap.of([

@@ -240,7 +240,7 @@ assert.equal(finishBulkInsertion(screenshotTranscript, screenshotOutput, 'append
 assert.equal(finishBulkInsertion('literal', 'literal', 'append'), 'literal');
 const editorSource = readFileSync(new URL('../src/components/MarkdownEditor.tsx', import.meta.url), 'utf8');
 assert.match(editorSource, /finishBulkInsertion\(text, formatPlainTextAsMarkdown\(text, options\), boundary\)/);
-assert.match(editorSource, /finishBulkInsertion\(edit\.text,/);
+assert.match(editorSource, /formatBulkTransaction\(tr, proseContext, fileLanguage\)/);
 console.log('Auto Markdown regression cases passed.');
 {
 const { repairMixedCode } = codeModule.exports;
