@@ -57,6 +57,7 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
   const [github, setGithub] = useState(readGithub);
   const [githubDraft, setGithubDraft] = useState(github || '');
   const [githubOpen, setGithubOpen] = useState(github === null);
+  const promptRef = useRef<HTMLTextAreaElement>(null);
   const [githubCatalog, setGithubCatalog] = useState<RepoCatalog | null>(null);
   const [githubLoading, setGithubLoading] = useState(false);
   const [githubError, setGithubError] = useState('');
@@ -82,8 +83,9 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
     if (owner !== github) { setGithubCatalog(null); setGithubError(''); }
     setGithub(owner); saveGithub(owner); setGithubDraft(owner); setGithubOpen(false);
     if (owner === github) setGithubRevision(value => value + 1);
+    promptRef.current?.focus();
   }
-  function skipGithub() { setGithubCatalog(null); saveGithub(''); setGithub(''); setGithubDraft(''); setGithubOpen(false); setGithubError(''); }
+  function skipGithub() { setGithubCatalog(null); saveGithub(''); setGithub(''); setGithubDraft(''); setGithubOpen(false); setGithubError(''); promptRef.current?.focus(); }
   const [filter, setFilter] = useState<'all' | 'open' | 'done'>('all');
   const [prompt, setPrompt] = useState('');
   const [draft, setDraft] = useState('');
@@ -105,6 +107,7 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
   const request = useRef<AbortController | null>(null);
   useEffect(() => () => { request.current?.abort(); request.current = null; if (streamFrame.current !== null) cancelAnimationFrame(streamFrame.current); }, []);
   const rows = useMemo(() => plannerRows(markdown, kind), [markdown, kind]);
+  const counts = useMemo(() => { const done = rows.filter(row => row.done).length; return { all: rows.length, open: rows.length - done, done }; }, [rows]);
   const groups = useMemo(() => {
     const map = new Map<string, PlannerRow[]>();
     for (const row of rows) {
@@ -140,7 +143,7 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
         headers: { 'Content-Type': 'application/json', 'X-Flow-Planner-Key': access },
         body: JSON.stringify({ kind, input: prompt, repositories, existing: selectPlannerContext(markdown, kind, prompt), memory: kind === 'todo' && includeMemory ? selectPlannerContext(memory, 'memory', prompt) : '' }) });
       if (controller.signal.aborted) return;
-      if (response.status === 401) setNeedsAccess(true);
+      setNeedsAccess(response.status === 401);
       if (!response.ok) { const result = await response.json().catch(() => ({})); throw Error(result.error || 'Generation failed'); }
       let result: PlannerItem[] | null = null;
       await consumePlannerStream(response, event => {
@@ -154,7 +157,7 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
       });
       if (controller.signal.aborted) return;
       if (!result) throw Error('No usable items returned.');
-      try { sessionStorage.setItem(ACCESS, access); } catch { /* session storage unavailable */ }
+      try { if (access) sessionStorage.setItem(ACCESS, access); } catch { /* session storage unavailable */ }
       setNeedsAccess(false); setSuggestions(result);
     } catch (cause) {
       if (controller.signal.aborted) { if (request.current === controller) setStopped(true); }
@@ -175,29 +178,30 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
   return <div className="planner-scroll"><div className="planner-page">
     <header className="planner-header">
       <div className="planner-kicker">{scope}<span aria-hidden="true">/</span>{kind === 'todo' ? 'Planning' : 'Memory'}</div>
-      <h1>{kind === 'todo' ? 'To-do' : 'Memory'}</h1>
+      <div className="planner-title-row"><h1>{kind === 'todo' ? 'To-do' : 'Memory'}</h1></div>
     </header>
+    <section className="planner-composer" aria-label="AI planner">
+      <div className="planner-composer-top"><div className="planner-composer-label">{kind === 'todo' ? 'Plan with AI' : 'Organize memory'}</div>
     <div className="planner-github">
       <button type="button" className="planner-github-trigger" disabled={busy} aria-expanded={githubOpen} onClick={() => { setGithubDraft(github || ''); setGithubOpen(value => !value); }}>
         <GithubMark/><span>{github || 'GitHub'}</span>
-        <span className={githubLoading ? 'planner-shimmer' : 'planner-github-meta'}>{githubLoading ? 'Fetching repositories…' : githubCatalog ? githubCatalog.repos.length + (githubCatalog.complete ? ' public repos' : '+ public repos · partial') : github ? 'Not loaded' : 'Optional'}</span>
+        <span className={githubLoading ? 'planner-shimmer' : 'planner-github-meta'}>{githubLoading ? 'Fetching repositories…' : githubCatalog ? githubCatalog.repos.length + (githubCatalog.complete ? ' repos' : '+ repos') : github ? 'Not loaded' : 'Optional'}</span>
         <Icon name="chevron" size={12}/>
       </button>
       {githubOpen && <form className="planner-github-form" onSubmit={event => { event.preventDefault(); connectGithub(); }}>
-        <label htmlFor="planner-github-owner">GitHub username</label>
-        <input id="planner-github-owner" placeholder="Username or github.com/owner/repo" value={githubDraft} onChange={event => setGithubDraft(event.target.value)} maxLength={240} autoComplete="off" spellCheck={false} disabled={busy}/>
-        <div className="planner-github-actions"><span>Public repos only. No GitHub token.</span><button type="button" disabled={busy} onClick={skipGithub}>{github ? 'Disconnect' : 'Skip'}</button><button type="submit" className="planner-action" disabled={busy || !githubDraft.trim()}>Connect</button></div>
+        <label htmlFor="planner-github-owner">Public GitHub repositories</label>
+        <input id="planner-github-owner" placeholder="Username or repository URL" value={githubDraft} onChange={event => setGithubDraft(event.target.value)} maxLength={240} autoComplete="off" spellCheck={false} disabled={busy}/>
+        <div className="planner-github-actions"><span>No token required.</span><button type="button" disabled={busy} onClick={skipGithub}>{github ? 'Disconnect' : 'Skip'}</button><button type="submit" className="planner-action" disabled={busy || !githubDraft.trim()}>{github ? 'Update' : 'Connect'}</button></div>
       </form>}
       {githubError && <div className="planner-github-error" role="status"><span>{githubError}</span>{github && <button type="button" disabled={busy || githubLoading} onClick={() => setGithubRevision(value => value + 1)}>Retry</button>}</div>}
     </div>
-    <section className="planner-composer" aria-label="AI planner">
-      <div className="planner-composer-label">{kind === 'todo' ? 'Plan with AI' : 'Organize memory'}</div>
-      <textarea aria-label={kind === 'todo' ? 'Describe your tasks' : 'Describe what to remember'} value={prompt} maxLength={12000}
+      </div>
+      <textarea ref={promptRef} aria-label={kind === 'todo' ? 'Describe your tasks' : 'Describe what to remember'} value={prompt} maxLength={12000}
         onChange={e => setPrompt(e.target.value)} placeholder={kind === 'todo' ? 'What needs to get done?' : 'What should you remember?'}
         onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void generate(); } }}/>
       {needsAccess && <label className="planner-access">Private access key<input type="password" autoComplete="off" value={access} onChange={e => setAccess(e.target.value)} placeholder="Enter your deployment access key"/></label>}
       <div className="planner-composer-footer">
-        {kind === 'todo' && memory.trim() ? <button type="button" className="planner-context" aria-pressed={includeMemory} onClick={() => setIncludeMemory(v => !v)}><span className="planner-context-switch" aria-hidden="true"><i/></span>Use saved memory</button> : <span aria-hidden="true"/>}
+        <div className="planner-composer-context">{kind === 'todo' && memory.trim() ? <button type="button" className="planner-context" aria-pressed={includeMemory} onClick={() => setIncludeMemory(v => !v)}><span className="planner-context-switch" aria-hidden="true"><i/></span>Use saved memory</button> : <span className="planner-key-hint" aria-hidden="true">⌘ ↵</span>}</div>
         {busy ? <button type="button" className="planner-action" aria-label="Stop generation" onClick={() => request.current?.abort()}><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect width="10" height="10" rx="1" fill="currentColor"/></svg> Stop</button> :
           <button type="button" className="planner-action" disabled={!prompt.trim()} onClick={() => { void generate(); }}>Generate <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 13V3m-4 4 4-4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></button>}
       </div>
@@ -208,7 +212,7 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
         </button>
         <div ref={thinkingScroll} hidden={!thinkingOpen} className="planner-thinking-text"><StreamWords text={stream.reasoning} live={busy}/></div>
       </div>}
-      {error && <div className="planner-error" role="alert">{error}</div>}
+      {error && <div className="planner-error" role="alert"><span>{error}</span><button type="button" disabled={busy || !prompt.trim()} onClick={() => { void generate(); }}>Retry</button></div>}
     </section>
     {((busy && stream.content) || suggestions) && <section className="planner-suggestions" key={generation} aria-label={busy ? 'Generating items' : 'Suggested changes'}>
       <div className="planner-section-head"><span className={busy ? 'planner-shimmer' : ''}>{busy ? (kind === 'todo' ? 'Writing tasks…' : 'Writing memories…') : (suggestions?.length ?? 0) + (kind === 'todo' ? ' suggested tasks' : ' suggested memories')}</span></div>
@@ -217,12 +221,13 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
     </section>}
     <section className="planner-list" aria-label={kind === 'todo' ? 'Tasks' : 'Saved memories'}>
       <div className="planner-section-head"><span>{kind === 'todo' ? 'Your tasks' : 'Your memory'}</span>
-        {kind === 'todo' && <div className="planner-filters" role="group" aria-label="Filter tasks">{(['all', 'open', 'done'] as const).map(value => <button type="button" key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>{value === 'all' ? 'All' : value === 'open' ? 'Open' : 'Done'}</button>)}</div>}
+        {kind === 'todo' && <div className="planner-filters" role="group" aria-label="Filter tasks">{(['all', 'open', 'done'] as const).map(value => <button type="button" key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>{value === 'all' ? 'All' : value === 'open' ? 'Open' : 'Done'}{filter === value && <span className="planner-filter-count">{counts[value]}</span>}</button>)}</div>}
       </div>
-      {!groups.length && <p className="planner-empty">{rows.length ? 'No items in this view.' : kind === 'todo' ? 'No tasks yet.' : 'No memories yet.'}</p>}
+      <form className="planner-add" onSubmit={e => { e.preventDefault(); add(); }}><Icon name="plus" size={16}/><input aria-label={kind === 'todo' ? 'New task' : 'New memory'} placeholder={kind === 'todo' ? 'Add a task…' : 'Add a memory…'} maxLength={1200} value={draft} onChange={e => setDraft(e.target.value)}/><button type="submit" disabled={!draft.trim()}>Add</button></form>
+      {!groups.length && <p className="planner-empty">{rows.length ? (filter === 'done' ? 'No completed tasks.' : 'No open tasks.') : kind === 'todo' ? 'No tasks yet.' : 'No memories yet.'}{rows.length > 0 && filter !== 'all' && <button type="button" onClick={() => setFilter('all')}>Show all</button>}</p>}
       {groups.map(([category, items]) => <section key={category} className="planner-group"><h2>{category}<small>{items.length}</small></h2>
         {items.map(row => <ItemRow key={row.line + ':' + row.text} row={row} kind={kind} onEdit={onEdit}/>)}</section>)}
-      <form className="planner-add" onSubmit={e => { e.preventDefault(); add(); }}><Icon name="plus" size={16}/><input aria-label={kind === 'todo' ? 'New task' : 'New memory'} placeholder={kind === 'todo' ? 'Add a task…' : 'Add a memory…'} maxLength={1200} value={draft} onChange={e => setDraft(e.target.value)}/><button type="submit" disabled={!draft.trim()}>Add</button></form>
+
     </section>
   </div></div>;
 }

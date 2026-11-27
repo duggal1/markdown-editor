@@ -105,3 +105,21 @@ await generatePlanner({input:'Fix Jupiter',kind:'todo',repositories:context,apiK
 console.log('Public GitHub context tests passed');
 
 assert.equal(githubOwner('github.com/Example/flow'), 'example');
+
+const { plannerAccess, createPlannerLimiter } = await import('../server/plannerAccess.js');
+assert.deepEqual(plannerAccess({REFLECTION_API_KEY:' test-key '},undefined),{apiKey:'test-key',protected:false});
+assert.equal(plannerAccess({},undefined).status,503);
+assert.match(plannerAccess({},undefined).error,/REFLECTION_API_KEY/);
+assert.equal(plannerAccess({REFLECTION_API_KEY:'key',FLOW_PLANNER_ACCESS_KEY:'short'},undefined).status,503);
+const protectedEnv = {REFLECTION_API_KEY:'key',FLOW_PLANNER_ACCESS_KEY:'private-access-key-long-enough'};
+assert.equal(plannerAccess(protectedEnv,undefined).status,401);
+assert.equal(plannerAccess(protectedEnv,'wrong').status,401);
+assert.equal(plannerAccess(protectedEnv,protectedEnv.FLOW_PLANNER_ACCESS_KEY).protected,true);
+let clock=100000;
+const admit=createPlannerLimiter(()=>clock);
+const release=admit('one'); assert.equal(typeof release,'function'); assert.equal(admit('one'),null);
+release(); release();
+for(let i=0;i<5;i++) { const finish=admit('one'); assert.ok(finish); finish(); }
+assert.equal(admit('one'),null);
+clock+=60001; assert.ok(admit('one'));
+console.log('Planner configuration and admission tests passed');

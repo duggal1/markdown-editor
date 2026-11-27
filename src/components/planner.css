@@ -103,19 +103,43 @@
   .planner-word.is-new { filter:none; transform:none; opacity:1; }
 }
 
-/* Optional GitHub context, integrated into the existing editorial canvas. */
-.planner-github { margin:-12px 0 16px; }
-.planner-github-trigger { display:flex; align-items:center; gap:7px; color:var(--muted)!important; font-size:12px!important; font-weight:450!important; padding:5px 8px; border-radius:999px; max-width:100%; }
-.planner-github-trigger:hover:not(:disabled) { background:var(--planner-field); color:var(--strong)!important; }
+
+/* Composition controls share a single surface; GitHub setup is a local disclosure. */
+.planner-title-row { display:flex; align-items:baseline; justify-content:space-between; }
+.planner-title-row h1 { margin-bottom:28px; }
+.planner-composer { padding:16px 18px 14px; border-radius:16px; }
+.planner-composer-top { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; min-height:26px; }
+.planner-composer-top:has(.planner-github-form),.planner-composer-top:has(.planner-github-error) { align-items:flex-start; }
+.planner-composer-top:has(.planner-github-form) .planner-github,.planner-composer-top:has(.planner-github-error) .planner-github { flex-basis:100%; }
+.planner-composer-label { font-size:13px; color:var(--muted); }
+.planner-composer textarea { min-height:100px; font-size:16px; padding:14px 0 16px; }
+.planner-composer-context { display:flex; min-width:0; align-items:center; }
+.planner-key-hint { color:var(--quiet); font-size:12px; letter-spacing:0; }
+.planner-github { min-width:0; display:grid; justify-items:end; gap:8px; }
+.planner-github-trigger { display:flex; align-items:center; gap:6px; color:var(--muted)!important; font-size:12px!important; font-weight:450!important; padding:5px 8px; border-radius:999px; max-width:100%; background:var(--surface)!important; }
+.planner-github-trigger:hover:not(:disabled) { color:var(--strong)!important; background:var(--planner-press)!important; }
 .planner-github-trigger>span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .planner-github-trigger>svg,.planner-github-trigger>.phosphor-icon { flex:none; }
+.planner-github-trigger>.phosphor-icon { transition:transform 320ms var(--planner-ease); }
 .planner-github-trigger[aria-expanded=true]>.phosphor-icon { transform:rotate(90deg); }
 .planner-github-meta { color:var(--quiet); }
-.planner-github-form { margin:8px 0 0; padding:12px; background:var(--planner-field); border-radius:12px; display:grid; gap:8px; }
+.planner-github-form { width:100%; padding:12px; background:var(--surface); border-radius:10px; display:grid; gap:10px; animation:planner-disclosure 240ms var(--planner-ease) both; }
 .planner-github-form label { font-size:12px; color:var(--muted); font-weight:450; }
-.planner-github-form input { width:100%; min-width:0; background:var(--surface); border-radius:8px; padding:10px; font-size:14px; }
-.planner-github-actions { display:flex; align-items:center; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
+.planner-page .planner-github-form input { width:100%; min-width:0; background:var(--planner-field); border-radius:8px; padding:10px 12px; font-size:14px; }
+.planner-github-actions { display:flex; align-items:center; justify-content:flex-end; gap:6px; flex-wrap:wrap; }
 .planner-github-actions>span { margin-right:auto; font-size:11px; color:var(--quiet); }
-.planner-github-actions>button:not(.planner-action),.planner-github-error button { padding:6px 10px; border-radius:999px; color:var(--muted); font-size:12px; }
-.planner-github-actions>button:not(.planner-action):hover,.planner-github-error button:hover { background:var(--planner-press); color:var(--strong); }
-.planner-github-error { display:flex; align-items:center; gap:6px; color:var(--muted); font-size:12px; margin:6px 0; }
+.planner-github-actions>button:not(.planner-action),.planner-github-error button,.planner-error button,.planner-empty button { padding:5px 9px; border-radius:999px; color:var(--muted); font-size:12px; }
+.planner-github-actions>button:not(.planner-action):hover,.planner-github-error button:hover,.planner-error button:hover,.planner-empty button:hover { background:var(--planner-press); color:var(--strong); }
+.planner-github-error,.planner-error { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12px; }
+.planner-github-error { width:100%; color:var(--muted); }
+.planner-error button { flex:none; }
+.planner-section-head { font-size:15px; margin-bottom:12px; }
+.planner-add { min-height:42px; margin:0 0 14px; padding:0 8px; border-radius:8px; background:var(--planner-field); }
+.planner-add:focus-within { background:var(--planner-hover); }
+.planner-add input { padding:10px 0; }
+.planner-filter-count { color:var(--quiet); font-size:10px; margin-left:4px; }
+.planner-empty { display:flex; align-items:center; gap:8px; }
+.planner-suggestion-row { padding-block:9px; }
+@keyframes planner-disclosure { from { opacity:0; transform:translateY(-3px); } to { opacity:1; transform:translateY(0); } }
+@container (max-width:380px) { .planner-composer { padding:12px; } .planner-github-trigger { padding-inline:6px; } .planner-github-meta { max-width:72px; } .planner-key-hint { display:none; } }
+@media (prefers-reduced-motion:reduce) { .planner-github-form,.planner-github-trigger>.phosphor-icon { animation:none; transition:none; } }

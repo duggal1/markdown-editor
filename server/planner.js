@@ -30,7 +30,7 @@ export async function generatePlanner({ input, kind, memory = '', existing = '',
       max_completion_tokens: effort === 'medium' ? 10000 : 6000,
       messages: [{ role: 'system', content: system }, { role: 'user', content: JSON.stringify({ request: input, existing, memory, repositories }) }] })
   });
-  if (!response.ok) throw Error('Reflection request failed (' + response.status + ')');
+  if (!response.ok) throw Object.assign(Error('Reflection request failed'), { providerStatus: response.status });
   if (onDelta) return readPlannerStream(response, effort, onDelta);
   const result = await response.json();
   const choice = result.choices?.[0];
