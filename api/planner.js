@@ -30,12 +30,14 @@ export default async function handler(req, res) {
     const controller = new AbortController();
     const disconnect = () => controller.abort();
     res.on('close', disconnect);
-    const timer = setTimeout(disconnect, 45000);
+    const timer = setTimeout(disconnect, 75000);
     const send = event => { if (!controller.signal.aborted && !res.destroyed) res.write(JSON.stringify(event) + '\n'); };
     res.status(200);
     res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders?.();
+    // Keep idle connections alive during inference; blank NDJSON lines are ignored.
+    const heartbeat = setInterval(() => { if (!controller.signal.aborted && !res.destroyed) res.write('\n'); }, 10000);
     try {
       const result = await generatePlanner({ input: body.input.trim(), kind: body.kind,
         memory: body.memory || '', existing: body.existing || '', repositories: body.repositories || '', apiKey, signal: controller.signal, onDelta: send });
@@ -48,6 +50,7 @@ export default async function handler(req, res) {
       if (!res.destroyed) res.write(JSON.stringify({ type: 'error', error: message }) + '\n');
     } finally {
       clearTimeout(timer);
+      clearInterval(heartbeat);
       res.off('close', disconnect);
       if (!res.destroyed) res.end();
     }
