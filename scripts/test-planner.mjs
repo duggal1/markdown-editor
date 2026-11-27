@@ -30,3 +30,31 @@ const result=await generatePlanner({input:'Buy milk',kind:'todo',apiKey:'test',f
 assert.equal(result.items[0].text,'Buy milk');
 await assert.rejects(()=>generatePlanner({input:'a',kind:'memory',apiKey:'test',fetcher:async()=>new Response(JSON.stringify({choices:[{finish_reason:'length',message:{content:'{}'}}]}))}));
 console.log('Planner tests passed');
+
+// Fragmented provider SSE and client NDJSON, including multibyte text, errors and truncation.
+const { consumePlannerStream, streamedItems } = await import('../src/lib/plannerStream.ts');
+const bytes = new TextEncoder();
+function chunked(value) {
+  const data = bytes.encode(value);
+  return new Response(new ReadableStream({ start(controller) {
+    for (let i=0;i<data.length;i+=7) controller.enqueue(data.slice(i,i+7));
+    controller.close();
+  }}));
+}
+const packet = (delta, finish_reason = null) => 'data: ' + JSON.stringify({choices:[{delta,finish_reason}]}) + '\r\n\r\n';
+const events=[];
+const streamResult=await generatePlanner({input:'Buy tea',kind:'todo',apiKey:'test',onDelta:event=>events.push(event),fetcher:async (_, opts)=>{
+  assert.equal(JSON.parse(opts.body).stream,true);
+  return chunked(packet({reasoning_content:'Think café'})+packet({content:'{"items":[{"text":"Buy '})+packet({content:'tea","category":"Inbox"}]}'})+packet({},'stop')+'data: [DONE]\r\n\r\n');
+}});
+assert.equal(streamResult.items[0].text,'Buy tea');
+assert.deepEqual(events.map(e=>e.type),['reasoning','content','content']);
+assert.equal(events[0].text,'Think café');
+const clientEvents=[];
+await consumePlannerStream(chunked([...events,{type:'done',...streamResult}].map(e=>JSON.stringify(e)+'\n').join('')),e=>clientEvents.push(e));
+assert.equal(clientEvents.at(-1).type,'done');
+assert.deepEqual(streamedItems('{"items":[{"text":"Buy te'),['Buy te']);
+assert.deepEqual(streamedItems('{"items":[{"text":"Buy tea","category":"Inbox"},{"text":"Write docs'),['Buy tea','Write docs']);
+await assert.rejects(()=>consumePlannerStream(chunked(JSON.stringify(events[0])+'\n'),()=>{}),/interrupted/);
+await assert.rejects(()=>generatePlanner({input:'a',kind:'todo',apiKey:'test',onDelta:()=>{},fetcher:async()=>chunked(packet({content:'{}'},'stop'))}),/Incomplete/);
+console.log('Streaming tests passed');

@@ -13,3 +13,5 @@ Model: Beam-1.0-501B-A23B. A deterministic complexity heuristic chooses low or m
 ## Verification
 
 npm run test:planner checks scope identity, append and deduplication, row edits, memory, reasoning routing, provider request shape and incomplete output. Existing preview, task, cloud and workspace tests remain enabled. Browser and live provider testing require a deployed preview and credentials.
+
+The AI endpoint now forwards the provider's SSE reasoning and answer deltas as NDJSON. The browser batches rendering per animation frame, displays a collapsible transient thinking panel and progressively renders item text. Only a complete, validated final result can be applied; canceled or interrupted streams never save drafts. Reasoning is not persisted or indexed.

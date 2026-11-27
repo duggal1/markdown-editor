@@ -24,11 +24,30 @@ export default async function handler(req, res) {
         (body.memory !== undefined && (typeof body.memory !== 'string' || body.memory.length > MAX_CONTEXT)) ||
         (body.existing !== undefined && (typeof body.existing !== 'string' || body.existing.length > MAX_CONTEXT)))
       return reply(res, 400, { error: 'Invalid planner request.' });
-    const result = await generatePlanner({ input: body.input.trim(), kind: body.kind,
-      memory: body.memory || '', existing: body.existing || '', apiKey, signal: AbortSignal.timeout(45000) });
-    return reply(res, 200, result);
+    const controller = new AbortController();
+    const disconnect = () => controller.abort();
+    res.on('close', disconnect);
+    const timer = setTimeout(disconnect, 45000);
+    const send = event => { if (!controller.signal.aborted && !res.destroyed) res.write(JSON.stringify(event) + '\n'); };
+    res.status(200);
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+    try {
+      const result = await generatePlanner({ input: body.input.trim(), kind: body.kind,
+        memory: body.memory || '', existing: body.existing || '', apiKey, signal: controller.signal, onDelta: send });
+      send({ type: 'done', ...result });
+    } catch {
+      if (!res.destroyed) res.write(JSON.stringify({ type: 'error', error: 'Could not generate a complete plan. Your existing items were not changed.' }) + '\n');
+    } finally {
+      clearTimeout(timer);
+      res.off('close', disconnect);
+      if (!res.destroyed) res.end();
+    }
+    return;
   } catch {
     // Do not log prompts, memory, provider responses or credentials.
+    if (res.headersSent) { if (!res.destroyed) res.end(); return; }
     return reply(res, 502, { error: 'Could not generate a complete plan. Your existing items were not changed.' });
   }
 }
