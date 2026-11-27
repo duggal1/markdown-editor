@@ -158,10 +158,17 @@ export function formatPlainTextAsMarkdown(source: string, options: MarkdownForma
   // Do not reinterpret authored Markdown documents as transcripts.
   const authored = blocks.some(b => b.kind === 'heading' || b.kind === 'list');
   let actionParagraphs = 0;
+  let paragraphHasAction = false;
   if (!authored) for (const b of blocks) {
-    if (b.kind === 'prose' && sentences(b.text.trim()).some(unit => requirement.test(unit) || sequence.test(unit))) actionParagraphs++;
+    if (b.kind === 'blank') {
+      if (paragraphHasAction) actionParagraphs++;
+      paragraphHasAction = false;
+    } else if (b.kind === 'prose' && !paragraphHasAction) {
+      paragraphHasAction = sentences(b.text.trim()).some(unit => requirement.test(unit) || sequence.test(unit));
+    }
     if (actionParagraphs >= 2) break;
   }
+  if (paragraphHasAction) actionParagraphs++;
   const transcript = !authored && actionParagraphs >= 2;
   let previousContent: Block | undefined;
   const output: Block[] = [];
