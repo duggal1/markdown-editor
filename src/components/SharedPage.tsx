@@ -34,7 +34,7 @@ async function fetchPart(url: string, signal: AbortSignal, index: number): Promi
 
 class ShareUnavailable extends Error {}
 async function fetchPage(signal: AbortSignal, onProgress: (percent: number) => void, etag: string): Promise<{page: PublicPage | null; etag: string}> {
-  const response = await fetch('/api/share?id=' + encodeURIComponent(id), {
+  const response = await fetch('/api/share?id=' + encodeURIComponent(id) + '&inline=1', {
     cache: 'no-store', signal, headers: etag ? { 'If-None-Match': etag } : {},
   });
   if (response.status === 304) return { page: null, etag };
