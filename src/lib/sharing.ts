@@ -1,5 +1,5 @@
 import type { FlowDocument } from './store';
-import { backupEnabled, publishBackup, unpublishBackup } from './backup';
+import { backupEnabled, backupScope, publishBackup, unpublishBackup } from './backup';
 
 export type ShareRecord = { id: string; syncedVersion: number } &
   ({ secret: string; backup?: false } | { backup: true; secret?: never });
@@ -151,7 +151,7 @@ export async function createCloudShare(
   const existing = creating.get(doc.id);
   if (existing) return existing;
   const task = (async () => {
-    const record: ShareRecord = backupEnabled()
+    const record: ShareRecord = backupEnabled() && backupScope() === 'all'
       ? { id: await publishBackup(doc, onProgress), backup: true, syncedVersion: doc.updatedAt }
       : await uploadVersion(doc, null, onProgress);
     saveShareRecord(doc.id, record);
