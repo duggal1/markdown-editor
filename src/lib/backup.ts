@@ -309,6 +309,32 @@ export async function publishBackup(doc: FlowDocument, onProgress?: (percent: nu
   if (readEntries(TOMBSTONES).some(entry => key(entry) === id))
     throw new Error('This page has been deleted.');
   const publish = () => request('POST', 'publish', job, { updatedAt: doc.updatedAt });
+  // If the exact revision is already acknowledged, publish only the alias.
+  if (synced.get(id) !== doc && !running.has(id)) {
+    const { markdown, asset: _asset, ...meta } = doc;
+    const blob = new Blob([markdown]);
+    if (blob.size <= INLINE_BYTES) {
+      const payload = { meta, markdown, bytes: blob.size, checksum: await checksum(blob), publish: true };
+      if (new Blob([JSON.stringify(payload)]).size <= 180_000 && !running.has(id)) {
+        if (readEntries(TOMBSTONES).some(entry => key(entry) === id)) throw Error('This page has been deleted.');
+        const queued = pending.get(id);
+        if (queued?.value && (queued.value as FlowDocument).updatedAt <= doc.updatedAt) pending.delete(id);
+        // Register the same in-flight identity as normal background backup so
+        // a racing autosave queues behind this write rather than replacing it.
+        let alias = '';
+        const task = (async () => {
+          alias = (await json<{ id: string }>(await request('POST', 'inline', job, payload))).id;
+          if (typeof alias !== 'string' || !/^[A-Za-z0-9_-]{16}$/.test(alias)) throw Error('Cloud returned an invalid link');
+          updateEntries(INDEX, job, true);
+          synced.set(id, doc);
+        })();
+        running.set(id, task); runningValues.set(id, doc);
+        try { await task; onProgress?.(100); return alias; }
+        catch (error) { if (!pending.has(id)) pending.set(id, job); schedule(30000); throw error; }
+        finally { if (running.get(id) === task) { running.delete(id); runningValues.delete(id); } }
+      }
+    }
+  }
   // Most shares are already backed up, including after a browser reload.
   // A revision check on the server is authoritative; never expose stale data.
   if (synced.has(id) || running.has(id) || readEntries(INDEX).some(entry => key(entry) === id)) {

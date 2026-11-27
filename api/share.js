@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { del, get, head, headMany, issueSignedToken, presignUrl, put, setTtl } from '../server/storage.js';
+import { del, get, headMany, issueSignedToken, presignUrl, put, setTtlMany, readVersioned } from '../server/storage.js';
 
 // Vercel Functions have a 4.5 MB body limit. Large pages go directly from
 // browser to private Blob storage using individually signed, retryable parts.
@@ -100,15 +100,24 @@ async function verifiedParts(id, version, bytes, count, partBytes) {
   return paths;
 }
 async function clearUploadTtl(paths) {
-  await Promise.all(paths.map(path => setTtl(path, { ttlDays: null })));
+  await setTtlMany(paths, { ttlDays: null });
 }
 async function retireVersion(id, version, count) {
   if (!ID_PATTERN.test(version) || !Number.isSafeInteger(count) || count < 1 || count > 50) return;
   // Keep the previous revision available for in-flight readers, but reclaim it.
-  await Promise.allSettled(partPaths(id, version, count).map(path =>
-    setTtl(path, { ttlDays: 1 })));
+  await setTtlMany(partPaths(id, version, count), { ttlDays: 1 }).catch(() => {});
 }
 
+// Small Markdown documents can be returned in the manifest response without
+// an additional capability request and browser download. Verify stored bytes.
+async function readInlinePart(path, expectedBytes, checksum) {
+  if (!Number.isSafeInteger(expectedBytes) || expectedBytes < 0 || expectedBytes > 128 * 1024) return null;
+  const item = await get(path, { access: 'private', useCache: false });
+  if (!item?.stream || item.statusCode !== 200) return null;
+  const data = Buffer.from(await new Response(item.stream).arrayBuffer());
+  if (data.length !== expectedBytes || createHash('sha256').update(data).digest('hex') !== checksum) return null;
+  return new TextDecoder('utf-8', { fatal: true }).decode(data);
+}
 // Revalidate authorization before returning 304; revocation must never be hidden by a cache hit.
 function unchanged(req, res, revision) {
   const etag = '"' + createHash('sha256').update(JSON.stringify(revision)).digest('hex') + '"';
@@ -146,6 +155,11 @@ export default async function handler(req, res) {
         if (!backup.bytes) return reply(res, 200, { title, language, updatedAt, markdown: '' });
         const paths = Array.from({ length: Math.ceil(backup.bytes / (backup.partBytes || LEGACY_PART)) },
           (_, i) => shared.backupRoot + '/parts/' + backup.version + '/' + i + '.bin');
+        if (req.query?.inline === '1' && paths.length === 1 && backup.bytes <= 128 * 1024) {
+          const markdown = await readInlinePart(paths[0], backup.bytes, backup.checksum);
+          if (markdown === null) return reply(res, 503, { error: 'Cloud document unavailable' });
+          return reply(res, 200, { title, language, updatedAt, markdown });
+        }
         return reply(res, 200, { title, language, updatedAt, bytes: backup.bytes,
           checksum: backup.checksum, urls: await signedUrls(paths, 'get') });
       }
@@ -206,7 +220,7 @@ export default async function handler(req, res) {
     if (typeof id !== 'string' || !ID_PATTERN.test(id)) {
       return reply(res, 404, { error: 'Share not found' });
     }
-    const current = await load(pathFor(id));
+    const { value: current, etag: currentEtag } = await readVersioned(pathFor(id));
     if (!current) return reply(res, 404, { error: 'Share not found' });
     if (current.backupPath) return reply(res, 403, { error: 'Use the backup owner session to change this link' });
     if (!secureEqual(body.secret, current.ownerHash)) {
@@ -247,13 +261,13 @@ export default async function handler(req, res) {
       const paths = await verifiedParts(id, version, session.bytes, session.count, session.partBytes || LEGACY_PART);
       if (!paths) return reply(res, 409, { error: 'Upload incomplete; retry missing chunks' });
       await clearUploadTtl(paths);
-      const metadataBlob = await head(pathFor(id));
+      if (!currentEtag) return reply(res, 409, { error: 'Share changed; retry' });
       const updatedAt = Date.now();
       await save(pathFor(id), {
         format: 2, status: 'active', ownerHash: current.ownerHash,
         title: session.title, language: session.language, bytes: session.bytes,
         checksum: session.checksum, count: session.count, partBytes: session.partBytes || LEGACY_PART, version, updatedAt,
-      }, { allowOverwrite: true, ifMatch: metadataBlob.etag });
+      }, { allowOverwrite: true, ifMatch: currentEtag });
       await del(sessionFor(id, version)).catch(() => {});
       if (current.format === 2 && current.version && current.version !== version) {
         await retireVersion(id, current.version, current.count);
@@ -264,7 +278,8 @@ export default async function handler(req, res) {
     // Backward-compatible edit requests from old cached browser clients.
     const document = legacyPayload(body);
     if (!document) return reply(res, 400, { error: 'Use chunked upload for pages above 240 KB' });
-    await save(pathFor(id), { ...document, ownerHash: current.ownerHash }, { allowOverwrite: true });
+    if (!currentEtag) return reply(res, 409, { error: 'Share changed; retry' });
+    await save(pathFor(id), { ...document, ownerHash: current.ownerHash }, { allowOverwrite: true, ifMatch: currentEtag });
     if (current.format === 2) await retireVersion(id, current.version, current.count);
     return reply(res, 200, { updatedAt: document.updatedAt });
   } catch (error) {

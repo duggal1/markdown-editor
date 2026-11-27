@@ -12,6 +12,18 @@ export const headMany = async paths => postgresMode() ? (await backend()).heads(
 export const del = async (...args) => (await backend()).del(...args);
 export const list = async (...args) => (await backend()).list(...args);
 export const setTtl = async (...args) => (await backend()).setTtl(...args);
+export const setTtlMany = async (paths, options) => postgresMode() ? (await backend()).setTtlMany(paths, options) : Promise.all(paths.map(path => legacy.setTtl(path, options)));
+// PostgreSQL returns bytes and ETag in one snapshot. Legacy Blob retains
+// HEAD-before-GET ordering for compare-and-swap safety.
+export async function readVersioned(path) {
+  if (postgresMode()) {
+    const object = await get(path, { access: 'private', useCache: false });
+    return { etag: object?.etag, value: object?.stream ? await new Response(object.stream).json() : null };
+  }
+  const etag = await head(path).then(item => item?.etag).catch(() => undefined);
+  const object = await get(path, { access: 'private', useCache: false });
+  return { etag, value: object?.statusCode === 200 && object.stream ? await new Response(object.stream).json() : null };
+}
 const MAX_PART = 2 * 1024 * 1024;
 const pathPattern = /^(?:shares|backups|html-sites)\/[A-Za-z0-9_./-]+$/;
 function validPath(path) { return typeof path === 'string' && path.length <= 512 && pathPattern.test(path) && !path.split('/').some(p => p === '..' || p === '.'); }
