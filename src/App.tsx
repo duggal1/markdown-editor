@@ -34,7 +34,7 @@ import TokenCounter from './components/TokenCounter';
 import { localSaveDelay } from './lib/saveSchedule';
 import type { SearchHit } from './lib/searchIndex';
 import {
-  clearRecovery, isLocallyCommitted, loadDoc, loadWorkspace, readPrefs, removeDoc, removeEmptyDraft, removeFolder, removeWorkspaceTree,
+  clearRecovery, isLocallyCommitted, loadDoc, loadWorkspace, recoverMissingBackup, readPrefs, removeDoc, removeEmptyDraft, removeFolder, removeWorkspaceTree,
   saveDoc, saveFolder, savePrefs, saveRecovery, uid,
   type FlowDocument, type Folder, type Mode, type Theme, type Workspace,
 } from './lib/store';
@@ -315,9 +315,25 @@ export default function App() {
             performance.measure('flow:workspace-startup', 'flow:boot-start', 'flow:workspace-ready');
           }
           const current = [...live.current.values()];
+          resumeBackup({ workspaces: data.workspaces, folders: data.folders, documents: current });
           worker?.postMessage({ type: 'index', documents: current.map(({ id, workspaceId, title, markdown, updatedAt }) => ({ id, workspaceId, title, markdown, updatedAt })) });
           current.forEach(queueSharedSync);
           current.forEach(doc => queueSiteSync(doc));
+          if (data.recoverMissing) {
+            void recoverMissingBackup({ ...data, documents: current }).then(recovered => {
+              if (!alive) return;
+              if (recovered.workspaces.length) setWorkspaces(items => [...items, ...recovered.workspaces.filter(ws => !items.some(item => item.id === ws.id))]);
+              if (recovered.folders.length) setFolders(items => [...items, ...recovered.folders.filter(folder => !items.some(item => item.id === folder.id))]);
+              const added = recovered.documents.filter(doc => !live.current.has(doc.id));
+              for (const doc of added) live.current.set(doc.id, doc);
+              if (added.length) {
+                setDocs(items => [...items, ...added.filter(doc => !items.some(item => item.id === doc.id))]);
+                for (const doc of added) worker?.postMessage({ type: 'upsert', document: {
+                  id: doc.id, workspaceId: doc.workspaceId, title: doc.title, markdown: doc.markdown, updatedAt: doc.updatedAt
+                } });
+              }
+            }).catch(() => { if (alive) setNotice('Some backed-up pages could not be recovered. Local pages are available. Reload to retry.'); });
+          }
            const htmlFolders = new Map(data.folders.filter(folder => folder.name.trim().toLowerCase() === 'html sites').map(folder => [folder.id, folder]));
            for (const doc of current) {
              const folder = doc.folderId ? htmlFolders.get(doc.folderId) : undefined;
