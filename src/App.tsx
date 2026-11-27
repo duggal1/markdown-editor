@@ -121,6 +121,25 @@ function LivePageTitle({ title, onRename }: { title: string; onRename: (title: s
   />;
 }
 
+// Legacy repair is bounded per document, never across the entire workspace
+// before first paint. The caller owns persistence and concurrent-edit guards.
+function normalizeStartupDocument(original: FlowDocument): FlowDocument {
+  let doc = original;
+  if (!doc.plannerKind && !doc.asset && doc.markdown.length < 180_000 &&
+      (!doc.fileName || isMarkdownFile(doc.fileName) || !languageForFile(doc.fileName)) &&
+      normalizeMixedContent(doc.markdown) !== doc.markdown) {
+    const markdown = formatPlainTextAsMarkdown(doc.markdown, { atDocumentStart: true });
+    if (markdown !== doc.markdown) {
+      doc = { ...doc, markdown, language: undefined, updatedAt: Date.now() };
+      if (doc.titleAuto && !doc.fileName) doc.title = inferTitle(markdown);
+    }
+  }
+  if (doc.plannerKind || doc.asset || doc.fileName || !doc.markdown.trim() ||
+      (!doc.titleAuto && !isUntitledTitle(doc.title))) return doc;
+  const title = inferTitle(doc.markdown, doc.language);
+  return title === doc.title && doc.titleAuto ? doc : { ...doc, title, titleAuto: true };
+}
+
 export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -128,6 +147,7 @@ export default function App() {
   const [newFolderId, setNewFolderId] = useState<string | null>(null);
   const [docs, setDocs] = useState<FlowDocument[]>([]);
   const live = useRef(new Map<string, FlowDocument>());
+  const startupPending = useRef(new Set<string>());
   const [activeId, setActiveId] = useState('');
   const [treeReveal, setTreeReveal] = useState<{ id: string } | null>(null);
   const activeIdRef = useRef('');
@@ -241,6 +261,27 @@ export default function App() {
     let worker: Worker | null = null;
     let startupFrame = 0;
     let startupTimer = 0;
+    let maintenanceTimer = 0;
+    const repairInactive = () => {
+      if (!alive) return;
+      const deadline = performance.now() + 6;
+      const changed = new Map<string, FlowDocument>();
+      for (const id of startupPending.current) {
+        startupPending.current.delete(id);
+        const original = live.current.get(id);
+        if (original && id !== activeIdRef.current) {
+          const next = normalizeStartupDocument(original);
+          if (next !== original) {
+            live.current.set(id, next); changed.set(id, next);
+            void saveDoc(next).catch(() => { if (alive) setNotice('Could not save recovered Markdown structure.'); });
+            worker?.postMessage({ type: 'upsert', document: { id, workspaceId: next.workspaceId, title: next.title, markdown: next.markdown, updatedAt: next.updatedAt } });
+          }
+        }
+        if (performance.now() >= deadline) break;
+      }
+      if (changed.size) setDocs(items => items.map(item => changed.get(item.id) || item));
+      if (startupPending.current.size) maintenanceTimer = window.setTimeout(repairInactive, 32);
+    };
     try {
       worker = new Worker(new URL('./workers/search.ts', import.meta.url), { type: 'module' });
       worker.onmessage = (event: MessageEvent<{ type: 'result'; requestId: number; hits: SearchHit[] }>) => {
@@ -253,32 +294,14 @@ export default function App() {
     } catch { /* Title-only fallback is available without workers. */ }
     void loadWorkspace().then(data => {
       if (!alive) return;
-      // Upgrade older default "Untitled" pages once. Named pages and
-      // imported filenames are never silently renamed.
-      const restored = data.documents.map(original => {
-        let doc = original;
-        // Recover old inferred-code pages, never explicit source-file imports.
-        if (!doc.plannerKind && !doc.asset && doc.markdown.length < 180_000 &&
-          (!doc.fileName || isMarkdownFile(doc.fileName) || !languageForFile(doc.fileName)) &&
-          normalizeMixedContent(doc.markdown) !== doc.markdown) {
-          const markdown = formatPlainTextAsMarkdown(doc.markdown, { atDocumentStart: true });
-          if (markdown !== doc.markdown) {
-            doc = { ...doc, markdown, language: undefined, updatedAt: Date.now() };
-            if (doc.titleAuto && !doc.fileName) doc.title = inferTitle(markdown);
-            void saveDoc(doc).catch(() => setNotice('Could not save recovered Markdown structure.'));
-          }
-        }
-        if (doc.plannerKind || doc.asset || doc.fileName || !doc.markdown.trim() ||
-            (!doc.titleAuto && !isUntitledTitle(doc.title))) return doc;
-        const title = inferTitle(doc.markdown, doc.language);
-        if (title === doc.title && doc.titleAuto) return doc;
-        const updated = { ...doc, title, titleAuto: true };
-        void saveDoc(updated).catch(() => setNotice('Could not save an automatic page title.'));
-        return updated;
-      });
-      live.current = new Map(restored.map(doc => [doc.id, doc]));
       const prefs = readPrefs();
-      const first = restored.find(doc => doc.id === prefs.activeDocumentId) || restored[0];
+      const selected = data.documents.find(doc => doc.id === prefs.activeDocumentId) || data.documents[0];
+      const normalized = normalizeStartupDocument(selected);
+      if (normalized !== selected) void saveDoc(normalized).catch(() => { if (alive) setNotice('Could not save recovered Markdown structure.'); });
+      const restored = data.documents.map(doc => doc.id === selected.id ? normalized : doc);
+      startupPending.current = new Set(restored.filter(doc => doc.id !== selected.id).map(doc => doc.id));
+      live.current = new Map(restored.map(doc => [doc.id, doc]));
+      const first = normalized;
       const chosenWorkspace = data.workspaces.find(ws => ws.id === prefs.activeWorkspaceId) ||
         data.workspaces.find(ws => ws.id === first.workspaceId) || data.workspaces[0];
       const restoredMode = prefs.mode === 'preview' || prefs.mode === 'split' ? prefs.mode : 'write';
@@ -314,6 +337,7 @@ export default function App() {
           if (performance.getEntriesByName('flow:boot-start', 'mark').length) {
             performance.measure('flow:workspace-startup', 'flow:boot-start', 'flow:workspace-ready');
           }
+          maintenanceTimer = window.setTimeout(repairInactive, 32);
           const current = [...live.current.values()];
           resumeBackup({ workspaces: data.workspaces, folders: data.folders, documents: current });
           worker?.postMessage({ type: 'index', documents: current.map(({ id, workspaceId, title, markdown, updatedAt }) => ({ id, workspaceId, title, markdown, updatedAt })) });
@@ -325,7 +349,8 @@ export default function App() {
               if (recovered.workspaces.length) setWorkspaces(items => [...items, ...recovered.workspaces.filter(ws => !items.some(item => item.id === ws.id))]);
               if (recovered.folders.length) setFolders(items => [...items, ...recovered.folders.filter(folder => !items.some(item => item.id === folder.id))]);
               const added = recovered.documents.filter(doc => !live.current.has(doc.id));
-              for (const doc of added) live.current.set(doc.id, doc);
+              for (const doc of added) { live.current.set(doc.id, doc); startupPending.current.add(doc.id); }
+              if (added.length) { clearTimeout(maintenanceTimer); maintenanceTimer = window.setTimeout(repairInactive, 32); }
               if (added.length) {
                 setDocs(items => [...items, ...added.filter(doc => !items.some(item => item.id === doc.id))]);
                 for (const doc of added) worker?.postMessage({ type: 'upsert', document: {
@@ -347,6 +372,7 @@ export default function App() {
       alive = false;
       cancelAnimationFrame(startupFrame);
       clearTimeout(startupTimer);
+      clearTimeout(maintenanceTimer);
       worker?.terminate();
       workerRef.current = null;
       for (const timer of saveTimers.current.values()) clearTimeout(timer);
@@ -627,8 +653,12 @@ export default function App() {
   }, [onEditorChange, flush]);
 
   const selectDocument = useCallback((id: string) => {
-    const doc = live.current.get(id);
+    let doc = live.current.get(id);
     if (!doc) return;
+    if (startupPending.current.delete(id)) {
+      const next = normalizeStartupDocument(doc);
+      if (next !== doc) { scheduleSave(next); doc = next; }
+    }
     const previous = activeIdRef.current;
     if (previous && previous !== id) {
       flush(previous);
@@ -657,7 +687,7 @@ export default function App() {
     setPreviewText(doc.markdown);
     setSaveState('idle');
     if (window.innerWidth < 800) setSidebarOpen(false);
-  }, [flush, cancelHeadingMotion]);
+  }, [flush, cancelHeadingMotion, scheduleSave]);
 
   const openPlanner = useCallback((kind: PlannerKind, targetWorkspace: string, folderId?: string) => {
     if (!workspaces.some(ws => ws.id === targetWorkspace)) return;
