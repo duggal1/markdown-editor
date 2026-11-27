@@ -11,7 +11,7 @@ const headingMarker = /^ {0,3}#{1,6}\s+\S/;
 const listMarker = /^ {0,3}(?:[-+*]\s+|\d{1,9}[.)]\s+)\S/;
 const markup = /^(?: {0,3}(?:#{1,6}\s|[-+*]\s|\d{1,9}[.)]\s|>|<|\||\[[^\]]+\]:|(?:-{3,}|\*{3,}|_{3,})\s*$)| {4}|\t)/;
 const inlineMarkup = /[\x60]|\[[^\]]+\]\(|\*\*|__|\\[\\*#_]|<[^>]+>|\s{2}$/;
-const requirement = /^(?:["'(]?\s*)(?:we (?:also )?(?:need|must|should|want|have to|can|will)|(?:i|you) (?:also )?(?:need|want|must|should|have to)|(?:it|this|that|they|the .{1,45}?) (?:must|should|needs? to|has to)|(?:make sure|ensure|add|remove|keep|fix|build|implement|preserve|support|include|avoid|do not|don't|use|replace|reduce|improve|create|test|enable|disable)\b)/i;
+const requirement = /^(?:["'(]?\s*)(?:so\s+)?(?:we (?:also )?(?:need|must|should|want|have to|can|will)|(?:i|you) (?:also )?(?:need|want|must|should|have to)|(?:it|this|that|they|the .{1,45}?) (?:must|should|needs? to|has to)|(?:make sure|ensure|add|remove|keep|fix|build|implement|preserve|support|include|avoid|do not|don't|use|replace|reduce|improve|create|test|enable|disable)\b)/i;
 const sequence = /^(?:first(?:ly| of all)?|second(?:ly)?|third(?:ly)?|fourth(?:ly)?|fifth(?:ly)?|finally|lastly|next)(?:[,:]\s*|\s+)/i;
 
 function feature(line: string): { label: string; description: string } | null {
@@ -186,6 +186,20 @@ export function formatPlainTextAsMarkdown(source: string, options: MarkdownForma
     // Common copy/paste bullets which are not valid Markdown.
     const bullet = /^(?:[•●▪◦‣]|\(-\))\s*(\S.*)$/.exec(value);
     if (bullet) { output.push({ kind: 'list', text: '- ' + bullet[1], generated: true }); continue; }
+    // Spoken topic transitions are useful headings when the transcript itself
+    // supplies a short, explicit question or signpost. Never invent a summary.
+    const firstSentence = value.length >= 140 ? sentences(value)[0] : '';
+    const topic = firstSentence.length >= 15 && firstSentence.length <= 95 &&
+      ((i === first && options.atDocumentStart !== false && /^(?:what (?:is|are)|how (?:can|do|does|should)|why (?:is|are|do))\b.*\?$/i.test(firstSentence)) ||
+       ((i === first || before?.kind === 'blank') && /^(?:now,\s+what|let me talk about|let's talk about)\b/i.test(firstSentence)));
+    if (topic && firstSentence.length < value.length) {
+      const depth = i === first && options.atDocumentStart !== false ? 1 : 2;
+      level = depth;
+      output.push({ kind: 'heading', text: '#'.repeat(depth) + ' ' + firstSentence, generated: true });
+      const rest = value.slice(firstSentence.length).trimStart();
+      output.push({ kind: 'prose', text: structureProse(rest, options), generated: true });
+      continue;
+    }
     const structured = structureProse(value, options);
     output.push({ kind: 'prose', text: structured === value ? b.text : structured, generated: structured !== value });
   }
@@ -196,7 +210,7 @@ export function formatPlainTextAsMarkdown(source: string, options: MarkdownForma
     if (b.kind === 'blank') { pending.push(b); continue; }
     const generatedPair = previous?.kind === 'list' && b.kind === 'list' && previous.generated && b.generated;
     if (!generatedPair) {
-      if (pending.length) result.push(...pending.map(p => p.text));
+      if (pending.length) { for (const p of pending) result.push(p.text); }
       else if (previous && (
         ((b.kind === 'heading' || previous.kind === 'heading') && (b.generated || previous.generated || options.manual)) ||
         ((b.kind === 'list' || previous.kind === 'list') && (b.generated || previous.generated)) ||
@@ -207,7 +221,7 @@ export function formatPlainTextAsMarkdown(source: string, options: MarkdownForma
     pending = [];
     result.push(b.text); previous = b;
   }
-  result.push(...pending.map(p => p.text));
+  for (const p of pending) result.push(p.text);
   const formatted = result.join('\n');
   return formatted === lines.join('\n') && !recovered ? source : formatted;
 }
