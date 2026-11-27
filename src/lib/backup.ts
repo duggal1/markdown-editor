@@ -241,19 +241,32 @@ export function resumeBackup(data: Restored) {
   }
   if (pending.size) { announce('pending'); schedule(); }
 }
+export function explicitBackupRecovery(): boolean {
+  try { return !!sessionStorage.getItem(FORCE_RESTORE); } catch { return false; }
+}
+export function missingBackupEntries(data: Restored): Entry[] {
+  const local = new Set(['workspaces', 'folders', 'documents'].flatMap(kind =>
+    data[kind as BackupKind].map(item => kind + '/' + item.id)));
+  const deleted = new Set(readEntries(TOMBSTONES).map(key));
+  return readEntries(INDEX).filter(entry => !local.has(key(entry)) && !deleted.has(key(entry)));
+}
+export function canRecoverBackupEntry(entry: Entry): boolean {
+  const id = key(entry);
+  return readEntries(INDEX).some(item => key(item) === id) &&
+    !readEntries(TOMBSTONES).some(item => key(item) === id);
+}
 export function needsBackupRecovery(data: Restored) {
   if (!backupEnabled()) return false;
   if (!data.documents.length || !data.workspaces.length) return true;
-  try { if (sessionStorage.getItem(FORCE_RESTORE)) return true; } catch { /* Ignore blocked session storage. */ }
-  const local = new Set(['workspaces', 'folders', 'documents'].flatMap(kind =>
-    data[kind as BackupKind].map(item => kind + '/' + item.id)));
-  return readEntries(INDEX).some(entry => !local.has(key(entry)));
+  return explicitBackupRecovery() || missingBackupEntries(data).length > 0;
 }
 type CloudRecord = { meta: Omit<FlowDocument, 'markdown' | 'asset'> & { assetType?: string };
   bytes: number; checksum: string; urls: string[] };
-export async function restoreBackup(): Promise<Restored> {
+export async function restoreBackup(only?: readonly Entry[]): Promise<Restored> {
   const signal = AbortSignal.timeout(120000);
-  const { entries } = await json<{ entries: Entry[] }>(await request('GET', 'list', undefined, {}, signal));
+  const { entries: manifest } = await json<{ entries: Entry[] }>(await request('GET', 'list', undefined, {}, signal));
+  const wanted = only ? new Set(only.map(key)) : null;
+  const entries = wanted ? manifest.filter(entry => wanted.has(key(entry))) : manifest;
   const result: Restored = { documents: [], workspaces: [], folders: [] };
   const deleted = new Set(readEntries(TOMBSTONES).map(key));
   let cursor = 0;
@@ -283,10 +296,10 @@ export async function restoreBackup(): Promise<Restored> {
         result.documents.push({ ...fields, markdown: assetType === undefined ? await blob.text() : '',
           ...(assetType === undefined ? {} : { asset: blob }) });
       }
-      updateEntries(INDEX, entry, true);
+      if (!only) updateEntries(INDEX, entry, true);
     }
   }));
-  try { sessionStorage.removeItem(FORCE_RESTORE); } catch { /* Restore already succeeded. */ }
+  if (!only) try { sessionStorage.removeItem(FORCE_RESTORE); } catch { /* Restore already succeeded. */ }
   return result;
 }
 export async function publishBackup(doc: FlowDocument, onProgress?: (percent: number) => void): Promise<string> {

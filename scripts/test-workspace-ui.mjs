@@ -193,3 +193,26 @@ assert.match(style, /\.private-visibility-label \{ color:inherit; text-decoratio
 assert.match(style, /\.private-workspace \.private-visibility \{ position:absolute; left:50%; top:50%; transform:translate\(-50%,-50%\)/);
 assert.match(treeCss, /\.private-menu-label \{ color:var\(--palette-blue-600\); \}/);
 assert.match(treeCss, /\.private-menu-label > span:last-child \{ color:inherit; text-decoration:none; \}/);
+
+const startupJs = ts.transpileModule(read('src/lib/startupRecovery.ts'), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
+const { startupRecoveryMode } = await import('data:text/javascript;base64,' + Buffer.from(startupJs).toString('base64'));
+assert.equal(startupRecoveryMode(12, 1, false, false, false), 'none');
+assert.equal(startupRecoveryMode(12, 1, true, false, false), 'background', 'One missing backup entry must not block opening local pages');
+assert.equal(startupRecoveryMode(12, 1, true, true, false), 'blocking', 'Explicit key recovery must finish before editing');
+assert.equal(startupRecoveryMode(0, 1, true, false, false), 'blocking');
+assert.equal(startupRecoveryMode(12, 0, true, false, false), 'blocking');
+assert.equal(startupRecoveryMode(12, 1, true, false, true), 'blocking');
+assert.match(persistence, /if \(recovery === 'blocking'\) \{\s*try \{\s*const cloud = await restoreBackup\(\)/);
+assert.match(persistence, /recoverMissing: recovery === 'background'/);
+assert.match(persistence, /if \(request.result \|\| !canRecoverBackupEntry\(\{ kind, id: value.id \}\)\) return;/);
+assert.match(persistence, /store.add\(value\)/, 'Background restore cannot overwrite a newer local record');
+assert.match(app, /requestAnimationFrame\(\(\) => \{[\s\S]*?recoverMissingBackup\(/);
+assert.match(app, /if \(!alive\) return;\s*if \(recovered.workspaces.length\)/);
+assert.match(app, /recovered.documents.filter\(doc => !live.current.has\(doc.id\)\)/);
+console.log('Local-first startup and non-destructive background recovery policy passed.');
+
+assert.match(app, /const normalized = normalizeStartupDocument\(selected\)/);
+assert.match(app, /const restored = data\.documents\.map\(doc => doc\.id === selected\.id \? normalized : doc\)/);
+assert.match(app, /const deadline = performance\.now\(\) \+ 6/);
+assert.match(app, /startupPending\.current\.delete\(id\)\) \{/);
+assert.match(app, /if \(startupPending\.current\.size\) maintenanceTimer = window\.setTimeout\(repairInactive, 32\)/);
