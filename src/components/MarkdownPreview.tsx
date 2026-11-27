@@ -385,9 +385,45 @@ function remarkSvgBlocks() {
     }
   };
 }
+// Normalize tight and loose GFM task lists into the same two-column layout.
+ // Keep nested lists outside the label so completing a parent never dims its children.
+type TaskPreviewNode = { type: string; tagName?: string; value?: string; properties?: Record<string, unknown>; children?: TaskPreviewNode[] };
+function rehypeTaskRows() {
+  return (tree: TaskPreviewNode) => {
+    function visit(node: TaskPreviewNode) {
+      for (const child of node.children || []) visit(child);
+      if (node.tagName !== 'li' || !Array.isArray(node.properties?.className) ||
+          !node.properties.className.includes('task-list-item') || !node.children) return;
+      const children = node.children;
+      const first = children.find(child => child.type !== 'text' || child.value?.trim());
+      const container = first?.tagName === 'p' ? first.children : children;
+      if (!container) return;
+      const index = container.findIndex(child => child.tagName === 'input' && child.properties?.type === 'checkbox');
+      if (index < 0) return;
+      const [check] = container.splice(index, 1);
+      const next = container[index];
+      if (next?.type === 'text' && next.value) next.value = next.value.replace(/^ +/, '');
+      const result: TaskPreviewNode[] = [check];
+      let label: TaskPreviewNode[] = [];
+      const flush = () => {
+        if (label.some(child => child.type !== 'text' || child.value?.trim())) {
+          result.push({type:'element', tagName:'div', properties:{className:['flow-task-label']}, children:label});
+        }
+        label = [];
+      };
+      for (const child of children) {
+        if (child.tagName === 'ul' || child.tagName === 'ol') { flush(); result.push(child); }
+        else label.push(child);
+      }
+      flush();
+      node.children = result;
+    }
+    visit(tree);
+  };
+}
 const MarkdownChunk = memo(function MarkdownChunk({ markdown, lineOffset = 0, sourceLines }: { markdown: string; lineOffset?: number; sourceLines?: readonly number[] }) {
   return <LineContext.Provider value={lineOffset}><SourceLineMapContext.Provider value={sourceLines}><ReactMarkdown remarkPlugins={[remarkGfm, remarkSvgBlocks]}
-    rehypePlugins={[rehypeRaw, [rehypeSanitize, safeMarkdownHtml], rehypePreviewColors]}
+    rehypePlugins={[rehypeRaw, [rehypeSanitize, safeMarkdownHtml], rehypePreviewColors, rehypeTaskRows]}
     components={components}>{markdown}</ReactMarkdown></SourceLineMapContext.Provider></LineContext.Provider>;
 });
 function VirtualMarkdown({ markdown, scrollRef }: {
