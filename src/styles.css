@@ -2849,3 +2849,16 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   #html-site-dialog .flow-dialog-link .flow-dialog-button,#share-dialog .share-url-row .share-copy,
   #html-site-dialog .flow-dialog-footer .flow-dialog-button,#share-dialog .share-done,#share-dialog .share-revoke,#share-dialog .share-create { min-height:44px; }
 }
+
+/* The page name is an editable breadcrumb, not a second document title. */
+.private-workspace .document-meta { min-width:0; }
+.private-workspace .private-breadcrumb { min-width:0; max-width:min(38vw,320px); }
+.private-workspace .private-title-input { min-width:0; width:clamp(72px,22ch,240px); max-width:100%; padding:3px 4px; border:0; border-radius:5px; outline:0; background:transparent; color:var(--text); font:inherit; text-overflow:ellipsis; }
+.private-workspace .private-title-input:hover { background:var(--hover); }
+.private-workspace .private-title-input:focus-visible { outline:1px solid var(--muted); outline-offset:-1px; text-overflow:clip; }
+.private-workspace .private-visibility { margin-inline-start:10px; flex:none; }
+.private-visibility-label { color:#1d4ed8; text-decoration:underline dotted; text-underline-offset:3px; }
+@media(max-width:800px) {
+  .private-workspace .private-title-input { width:clamp(56px,18ch,160px); }
+  .private-workspace .private-visibility { margin-inline-start:4px; }
+}
