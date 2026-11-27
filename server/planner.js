@@ -1,10 +1,7 @@
 export const MODEL = 'Beam-1.0-501B-A23B';
 export const MAX_INPUT = 12000;
 export const MAX_CONTEXT = 6000;
-export function reasoningEffort(input) {
-  return input.length > 650 || input.split(/\n|;|\b(?:and then|after that|also need)\b/gi).length >= 5 ||
-    /\b(?:dependencies|prioriti[sz]e|milestones|roadmap|multi.phase|break down|complex)\b/i.test(input) ? 'medium' : 'low';
-}
+export function reasoningEffort() { return 'low'; }
 export function validateItems(raw) {
   const value = JSON.parse(raw);
   if (!value || !Array.isArray(value.items) || value.items.length < 1 || value.items.length > 80) throw Error('Invalid plan');
@@ -16,7 +13,7 @@ export function validateItems(raw) {
   });
 }
 export async function generatePlanner({ input, kind, memory = '', existing = '', repositories = '', apiKey, signal, fetcher = fetch, onDelta }) {
-  const effort = reasoningEffort(input);
+  const effort = reasoningEffort();
   const system = [
     'You organize a private workspace. Return ONLY a JSON object {"items":[{"text":"...","category":"..."}]}.',
     kind === 'todo' ? 'Extract actionable tasks. Use short verb-first descriptions. Break down complex explicit goals into useful steps without inventing requirements.' : 'Extract durable facts, preferences, constraints and decisions explicitly stated by the user. Do not infer sensitive attributes, invent facts, or convert future intentions into facts.',
@@ -26,8 +23,8 @@ export async function generatePlanner({ input, kind, memory = '', existing = '',
   ].join(' ');
   const response = await fetcher('https://api.reflection.ai/openai/v1/chat/completions', {
     method: 'POST', headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' }, signal,
-    body: JSON.stringify({ model: MODEL, reasoning_effort: effort, temperature: 0.7, top_p: 0.99, ...(onDelta ? { stream: true } : {}),
-      max_completion_tokens: effort === 'medium' ? 10000 : 6000,
+    body: JSON.stringify({ model: MODEL, reasoning_effort: effort, temperature: 0.3, top_p: 0.95, ...(onDelta ? { stream: true } : {}),
+      max_completion_tokens: 6000,
       messages: [{ role: 'system', content: system }, { role: 'user', content: JSON.stringify({ request: input, existing, memory, repositories }) }] })
   });
   if (!response.ok) throw Object.assign(Error('Reflection request failed'), { providerStatus: response.status });
@@ -77,7 +74,8 @@ export async function readPlannerStream(response, effort, onDelta) {
       if (buffer.length > 200000) throw Error('Inference frame too large');
       if (done) { if (buffer.trim()) consume(buffer); break; }
     }
-    if (!ended || finish !== 'stop') throw Error('Incomplete model output');
+    if (finish !== 'stop') throw Error('Incomplete model output');
+    // A terminal stop with validated JSON is sufficient even if the proxy omits [DONE].
     return { items: validateItems(content), effort };
   } finally {
     await reader.cancel().catch(() => {});

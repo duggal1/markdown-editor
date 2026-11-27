@@ -211,7 +211,15 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .flow-task-check:focus-visible { outline:2px solid var(--muted); outline-offset:1px; }
 .flow-task-check:disabled { opacity:.55; cursor:default; }
 .flow-task-check svg { pointer-events:none; }
-.markdown-preview .preview-task-check { width:28px; height:28px; margin:0 6px 0 -5px; vertical-align:-8px; flex:none; }
+.markdown-preview li.task-list-item { display:grid; grid-template-columns:24px minmax(0,1fr); column-gap:8px; align-items:start; padding-left:0; }
+.markdown-preview li.task-list-item > :not(.preview-task-check) { grid-column:2; min-width:0; }
+.markdown-preview .preview-task-check { grid-column:1; grid-row:1; align-self:start; width:24px; height:1.85em; margin:0; flex:none; }
+.markdown-preview .flow-task-label { line-height:inherit; overflow-wrap:anywhere; }
+.markdown-preview .flow-task-label > p { margin:0; }
+.markdown-preview .flow-task-label > p + p { margin-top:8px; }
+.markdown-preview .preview-task-check[aria-checked=true] ~ .flow-task-label { opacity:.48; text-decoration:line-through; text-decoration-thickness:1px; }
+.markdown-preview li.task-list-item > :is(ul,ol) { margin-top:4px; margin-bottom:0; }
+.markdown-preview ol.contains-task-list { list-style:none; padding-left:4px; }
 .markdown-preview .preview-task-check:hover:not(:disabled) { background:var(--hover); }
 .markdown-preview .preview-task-check svg { display:block; width:16px; height:16px; max-width:none; margin:0; }
 @media (prefers-reduced-motion:reduce) { .flow-task-check,.flow-task-check * { transition:none!important; } }
