@@ -316,6 +316,7 @@ export async function publishBackup(doc: FlowDocument, onProgress?: (percent: nu
     if (blob.size <= INLINE_BYTES) {
       const payload = { meta, markdown, bytes: blob.size, checksum: await checksum(blob), publish: true };
       if (new Blob([JSON.stringify(payload)]).size <= 180_000 && !running.has(id)) {
+        if (readEntries(TOMBSTONES).some(entry => key(entry) === id)) throw Error('This page has been deleted.');
         const queued = pending.get(id);
         if (queued?.value && (queued.value as FlowDocument).updatedAt <= doc.updatedAt) pending.delete(id);
         // Register the same in-flight identity as normal background backup so
@@ -323,6 +324,7 @@ export async function publishBackup(doc: FlowDocument, onProgress?: (percent: nu
         let alias = '';
         const task = (async () => {
           alias = (await json<{ id: string }>(await request('POST', 'inline', job, payload))).id;
+          if (typeof alias !== 'string' || !/^[A-Za-z0-9_-]{16}$/.test(alias)) throw Error('Cloud returned an invalid link');
           updateEntries(INDEX, job, true);
           synced.set(id, doc);
         })();
