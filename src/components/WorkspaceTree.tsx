@@ -5,12 +5,14 @@ import type { FlowDocument, Folder, Workspace } from '../lib/store';
 import type { SearchHit } from '../lib/searchIndex';
 import { WORKSPACE_ROOT as ROOT, readClosedTree, writeClosedTree, toggleTreeNode, expandTreeNodes, pageRevealPath } from '../lib/treeDisclosure';
 import './workspace-tree.css';
+import { isScopedPlanner, plannerId, type PlannerKind } from '../lib/planner';
 
 type Props = {
   workspaces: Workspace[]; folders: Folder[]; documents: FlowDocument[]; allDocuments: FlowDocument[];
   activeId: string; activeWorkspaceId: string; selectedFolderId: string | null; search: string; searchHits: SearchHit[];
   searchPending: boolean; newFolderId: string | null; reveal: { id: string } | null;
   onOpen: (id: string) => void;
+  onOpenPlanner: (kind: PlannerKind, workspaceId: string, folderId?: string) => void;
   onSelectFolder: (id: string | null) => void;
   onNewPageInSelection: () => void;
   onNewDocument: (workspaceId: string, folderId?: string, parentId?: string) => void;
@@ -56,7 +58,7 @@ function Rename({ title, onSave, onCancel }: { title: string; onSave: (s: string
 }
 function WorkspaceTree({
   workspaces, folders, documents, allDocuments, activeId, activeWorkspaceId, selectedFolderId, search, searchHits, searchPending, newFolderId, reveal,
-  onOpen, onSelectFolder, onNewPageInSelection, onNewDocument, onNewFolder, onRenameFolder, onRenameDocument, onDuplicateDocument, onMovePage, onDeleteFolder, onDeleteDocument,
+  onOpen, onOpenPlanner, onSelectFolder, onNewPageInSelection, onNewDocument, onNewFolder, onRenameFolder, onRenameDocument, onDuplicateDocument, onMovePage, onDeleteFolder, onDeleteDocument,
 }: Props) {
   const [closed, setClosed] = useState<Set<string>>(() => readClosedTree());
   const closedRef = useRef(closed);
@@ -74,6 +76,7 @@ function WorkspaceTree({
     const children = new Map<string, FlowDocument[]>();
     const roots: FlowDocument[] = [];
     for (const doc of documents) {
+      if (isScopedPlanner(doc)) continue;
       let parent = doc.parentId ? byId.get(doc.parentId) : undefined;
       // Invalid or cyclic imported parent links become visible roots instead of disappearing.
       const seen = new Set([doc.id]);
@@ -187,6 +190,26 @@ function WorkspaceTree({
       {expanded && children.length > 0 && <div role="group">{children.map(child => row(child, depth + 1))}</div>}
     </div>;
   }
+  function plannerLink(kind: PlannerKind, workspaceId: string, folderId?: string, depth = 1) {
+    const id = plannerId(kind, workspaceId, folderId);
+    return <button type="button" className="planner-tree-row" style={{ paddingInlineStart: 5 + depth * 14 }}
+      aria-current={activeId === id ? 'page' : undefined} onClick={() => onOpenPlanner(kind, workspaceId, folderId)}>
+      <Icon name={kind === 'todo' ? 'check' : 'history'} size={15}/><span>{kind === 'todo' ? 'To-do' : 'Memory'}</span>
+    </button>;
+  }
+  function plannerFolder(folder: Folder) {
+    const id = 'planner-folder-' + folder.id;
+    const open = !closed.has(id);
+    return <div role="treeitem" aria-level={2} aria-expanded={open}>
+      <button type="button" className="planner-tree-row" style={{ paddingInlineStart: 16 }} onClick={() => {
+        toggle(id); if (!open) onOpenPlanner('todo', folder.workspaceId, folder.id);
+      }} aria-label={(open ? 'Collapse ' : 'Expand ') + 'To-do in ' + folder.name}>
+        <span className={'planner-tree-chevron' + (open ? ' is-open' : '')}><Icon name="chevron" size={12}/></span>
+        <Icon name="check" size={15}/><span>To-do</span>
+      </button>
+      {open && <div role="group">{plannerLink('todo', folder.workspaceId, folder.id, 2)}{plannerLink('memory', folder.workspaceId, folder.id, 2)}</div>}
+    </div>;
+  }
   return <>
     <div className="private-tree-heading">
       <span>{searching ? 'Search results' : 'Private'}</span>
@@ -222,7 +245,7 @@ function WorkspaceTree({
               <button type="button" className="private-add-child" aria-label={'Add page to ' + folder.name} onClick={() => { expand(folder.id); onNewDocument(folder.workspaceId, folder.id); }}><Icon name="plus" size={14}/></button>
               {more(folder.id, 'folder', folder.name)}
             </div>
-            {open && <div role="group">{(tree.children.get('folder:' + folder.id) || []).map(doc => row(doc, 1))}</div>}
+            {open && <div role="group">{plannerFolder(folder)}{(tree.children.get('folder:' + folder.id) || []).map(doc => row(doc, 1))}</div>}
           </div>;
         })}
         <div className="workspace-root" role="treeitem" aria-level={1} aria-expanded={!closed.has(ROOT)} aria-selected={selectedFolderId === null}>
@@ -239,6 +262,8 @@ function WorkspaceTree({
               onClick={() => { expand(ROOT); onNewDocument(defaultWorkspace); }}><Icon name="plus" size={14}/></button>
           </div>
           {!closed.has(ROOT) && <div className="workspace-root-children" role="group">
+        {defaultWorkspace && plannerLink('todo', defaultWorkspace)}
+        {defaultWorkspace && plannerLink('memory', defaultWorkspace)}
         {tree.roots.map(doc => row(doc, 1))}
         <div className={'private-root-drop' + (drop === 'root' ? ' is-drop' : '')} onDragOver={e => dragOver(e, 'root')} onDrop={e => dropped(e)}
           onDragLeave={() => setDrop(old => old === 'root' ? null : old)}>
