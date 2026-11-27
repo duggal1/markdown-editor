@@ -14,7 +14,7 @@ const glyphs = {
   "sidebar": "M3 4h18v16H3z M9 4v16",
   "search": "M15.6 15.6 21 21 M17.5 10.5a7 7 0 11-14 0 7 7 0 0114 0z",
   "plus": "M12 4v16M4 12h16",
-  "file": "M5 3h8l6 6v12H5z M13 3v6h6 M8.5 13h7m-7 4h5",
+  "file": "M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48V216Z",
   "folder": "M3 7V5h6l2 2h10v13H3z",
   "back": "M19 12H5m6-6-6 6 6 6",
   "forward": "M5 12h14m-6-6 6 6-6 6",
@@ -51,7 +51,7 @@ const glyphs = {
   "italic": "M10 4h9M5 20h9M14 4 10 20",
   "settings": "M12 3 14 6l3.5-.2.7 3.4 3 2.8-3 2.8-.7 3.4L14 18l-2 3-2-3-3.5.2-.7-3.4-3-2.8 3-2.8.7-3.4L10 6z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
   "lock": "M6 10h12v11H6z M9 10V7a3 3 0 016 0v3 M12 14v3",
-  "globe": "M21 12a9 9 0 11-18 0 9 9 0 0118 0z M3 12h18M12 3c5 5 5 13 0 18-5-5-5-13 0-18z",
+  "globe": "M128,24h0A104,104,0,1,0,232,128,104.12,104.12,0,0,0,128,24Zm87.62,96H175.79C174,83.49,159.94,57.67,148.41,42.4A88.19,88.19,0,0,1,215.63,120ZM96.23,136h63.54c-2.31,41.61-22.23,67.11-31.77,77C118.45,203.1,98.54,177.6,96.23,136Zm0-16C98.54,78.39,118.46,52.89,128,43c9.55,9.93,29.46,35.43,31.77,77Zm11.36-77.6C96.06,57.67,82,83.49,80.21,120H40.37A88.19,88.19,0,0,1,107.59,42.4ZM40.37,136H80.21c1.82,36.51,15.85,62.33,27.38,77.6A88.19,88.19,0,0,1,40.37,136Zm108,77.6c11.53-15.27,25.56-41.09,27.38-77.6h39.84A88.19,88.19,0,0,1,148.41,213.6Z",
   "globeOff": "M4 4l16 16M20.5 15A9 9 0 009 3.5M15 20.5A9 9 0 013.5 9M3 12h9",
   "h1": "M3 5v14m9-14v14M3 12h9m4-3 3-2v12m-3 0h6",
   "h2": "M3 5v14m9-14v14M3 12h9m4-2a3 3 0 116 0c0 3-6 4-6 9h6",
@@ -65,6 +65,10 @@ const glyphs = {
 } as const;
 export type IconName = keyof typeof glyphs;
 export function phosphorMarkup(name: IconName): string {
+  // User-supplied filled paths retain their native 256-unit geometry.
+  if (name === 'file' || name === 'globe') {
+    return `<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" width="100%" height="100%" viewBox="0 0 256 256"><path d="${glyphs[name]}" fill="currentColor"/></svg>`;
+  }
   const weight = name === 'more' || name === 'grip' ? 2.8 : 1.65;
   return `<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" width="100%" height="100%" viewBox="0 0 24 24"><path d="${glyphs[name]}" fill="none" stroke="currentColor" stroke-width="${weight}" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
