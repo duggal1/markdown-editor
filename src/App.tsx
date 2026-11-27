@@ -157,6 +157,7 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>('dark');
   const [accentTheme, setAccentTheme] = useState<AccentTheme>(() => parseAccentTheme(readPrefs().accentTheme));
   const [mode, setMode] = useState<Mode>('write');
+  const [closingPreview, setClosingPreview] = useState(false);
   const [splitPercent, setSplitPercent] = useState(50);
   const [storedSplitPercent, setStoredSplitPercent] = useState(50);
   const [resizingSplit, setResizingSplit] = useState(false);
@@ -1569,6 +1570,7 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
       targetLine.current = { ...target, kind: 'scroll' };
       scrollOwner.current = 'transition';
     }
+    setClosingPreview(next === 'write' && !motionOff && !compact && (live.current.get(activeIdRef.current)?.markdown.length ?? 0) <= 80000);
     modeRef.current = next;
     if (next !== 'write') setPreviewText(view?.state.doc.toString() ?? live.current.get(activeIdRef.current)?.markdown ?? '');
     setMode(next);
@@ -1604,8 +1606,9 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
   // A phone's Split mode shows two vertically stacked, independently scrolling panes.
   const presentationMode: Mode = mode;
   const gridColumns = presentationMode === 'split' ? `minmax(0, ${splitPercent}fr) minmax(0, ${100 - splitPercent}fr)`
-    : presentationMode === 'preview' ? 'minmax(0, 0fr) minmax(0, 1fr)'
-      : 'minmax(0, 1fr) minmax(0, 0fr)';
+    : presentationMode === 'preview' ? 'minmax(0, 0fr) minmax(0, 100fr)'
+      : 'minmax(0, 100fr) minmax(0, 0fr)';
+  const animatePaneLayout = !motionOff && !resizingSplit && !compact && Math.max(active?.markdown.length ?? 0, previewText.length) <= 80000;
   const mobileGridRows = presentationMode === 'split' ? 'minmax(0, 1fr) minmax(0, 1fr)'
     : presentationMode === 'preview' ? 'minmax(0, 0fr) minmax(0, 1fr)'
       : 'minmax(0, 1fr) minmax(0, 0fr)';
@@ -1731,7 +1734,7 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
               whileHover={motionOff || compact ? undefined : { y: -1 }}
               transition={motionOff ? { duration: 0 } : { duration: 0.17, ease: [0.22, 1, 0.36, 1] }}
               onClick={() => changeMode(item)}>
-              {mode === item && <motion.span layoutId="mode-highlight" className="mode-highlight" transition={motionOff ? { duration: 0 } : { duration: 0.22, ease: [0.23, 1, 0.32, 1] }} />}
+              {mode === item && <motion.span layoutId="mode-highlight" className="mode-highlight" transition={motionOff ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 41, mass: 1 }} />}
               <span className="mode-label">{item.charAt(0).toUpperCase() + item.slice(1)}</span>
             </motion.button>)}
           </div>
@@ -1787,12 +1790,12 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
           </motion.span>
         <TokenCounter key={activeId} documentId={activeId} readSource={readTokenSource} />
       </div>
-      <motion.main ref={editorAreaRef} className={'editor-area mode-' + mode + (compact ? ' compact' : '') + (resizingSplit ? ' is-resizing' : '')} aria-label="Flow Markdown workspace"
+      <motion.main ref={editorAreaRef} className={'editor-area mode-' + mode + (compact ? ' compact' : '') + (resizingSplit ? ' is-resizing' : '') + (animatePaneLayout ? ' has-mode-motion' : '')} aria-label="Flow Markdown workspace"
         initial={false} animate={{ gridTemplateColumns: compact ? 'minmax(0, 1fr)' : gridColumns,
           gridTemplateRows: compact ? mobileGridRows : 'minmax(0, 1fr)' }}
-        transition={motionOff || resizingSplit || compact || Math.max(active?.markdown.length ?? 0, previewText.length) > 80000 ? { duration: 0 } : { duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
-        onAnimationComplete={() => { editorRef.current?.requestMeasure(); restoreModePosition(); }}>
-        <section className="editor-pane" aria-label="Write Markdown"
+        transition={animatePaneLayout ? { duration: 0.36, ease: [0.22, 1, 0.36, 1] } : { duration: 0 }}
+        onAnimationComplete={() => { if (modeRef.current === 'write') setClosingPreview(false); editorRef.current?.requestMeasure(); restoreModePosition(); }}>
+        <section className="editor-pane" inert={presentationMode === 'preview'} aria-label="Write Markdown"
           onPointerDownCapture={claimEditorScroll}
           onWheelCapture={claimEditorScroll}
           onTouchStartCapture={claimEditorScroll}
@@ -1801,7 +1804,7 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
             scope={folders.find(folder => folder.id === active.folderId)?.name || 'Workspace'} onEdit={editActivePlanner} /></Suspense> : active?.asset ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} theme={theme} /> : active && <MarkdownEditor key={active.id} documentId={active.id} initialText={active.markdown}
             fileLanguage={activeFileLanguage} viewRef={editorRef} onChange={onEditorChange} onPosition={onEditorPosition} />}
         </section>
-        <section className="preview-pane" data-glass={activeHtml ? htmlSurfaceTone : undefined}
+        <section className="preview-pane" inert={presentationMode === 'write'} data-glass={activeHtml ? htmlSurfaceTone : undefined}
           aria-label="Markdown preview">
           {activeHtml && presentationMode !== 'write' &&
             <button type="button" className="html-preview-popout"
@@ -1809,9 +1812,9 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
               onClick={openFullHtml}><Icon name="arrowUpRight" size={15} /> <span>Full HTML</span></button>}
           <motion.div ref={previewScrollRef} className="preview-scroll" tabIndex={presentationMode === 'write' ? -1 : 0} aria-label="Scrollable preview" initial={false}
             animate={{ opacity: presentationMode === 'write' ? 0 : 1 }}
-            transition={motionOff ? { duration: 0 } : { duration: 0.2, delay: presentationMode === 'write' ? 0 : 0.035 }}>
+            transition={animatePaneLayout ? { duration: presentationMode === 'write' ? 0.22 : 0.28, ease: [0.22, 1, 0.36, 1] } : { duration: 0 }}>
             <Suspense fallback={<div className="preview-loading">Rendering…</div>}>
-              {presentationMode !== 'write' && (active?.asset
+              {(presentationMode !== 'write' || (closingPreview && animatePaneLayout)) && (active?.asset
                 ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} theme={theme} />
                 : <MarkdownPreview key={active?.id || 'preview'} markdown={previewText} sourceLanguage={active?.language} scrollRef={previewScrollRef} theme={theme} onToggleTask={onToggleTask} onSvgEdit={onSvgEdit} />)}
             </Suspense>
@@ -1824,7 +1827,7 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
           aria-label="Resize editor and preview" aria-orientation="vertical"
           aria-valuemin={22} aria-valuemax={78} aria-valuenow={Math.round(splitPercent)}
           title="Drag to resize · arrow keys to adjust"
-          style={{ left: splitPercent + '%' }}
+          style={{ gridColumn: '2 / 3', left: 0 }}
           onPointerDown={startSplitDrag} onPointerMove={moveSplitDrag}
           onPointerUp={finishSplitDrag} onPointerCancel={finishSplitDrag}
           onDoubleClick={() => { splitNext.current = 50; setSplitPercent(50); setStoredSplitPercent(50); }}
