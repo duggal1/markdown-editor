@@ -60,3 +60,46 @@ await assert.rejects(()=>generatePlanner({input:'a',kind:'todo',apiKey:'test',on
 console.log('Streaming tests passed');
 
 assert.deepEqual(streamedItems('{"items":[{"text":"One"},{"text":"Two"}]}'),['One','Two']);
+
+const { githubOwner, publicRepos, matchRepos, repoContext } = await import('../src/lib/plannerGithub.ts');
+assert.equal(githubOwner('https://github.com/Example/flow'), 'example');
+assert.equal(githubOwner('@Example'), 'example');
+assert.equal(githubOwner('https://evil.example/github.com/example'), '');
+assert.equal(githubOwner('a--b'), '');
+const calls = [];
+const fakeGithub = async (url, opts) => {
+  calls.push(url);
+  assert.equal(opts.credentials, 'omit');
+  assert.equal(opts.headers.Authorization, undefined);
+  if (url.includes('/users/')) {
+    const row = (name) => ({name, owner:{login:'example'}, private:false, description:'Native app', language:'Swift'});
+    return new Response(JSON.stringify(url.endsWith('page=1') ? Array.from({length:100}, (_,i)=>row('repo-'+i)) : [row('Jupiter'),row('markdown-editor'),{...row('private'),private:true}]));
+  }
+  if (url.endsWith('/readme')) return new Response('Native macOS utility');
+  if (url.endsWith('/contents')) return new Response(JSON.stringify([{name:'Package.swift'},{name:'Sources'}]));
+  throw Error('Unexpected request');
+};
+const signal = new AbortController().signal;
+const catalog = await publicRepos('example', signal, fakeGithub);
+assert.equal(catalog.repos.length, 102);
+assert.equal(catalog.complete, true);
+assert.equal(calls.length, 2);
+assert.equal((await publicRepos('example', signal, fakeGithub)).repos.length, 102);
+assert.equal(calls.length, 2);
+assert.equal(matchRepos('Fix markdown editor export',catalog.repos)[0].name,'markdown-editor');
+assert.equal(matchRepos('Fix example/repo-10',catalog.repos)[0].name,'repo-10');
+const context = await repoContext('Fix Jupiter cleaning',catalog,signal,fakeGithub);
+assert.match(context,/example\/Jupiter/);
+assert.match(context,/Package.swift/);
+assert.match(context,/Native macOS utility/);
+assert.ok(context.length <= 6000);
+assert.equal(calls.length,4);
+await repoContext('Buy milk',catalog,signal,fakeGithub);
+assert.equal(calls.length,4);
+await generatePlanner({input:'Fix Jupiter',kind:'todo',repositories:context,apiKey:'test',fetcher:async (_,opts)=>{
+  const body=JSON.parse(opts.body);
+  assert.equal(JSON.parse(body.messages[1].content).repositories,context);
+  assert.equal(body.tools,undefined);
+  return new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{content:'{"items":[{"text":"Fix cleaning","category":"Jupiter"}]}'}}]}));
+}});
+console.log('Public GitHub context tests passed');

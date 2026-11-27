@@ -102,3 +102,20 @@
   .planner-shimmer { background:none!important; -webkit-text-fill-color:currentColor; }
   .planner-word.is-new { filter:none; transform:none; opacity:1; }
 }
+
+/* Optional GitHub context, integrated into the existing editorial canvas. */
+.planner-github { margin:-12px 0 16px; }
+.planner-github-trigger { display:flex; align-items:center; gap:7px; color:var(--muted)!important; font-size:12px!important; font-weight:450!important; padding:5px 8px; border-radius:999px; max-width:100%; }
+.planner-github-trigger:hover:not(:disabled) { background:var(--planner-field); color:var(--strong)!important; }
+.planner-github-trigger>span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.planner-github-trigger>svg,.planner-github-trigger>.phosphor-icon { flex:none; }
+.planner-github-trigger[aria-expanded=true]>.phosphor-icon { transform:rotate(90deg); }
+.planner-github-meta { color:var(--quiet); }
+.planner-github-form { margin:8px 0 0; padding:12px; background:var(--planner-field); border-radius:12px; display:grid; gap:8px; }
+.planner-github-form label { font-size:12px; color:var(--muted); font-weight:450; }
+.planner-github-form input { width:100%; min-width:0; background:var(--surface); border-radius:8px; padding:10px; font-size:14px; }
+.planner-github-actions { display:flex; align-items:center; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
+.planner-github-actions>span { margin-right:auto; font-size:11px; color:var(--quiet); }
+.planner-github-actions>button:not(.planner-action),.planner-github-error button { padding:6px 10px; border-radius:999px; color:var(--muted); font-size:12px; }
+.planner-github-actions>button:not(.planner-action):hover,.planner-github-error button:hover { background:var(--planner-press); color:var(--strong); }
+.planner-github-error { display:flex; align-items:center; gap:6px; color:var(--muted); font-size:12px; margin:6px 0; }

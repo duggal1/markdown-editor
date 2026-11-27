@@ -22,7 +22,8 @@ export default async function handler(req, res) {
     if (!body || typeof body.input !== 'string' || !body.input.trim() || body.input.length > MAX_INPUT ||
         !['todo', 'memory'].includes(body.kind) ||
         (body.memory !== undefined && (typeof body.memory !== 'string' || body.memory.length > MAX_CONTEXT)) ||
-        (body.existing !== undefined && (typeof body.existing !== 'string' || body.existing.length > MAX_CONTEXT)))
+        (body.existing !== undefined && (typeof body.existing !== 'string' || body.existing.length > MAX_CONTEXT)) ||
+        (body.repositories !== undefined && (typeof body.repositories !== 'string' || body.repositories.length > MAX_CONTEXT)))
       return reply(res, 400, { error: 'Invalid planner request.' });
     const controller = new AbortController();
     const disconnect = () => controller.abort();
@@ -35,7 +36,7 @@ export default async function handler(req, res) {
     res.flushHeaders?.();
     try {
       const result = await generatePlanner({ input: body.input.trim(), kind: body.kind,
-        memory: body.memory || '', existing: body.existing || '', apiKey, signal: controller.signal, onDelta: send });
+        memory: body.memory || '', existing: body.existing || '', repositories: body.repositories || '', apiKey, signal: controller.signal, onDelta: send });
       send({ type: 'done', ...result });
     } catch {
       if (!res.destroyed) res.write(JSON.stringify({ type: 'error', error: 'Could not generate a complete plan. Your existing items were not changed.' }) + '\n');
