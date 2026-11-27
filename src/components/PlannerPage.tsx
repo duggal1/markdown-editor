@@ -178,7 +178,7 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
   return <div className="planner-scroll"><div className="planner-page">
     <header className="planner-header">
       <div className="planner-kicker">{scope}<span aria-hidden="true">/</span>{kind === 'todo' ? 'Planning' : 'Memory'}</div>
-      <div className="planner-title-row"><h1>{kind === 'todo' ? 'To-do' : 'Memory'}</h1></div>
+      <h1>{kind === 'todo' ? 'To-do' : 'Memory'}</h1>
     </header>
     <section className="planner-composer" aria-label="AI planner">
       <div className="planner-composer-top"><div className="planner-composer-label">{kind === 'todo' ? 'Plan with AI' : 'Organize memory'}</div>
