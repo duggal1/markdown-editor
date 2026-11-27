@@ -188,11 +188,11 @@ const long = documentOutline(Array.from({ length: 400 }, (_, i) => '## Heading '
 assert.equal(long.length, 400);
 assert.equal(outlineMarkers(long).length, 12);
 assert.equal(outlineMarkers(long)[11].line, 400);
-assert.equal(DEFAULT_ACCENT, 'purple', 'Purple is the default accent for new workspaces.');
+assert.equal(DEFAULT_ACCENT, 'blue', 'Blue is the default accent for new workspaces.');
 assert.equal(parseAccentTheme('sky'), 'sky');
 assert.equal(parseAccentTheme('purple'), 'purple');
-assert.equal(parseAccentTheme('unknown'), 'purple', 'Invalid preferences must fall back to purple safely.');
-assert.equal(parseAccentTheme(null), 'purple');
+assert.equal(parseAccentTheme('unknown'), 'blue', 'Invalid preferences must fall back to blue safely.');
+assert.equal(parseAccentTheme(null), 'blue');
 assert.equal(applyAccentTheme('teal'), 'teal');
 assert.match(decodeURIComponent(faviconLink.href), /#0d9488/, 'The favicon must follow the selected accent.');
 assert.equal(faviconDocument.documentElement.dataset.accent, 'teal');

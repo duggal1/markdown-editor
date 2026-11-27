@@ -1,3 +1,4 @@
+import { TaskCheck } from './TaskCheck';
 import { createContext, memo, useContext, useDeferredValue, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { ReactNode } from 'react';
 import { SvgInspector } from './SvgInspector';
@@ -55,10 +56,10 @@ function TaskCheckbox({ type, checked }: React.InputHTMLAttributes<HTMLInputElem
   const line = useContext(TaskLineContext);
   const onToggle = useContext(TaskToggleContext);
   // Ordinary HTML inputs in the preview remain non-interactive.
-  if (type !== 'checkbox' || line === null) return <input type={type} checked={checked} disabled />;
-  return <input type="checkbox" checked={Boolean(checked)}
-    aria-label={checked ? 'Mark task incomplete' : 'Mark task complete'}
-    disabled={!onToggle} onChange={event => onToggle?.(line, event.currentTarget.checked)} />;
+  if (type !== 'checkbox') return <input type={type} disabled />;
+  return <TaskCheck className="preview-task-check" checked={Boolean(checked)}
+    label={checked ? 'Mark task incomplete' : 'Mark task complete'}
+    disabled={!onToggle || line === null} onToggle={() => { if (line !== null) onToggle?.(line, !checked); }} />;
 }
 type PositionEvent = CustomEvent<{ line: number; total: number; kind: 'scroll' | 'cursor' | 'jump' }>;
 function locatePreview(scroll: HTMLDivElement, line: number, kind: 'scroll' | 'cursor' | 'jump',

@@ -60,3 +60,110 @@ await assert.rejects(()=>generatePlanner({input:'a',kind:'todo',apiKey:'test',on
 console.log('Streaming tests passed');
 
 assert.deepEqual(streamedItems('{"items":[{"text":"One"},{"text":"Two"}]}'),['One','Two']);
+
+const { githubOwner, publicRepos, matchRepos, repoContext } = await import('../src/lib/plannerGithub.ts');
+assert.equal(githubOwner('https://github.com/Example/flow'), 'example');
+assert.equal(githubOwner('@Example'), 'example');
+assert.equal(githubOwner('https://evil.example/github.com/example'), '');
+assert.equal(githubOwner('a--b'), '');
+const calls = [];
+const fakeGithub = async (url, opts) => {
+  calls.push(url);
+  assert.equal(opts.credentials, 'omit');
+  assert.equal(opts.headers.Authorization, undefined);
+  if (url.includes('/users/')) {
+    const row = (name) => ({name, owner:{login:'example'}, private:false, description:'Native app', language:'Swift'});
+    return new Response(JSON.stringify(url.endsWith('page=1') ? Array.from({length:100}, (_,i)=>row('repo-'+i)) : [row('Jupiter'),row('markdown-editor'),{...row('private'),private:true}]));
+  }
+  if (url.endsWith('/readme')) return new Response('Native macOS utility');
+  if (url.endsWith('/contents')) return new Response(JSON.stringify([{name:'Package.swift'},{name:'Sources'}]));
+  throw Error('Unexpected request');
+};
+const signal = new AbortController().signal;
+const catalog = await publicRepos('example', signal, fakeGithub);
+assert.equal(catalog.repos.length, 102);
+assert.equal(catalog.complete, true);
+assert.equal(calls.length, 2);
+assert.equal((await publicRepos('example', signal, fakeGithub)).repos.length, 102);
+assert.equal(calls.length, 2);
+assert.equal(matchRepos('Fix markdown editor export',catalog.repos)[0].name,'markdown-editor');
+assert.equal(matchRepos('Fix example/repo-10',catalog.repos)[0].name,'repo-10');
+const context = await repoContext('Fix Jupiter cleaning',catalog,signal,fakeGithub);
+assert.match(context,/example\/Jupiter/);
+assert.match(context,/Package.swift/);
+assert.match(context,/Native macOS utility/);
+assert.ok(context.length <= 6000);
+assert.equal(calls.length,4);
+await repoContext('Buy milk',catalog,signal,fakeGithub);
+assert.equal(calls.length,4);
+await generatePlanner({input:'Fix Jupiter',kind:'todo',repositories:context,apiKey:'test',fetcher:async (_,opts)=>{
+  const body=JSON.parse(opts.body);
+  assert.equal(JSON.parse(body.messages[1].content).repositories,context);
+  assert.equal(body.tools,undefined);
+  return new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{content:'{"items":[{"text":"Fix cleaning","category":"Jupiter"}]}'}}]}));
+}});
+console.log('Public GitHub context tests passed');
+
+assert.equal(githubOwner('github.com/Example/flow'), 'example');
+
+const { plannerAccess, createPlannerLimiter } = await import('../server/plannerAccess.js');
+assert.deepEqual(plannerAccess({REFLECTION_API_KEY:' test-key '},undefined),{apiKey:'test-key',protected:false});
+assert.equal(plannerAccess({},undefined).status,503);
+assert.match(plannerAccess({},undefined).error,/REFLECTION_API_KEY/);
+assert.equal(plannerAccess({REFLECTION_API_KEY:'key',FLOW_PLANNER_ACCESS_KEY:'short'},undefined).status,503);
+const protectedEnv = {REFLECTION_API_KEY:'key',FLOW_PLANNER_ACCESS_KEY:'private-access-key-long-enough'};
+assert.equal(plannerAccess(protectedEnv,undefined).status,401);
+assert.equal(plannerAccess(protectedEnv,'wrong').status,401);
+assert.equal(plannerAccess(protectedEnv,protectedEnv.FLOW_PLANNER_ACCESS_KEY).protected,true);
+let clock=100000;
+const admit=createPlannerLimiter(()=>clock);
+const release=admit('one'); assert.equal(typeof release,'function'); assert.equal(admit('one'),null);
+release(); release();
+for(let i=0;i<5;i++) { const finish=admit('one'); assert.ok(finish); finish(); }
+assert.equal(admit('one'),null);
+clock+=60001; assert.ok(admit('one'));
+console.log('Planner configuration and admission tests passed');
+
+
+// Route regression: only REFLECTION_API_KEY must be enough to start an authenticated
+// provider request and finish the NDJSON stream; no real credentials or network used.
+const { EventEmitter } = await import('node:events');
+const { default: plannerHandler } = await import('../api/planner.js');
+const originalFetch = globalThis.fetch;
+const originalKey = process.env.REFLECTION_API_KEY;
+const originalAccess = process.env.FLOW_PLANNER_ACCESS_KEY;
+class MockResponse extends EventEmitter {
+  headers = {}; statusCode = 200; chunks = []; destroyed = false; headersSent = false;
+  setHeader(name,value) { this.headers[name] = value; }
+  status(code) { this.statusCode=code; return this; }
+  json(body) { this.body=body; this.end(); return this; }
+  flushHeaders() { this.headersSent=true; }
+  write(value) { this.chunks.push(value); return true; }
+  end() { this.ended=true; }
+}
+try {
+  process.env.REFLECTION_API_KEY='test-provider-key';
+  delete process.env.FLOW_PLANNER_ACCESS_KEY;
+  globalThis.fetch=async (url, options)=>{
+    assert.equal(url,'https://api.reflection.ai/openai/v1/chat/completions');
+    assert.equal(options.headers.Authorization,'Bearer test-provider-key');
+    assert.equal(JSON.parse(options.body).stream,true);
+    return chunked(packet({reasoning_content:'Organize'})+packet({content:'{"items":[{"text":"Fix Jupiter","category":"Jupiter"}]}'})+packet({},'stop')+'data: [DONE]\r\n\r\n');
+  };
+  const response=new MockResponse();
+  await plannerHandler({method:'POST',headers:{host:'example.test',origin:'https://example.test'},body:{kind:'todo',input:'Fix Jupiter'},socket:{remoteAddress:'127.0.0.1'}},response);
+  assert.equal(response.statusCode,200);
+  assert.equal(response.ended,true);
+  assert.equal(response.chunks.map(line=>JSON.parse(line)).at(-1).type,'done');
+  assert.equal(response.chunks.map(line=>JSON.parse(line)).at(-1).items[0].text,'Fix Jupiter');
+} finally {
+  globalThis.fetch=originalFetch;
+  if (originalKey === undefined) delete process.env.REFLECTION_API_KEY; else process.env.REFLECTION_API_KEY=originalKey;
+  if (originalAccess === undefined) delete process.env.FLOW_PLANNER_ACCESS_KEY; else process.env.FLOW_PLANNER_ACCESS_KEY=originalAccess;
+}
+console.log('Planner endpoint single-key regression passed');
+
+const { DEFAULT_ACCENT, parseAccentTheme } = await import('../src/lib/accentTheme.ts');
+assert.equal(DEFAULT_ACCENT,'blue');
+assert.equal(parseAccentTheme(undefined),'blue');
+assert.equal(parseAccentTheme('orange'),'orange');

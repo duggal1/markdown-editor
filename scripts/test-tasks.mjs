@@ -49,10 +49,22 @@ const preview = readFileSync(new URL('../src/components/MarkdownPreview.tsx', im
 const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 assert.match(preview, /TaskToggleContext\.Provider value=\{onToggleTask\}/);
 assert.match(preview, /TaskLineContext\.Provider value=\{taskLine\}/);
-assert.match(preview, /onChange=\{event => onToggle\?\.\(line, event\.currentTarget\.checked\)\}/);
+assert.match(preview, /onToggle=\{\(\) => \{ if \(line !== null\) onToggle\?\.\(line, !checked\); \}\}/);
+const check = readFileSync(new URL('../src/components/TaskCheck.tsx', import.meta.url), 'utf8');
+assert.match(check, /role="checkbox" aria-checked=\{checked\}/);
+assert.doesNotMatch(check, /<input/);
 assert.match(app, /view\.dispatch\(\{ changes: \{/);
 assert.match(app, /onToggleTask=\{onToggleTask\}/);
-assert.match(css, /li\.task-list-item input\[type='checkbox'\]:checked/);
+assert.match(css, /\.flow-task-check\[aria-checked=true\] \.flow-task-box/);
 assert.match(css, /cursor:pointer; touch-action:manipulation/);
 
 console.log('Task checkbox markers, nested lists, virtualized source lines and integration checks passed.');
+
+const planner = readFileSync(new URL('../src/components/PlannerPage.tsx', import.meta.url), 'utf8');
+const plannerCss = readFileSync(new URL('../src/components/planner.css', import.meta.url), 'utf8');
+assert.match(planner, /<TaskCheck className="planner-check"/);
+assert.match(preview, /<TaskCheck className="preview-task-check"/);
+assert.doesNotMatch(planner, /className="planner-kicker"/);
+assert.match(plannerCss, /\.planner-page \.planner-inline-input:is\(:focus,:focus-visible\)[^}]*outline:0; box-shadow:none/);
+assert.match(plannerCss, /\.planner-row \{[^}]*border-radius:999px/);
+assert.match(plannerCss, /\.planner-scroll::-webkit-scrollbar \{ display:none/);

@@ -11,7 +11,7 @@ export const ACCENT_THEMES = [
   { id: 'rose', label: 'Rose' },
 ] as const;
 export type AccentTheme = (typeof ACCENT_THEMES)[number]['id'];
-export const DEFAULT_ACCENT: AccentTheme = 'purple';
+export const DEFAULT_ACCENT: AccentTheme = 'blue';
 
 export function parseAccentTheme(input: unknown): AccentTheme {
   return ACCENT_THEMES.find(item => item.id === input)?.id ?? DEFAULT_ACCENT;
