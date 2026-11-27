@@ -57,7 +57,9 @@
 .planner-thinking-toggle:hover { color:var(--strong)!important; }
 .planner-thinking-chevron { display:grid; place-items:center; transition:transform 320ms var(--planner-ease); }
 .planner-thinking-toggle[aria-expanded=true] .planner-thinking-chevron { transform:rotate(90deg); }
-.planner-thinking-reveal { overflow:hidden; }
+.planner-thinking-reveal { overflow:hidden; min-height:0; }
+.planner-composer textarea:disabled { opacity:1; cursor:default; }
+.planner-error span { min-width:0; overflow-wrap:anywhere; }
 .planner-thinking-text { font-size:13px; line-height:1.65; color:var(--muted); white-space:pre-wrap; overflow-wrap:anywhere; max-height:180px; overflow:auto; padding:8px 0 0; scrollbar-width:thin; }
 .planner-thinking-text:empty { padding:0; }
 .planner-shimmer { color:var(--planner-shimmer-base); }
@@ -94,7 +96,7 @@
 .planner-page .planner-inline-input,.planner-page .planner-inline-input:is(:focus,:focus-visible) { appearance:none; -webkit-appearance:none; border:0; border-radius:999px; outline:0; box-shadow:none; background:transparent; }
 .planner-page .planner-row-text:focus-visible { outline:none; }
 .planner-row:has(.planner-row-text:focus-visible) { background:var(--planner-control); }
-.planner-row.is-done .planner-row-text { color:var(--muted); text-decoration:line-through; }
+.planner-row.is-done .planner-row-text { color:var(--text); opacity:.48; text-decoration:line-through; text-decoration-thickness:1px; }
 .planner-page .planner-remove { opacity:0; background:transparent; margin-right:3px; transition:opacity 100ms var(--planner-ease),background-color 100ms var(--planner-ease),color 100ms var(--planner-ease); }
 .planner-row:hover .planner-remove,.planner-row:focus-within .planner-remove,.planner-page .planner-remove:focus-visible { opacity:1; }
 .planner-page .planner-remove:hover { background:var(--planner-press); }
