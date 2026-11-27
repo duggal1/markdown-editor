@@ -109,6 +109,13 @@ async function retireVersion(id, version, count) {
     setTtl(path, { ttlDays: 1 })));
 }
 
+// Revalidate authorization before returning 304; revocation must never be hidden by a cache hit.
+function unchanged(req, res, revision) {
+  const etag = '"' + createHash('sha256').update(JSON.stringify(revision)).digest('hex') + '"';
+  res.setHeader('ETag', etag);
+  if (req.headers['if-none-match'] === etag) { res.status(304).end(); return true; }
+  return false;
+}
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'private, no-store, max-age=0');
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -135,6 +142,7 @@ export default async function handler(req, res) {
         if (!backup || backup.deleted || backup.meta.assetType !== undefined)
           return reply(res, 404, { error: 'Share not found' });
         const { title, language, updatedAt } = backup.meta;
+        if (unchanged(req, res, [id, backup.version, title, language, updatedAt])) return;
         if (!backup.bytes) return reply(res, 200, { title, language, updatedAt, markdown: '' });
         const paths = Array.from({ length: Math.ceil(backup.bytes / (backup.partBytes || LEGACY_PART)) },
           (_, i) => shared.backupRoot + '/parts/' + backup.version + '/' + i + '.bin');
@@ -146,11 +154,13 @@ export default async function handler(req, res) {
             shared.count !== partCount(shared.bytes, shared.partBytes || LEGACY_PART) || shared.bytes > MAX_MARKDOWN_BYTES) {
           return reply(res, 500, { error: 'Invalid cloud document' });
         }
+        if (unchanged(req, res, [id, shared.version, shared.title, shared.language, shared.updatedAt])) return;
         const urls = await signedUrls(partPaths(id, shared.version, shared.count), 'get');
         return reply(res, 200, { title: shared.title, language: shared.language,
           updatedAt: shared.updatedAt, bytes: shared.bytes, checksum: shared.checksum, urls });
       }
       // Existing links made before the chunked protocol keep working.
+      if (unchanged(req, res, [id, shared.title, shared.markdown, shared.language, shared.updatedAt])) return;
       return reply(res, 200, { title: shared.title, markdown: shared.markdown,
         language: shared.language, updatedAt: shared.updatedAt });
     }
