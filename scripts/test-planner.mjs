@@ -19,7 +19,8 @@ const contexts = appendPlannerItems('', 'memory', [{category:'Projects',text:'Ju
 assert.match(selectPlannerContext(contexts,'memory','Jupiter Swift',32),/Jupiter uses Swift/);
 assert.equal(plannerRows('~~~md\n- [ ] not a task\n~~~','todo').length,0);
 assert.equal(reasoningEffort('Buy milk'),'low');
-assert.equal(reasoningEffort('Break down the dependencies and milestones'),'medium');
+assert.equal(reasoningEffort('x'.repeat(12000)),'low');
+assert.equal(reasoningEffort('Break down the dependencies and milestones'),'low');
 assert.throws(()=>validateItems('{"items":[{"text":"a\\nb","category":"x"}]}'));
 const result=await generatePlanner({input:'Buy milk',kind:'todo',apiKey:'test',fetcher:async (url, options)=>{
   assert.equal(url,'https://api.reflection.ai/openai/v1/chat/completions');
@@ -56,7 +57,13 @@ assert.equal(clientEvents.at(-1).type,'done');
 assert.deepEqual(streamedItems('{"items":[{"text":"Buy te'),['Buy te']);
 assert.deepEqual(streamedItems('{"items":[{"text":"Buy tea","category":"Inbox"},{"text":"Write docs'),['Buy tea','Write docs']);
 await assert.rejects(()=>consumePlannerStream(chunked(JSON.stringify(events[0])+'\n'),()=>{}),/interrupted/);
-await assert.rejects(()=>generatePlanner({input:'a',kind:'todo',apiKey:'test',onDelta:()=>{},fetcher:async()=>chunked(packet({content:'{}'},'stop'))}),/Incomplete/);
+await assert.rejects(()=>generatePlanner({input:'a',kind:'todo',apiKey:'test',onDelta:()=>{},fetcher:async()=>chunked(packet({content:'{}'},'stop'))}),/Invalid plan/);
+const noDone = await generatePlanner({input:'a',kind:'todo',apiKey:'test',onDelta:()=>{},fetcher:async()=>chunked(packet({content:'{"items":[{"text":"A","category":"Inbox"}]}'},'stop'))});
+assert.equal(noDone.items[0].text,'A');
+let canceled=false;
+const openStream=new Response(new ReadableStream({start(c){c.enqueue(bytes.encode(JSON.stringify({type:'done',...streamResult})+'\n'));},cancel(){canceled=true;}}));
+await consumePlannerStream(openStream,()=>{});
+assert.equal(canceled,true);
 console.log('Streaming tests passed');
 
 assert.deepEqual(streamedItems('{"items":[{"text":"One"},{"text":"Two"}]}'),['One','Two']);
