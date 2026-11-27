@@ -165,6 +165,9 @@ export function formatPlainTextAsMarkdown(source: string, options: MarkdownForma
       output.push(b); continue;
     }
     const value = b.text.trim();
+    // Common copy/paste bullets which are not valid Markdown.
+    const bullet = /^(?:[•●▪◦‣]|\(-\))\s*(\S.*)$/.exec(value);
+    if (bullet) { output.push({ kind: 'list', text: '- ' + bullet[1], generated: true }); continue; }
     const label = feature(value);
     const after = next[i];
     const before = blocks[i - 1];
@@ -186,9 +189,6 @@ export function formatPlainTextAsMarkdown(source: string, options: MarkdownForma
       level = depth;
       output.push({ kind: 'heading', text: '#'.repeat(depth) + ' ' + value, generated: true }); continue;
     }
-    // Common copy/paste bullets which are not valid Markdown.
-    const bullet = /^(?:[•●▪◦‣]|\(-\))\s*(\S.*)$/.exec(value);
-    if (bullet) { output.push({ kind: 'list', text: '- ' + bullet[1], generated: true }); continue; }
     // Spoken topic transitions are useful headings when the transcript itself
     // supplies a short, explicit question or signpost. Never invent a summary.
     const firstSentence = value.length >= 140 ? sentences(value)[0] : '';
