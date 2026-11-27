@@ -259,3 +259,11 @@ assert.match(perfStore, /tx\.oncomplete = \(\) => \{\s*if \(store === 'documents
 assert.match(app, /if \(isLocallyCommitted\(doc\) && !saveQueue\.current\.has\(id\)\) return;/);
 assert.match(app, /if \(doc && !isLocallyCommitted\(doc\)\) saveRecovery\(doc\)/);
 assert.match(read('src/workers/search.ts'), /const batchSize = 4;[\s\S]*?await Promise\.all\(documents\.slice/);
+
+assert.match(app, /minmax\(0, 0fr\) minmax\(0, 100fr\)/);
+assert.match(app, /minmax\(0, 100fr\) minmax\(0, 0fr\)/);
+assert.match(app, /animatePaneLayout = !motionOff && !resizingSplit && !compact/);
+assert.match(app, /gridColumn: '2 \/ 3', left: 0/);
+assert.match(app, /inert=\{presentationMode === 'write'\}/);
+assert.match(app, /closingPreview && animatePaneLayout/);
+assert.match(read('src/components/planner.css'), /--planner-field:#101010/);
