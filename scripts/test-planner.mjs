@@ -123,3 +123,42 @@ for(let i=0;i<5;i++) { const finish=admit('one'); assert.ok(finish); finish(); }
 assert.equal(admit('one'),null);
 clock+=60001; assert.ok(admit('one'));
 console.log('Planner configuration and admission tests passed');
+
+
+// Route regression: only REFLECTION_API_KEY must be enough to start an authenticated
+// provider request and finish the NDJSON stream; no real credentials or network used.
+const { EventEmitter } = await import('node:events');
+const { default: plannerHandler } = await import('../api/planner.js');
+const originalFetch = globalThis.fetch;
+const originalKey = process.env.REFLECTION_API_KEY;
+const originalAccess = process.env.FLOW_PLANNER_ACCESS_KEY;
+class MockResponse extends EventEmitter {
+  headers = {}; statusCode = 200; chunks = []; destroyed = false; headersSent = false;
+  setHeader(name,value) { this.headers[name] = value; }
+  status(code) { this.statusCode=code; return this; }
+  json(body) { this.body=body; this.end(); return this; }
+  flushHeaders() { this.headersSent=true; }
+  write(value) { this.chunks.push(value); return true; }
+  end() { this.ended=true; }
+}
+try {
+  process.env.REFLECTION_API_KEY='test-provider-key';
+  delete process.env.FLOW_PLANNER_ACCESS_KEY;
+  globalThis.fetch=async (url, options)=>{
+    assert.equal(url,'https://api.reflection.ai/openai/v1/chat/completions');
+    assert.equal(options.headers.Authorization,'Bearer test-provider-key');
+    assert.equal(JSON.parse(options.body).stream,true);
+    return chunked(packet({reasoning_content:'Organize'})+packet({content:'{"items":[{"text":"Fix Jupiter","category":"Jupiter"}]}'})+packet({},'stop')+'data: [DONE]\r\n\r\n');
+  };
+  const response=new MockResponse();
+  await plannerHandler({method:'POST',headers:{host:'example.test',origin:'https://example.test'},body:{kind:'todo',input:'Fix Jupiter'},socket:{remoteAddress:'127.0.0.1'}},response);
+  assert.equal(response.statusCode,200);
+  assert.equal(response.ended,true);
+  assert.equal(response.chunks.map(line=>JSON.parse(line)).at(-1).type,'done');
+  assert.equal(response.chunks.map(line=>JSON.parse(line)).at(-1).items[0].text,'Fix Jupiter');
+} finally {
+  globalThis.fetch=originalFetch;
+  if (originalKey === undefined) delete process.env.REFLECTION_API_KEY; else process.env.REFLECTION_API_KEY=originalKey;
+  if (originalAccess === undefined) delete process.env.FLOW_PLANNER_ACCESS_KEY; else process.env.FLOW_PLANNER_ACCESS_KEY=originalAccess;
+}
+console.log('Planner endpoint single-key regression passed');
