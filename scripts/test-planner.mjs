@@ -58,3 +58,5 @@ assert.deepEqual(streamedItems('{"items":[{"text":"Buy tea","category":"Inbox"},
 await assert.rejects(()=>consumePlannerStream(chunked(JSON.stringify(events[0])+'\n'),()=>{}),/interrupted/);
 await assert.rejects(()=>generatePlanner({input:'a',kind:'todo',apiKey:'test',onDelta:()=>{},fetcher:async()=>chunked(packet({content:'{}'},'stop'))}),/Incomplete/);
 console.log('Streaming tests passed');
+
+assert.deepEqual(streamedItems('{"items":[{"text":"One"},{"text":"Two"}]}'),['One','Two']);

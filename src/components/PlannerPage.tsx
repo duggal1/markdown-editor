@@ -74,7 +74,7 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
     if (!prompt.trim() || request.current) return;
     const controller = new AbortController(); request.current = controller;
     setBusy(true); setError(''); setSuggestions(null); setThinkingOpen(true);
-    streamBuffer.current = { reasoning: '', content: '' }; setStream(streamBuffer.current);
+    streamBuffer.current = { reasoning: '', content: '' }; setStream({ ...streamBuffer.current });
     try {
       const response = await fetch('/api/planner', { method: 'POST', credentials: 'same-origin', signal: controller.signal,
         headers: { 'Content-Type': 'application/json', 'X-Flow-Planner-Key': access },
@@ -123,8 +123,8 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
       {needsAccess && <label className="planner-access">Private access key<input type="password" autoComplete="off" value={access} onChange={e => setAccess(e.target.value)} placeholder="Enter your deployment access key"/></label>}
       <div className="planner-composer-footer">
         {kind === 'todo' && memory.trim() ? <button type="button" className="planner-context" aria-pressed={includeMemory} onClick={() => setIncludeMemory(v => !v)}><span className={'planner-context-dot' + (includeMemory ? ' is-on' : '')}/>Use saved memory</button> : <span aria-hidden="true"/>}
-        {busy ? <button type="button" className="planner-action" onClick={() => request.current?.abort()}><span className="planner-pulse"/> Stop</button> :
-          <button type="button" className="planner-action" disabled={!prompt.trim()} onClick={() => { void generate(); }}>Generate <span aria-hidden="true">↑</span></button>}
+        {busy ? <button type="button" className="planner-action" aria-label="Stop generation" onClick={() => request.current?.abort()}><span className="planner-pulse"/> Stop</button> :
+          <button type="button" className="planner-action" disabled={!prompt.trim()} onClick={() => { void generate(); }}>Generate <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 13V3m-4 4 4-4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></button>}
       </div>
       {(busy || stream.reasoning) && <div className="planner-thinking">
         <button type="button" className="planner-thinking-toggle" aria-expanded={thinkingOpen} onClick={() => setThinkingOpen(value => !value)}>

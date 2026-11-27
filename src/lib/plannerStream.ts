@@ -43,8 +43,7 @@ export async function consumePlannerStream(response: Response, onEvent: (event: 
 export function streamedItems(source: string): string[] {
   const values: string[] = [];
   const pattern = /"text"\s*:\s*"/g;
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(source))) {
+  while (pattern.exec(source) !== null) {
     let end = pattern.lastIndex, escaped = false;
     for (; end < source.length; end++) {
       const char = source[end];

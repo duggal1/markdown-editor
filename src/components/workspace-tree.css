@@ -212,3 +212,7 @@
 
 .planner-tree-row,.planner-tree-branch>button.planner-tree-chevron { cursor:pointer; }
 .planner-tree-row:hover { background:var(--hover); }
+
+.private-tree .planner-tree-row:not(:disabled),.private-tree .planner-tree-branch>button.planner-tree-chevron:not(:disabled) { cursor:pointer; }
+.private-tree .planner-tree-row > :is(svg,span),.private-tree .planner-tree-row > span svg,.private-tree .planner-tree-chevron svg { cursor:inherit; }
+.private-tree .planner-tree-row:focus-visible,.private-tree .planner-tree-branch>button.planner-tree-chevron:focus-visible { outline:1px solid var(--muted); outline-offset:-1px; }
