@@ -34,7 +34,7 @@ const ItemRow = memo(function ItemRow({ row, kind, onEdit }: { row: PlannerRow; 
   const [draft, setDraft] = useState(row.text);
   const canceled = useRef(false);
   function finish() { if (!canceled.current && draft.trim()) onEdit(source => editPlannerRow(source, kind, row, draft)); setEditing(false); }
-  return <div className={'planner-row' + (row.done ? ' is-done' : '')}>
+  return <div className={'planner-row' + (row.done ? ' is-done' : '') + (editing ? ' is-editing' : '')}>
     {kind === 'todo' ? <TaskCheck className="planner-check" checked={row.done} label={row.text}
       onToggle={() => onEdit(source => {
         const current = plannerRows(source, kind).find(item => item.line === row.line);
@@ -45,11 +45,13 @@ const ItemRow = memo(function ItemRow({ row, kind, onEdit }: { row: PlannerRow; 
         if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
         if (e.key === 'Escape') { e.preventDefault(); canceled.current = true; setEditing(false); }
       }}/> : <button type="button" className="planner-row-text" onClick={() => { canceled.current = false; setDraft(row.text); setEditing(true); }}>{row.text}</button>}
-    <button type="button" className="planner-remove" aria-label={'Remove ' + row.text} onClick={() => onEdit(source => editPlannerRow(source, kind, row, null))}><Icon name="trash" size={14}/></button>
+    <button type="button" className="planner-remove" aria-label={'Remove ' + row.text} title="Remove item"
+      onPointerDown={event => { if (editing) event.preventDefault(); }}
+      onClick={() => { canceled.current = true; setEditing(false); onEdit(source => editPlannerRow(source, kind, row, null)); }}><Icon name="x" size={14}/></button>
   </div>;
 }, (a, b) => a.kind === b.kind && a.onEdit === b.onEdit && a.row.line === b.row.line && a.row.text === b.row.text && a.row.category === b.row.category && a.row.done === b.row.done);
 
-export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: Props) {
+export default function PlannerPage({ kind, markdown, memory, onEdit }: Props) {
   const [github, setGithub] = useState(readGithub);
   const [githubDraft, setGithubDraft] = useState(github || '');
   const [githubOpen, setGithubOpen] = useState(github === null);
@@ -175,7 +177,6 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
   }
   return <div className="planner-scroll"><div className="planner-page">
     <header className="planner-header">
-      <div className="planner-kicker">{scope}<span aria-hidden="true">/</span>{kind === 'todo' ? 'Planning' : 'Memory'}</div>
       <h1>{kind === 'todo' ? 'To-do' : 'Memory'}</h1>
     </header>
     <section className="planner-composer" aria-label="AI planner">

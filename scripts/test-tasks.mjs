@@ -59,3 +59,12 @@ assert.match(css, /\.flow-task-check\[aria-checked=true\] \.flow-task-box/);
 assert.match(css, /cursor:pointer; touch-action:manipulation/);
 
 console.log('Task checkbox markers, nested lists, virtualized source lines and integration checks passed.');
+
+const planner = readFileSync(new URL('../src/components/PlannerPage.tsx', import.meta.url), 'utf8');
+const plannerCss = readFileSync(new URL('../src/components/planner.css', import.meta.url), 'utf8');
+assert.match(planner, /<TaskCheck className="planner-check"/);
+assert.match(preview, /<TaskCheck className="preview-task-check"/);
+assert.doesNotMatch(planner, /className="planner-kicker"/);
+assert.match(plannerCss, /\.planner-page \.planner-inline-input:is\(:focus,:focus-visible\)[^}]*outline:0; box-shadow:none/);
+assert.match(plannerCss, /\.planner-row \{[^}]*border-radius:999px/);
+assert.match(plannerCss, /\.planner-scroll::-webkit-scrollbar \{ display:none/);

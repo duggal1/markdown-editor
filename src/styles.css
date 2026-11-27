@@ -196,7 +196,7 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .markdown-preview ul > li:not(.task-list-item)::before { content: ''; position: absolute; left: -14px; top: calc(.925em - 2px); width: 4px; height: 4px; border-radius: .5px; background: var(--muted); }
 /* Shared custom task check, matching planner and Markdown preview. */
 .flow-task-check {
-  --task-edge:#525252; --task-hover:#737373; --task-fill:transparent;
+  --task-edge:#595959; --task-hover:#858585; --task-fill:transparent;
   appearance:none; -webkit-appearance:none; display:inline-grid; place-items:center;
   padding:0; width:28px; height:28px; border:0; border-radius:999px; background:transparent;
   color:var(--text); cursor:pointer; touch-action:manipulation; vertical-align:middle;
@@ -211,8 +211,9 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .flow-task-check:focus-visible { outline:2px solid var(--muted); outline-offset:1px; }
 .flow-task-check:disabled { opacity:.55; cursor:default; }
 .flow-task-check svg { pointer-events:none; }
-.markdown-preview .preview-task-check { width:26px; height:26px; margin:0 5px 0 -4px; vertical-align:-7px; }
+.markdown-preview .preview-task-check { width:28px; height:28px; margin:0 6px 0 -5px; vertical-align:-8px; flex:none; }
 .markdown-preview .preview-task-check:hover:not(:disabled) { background:var(--hover); }
+.markdown-preview .preview-task-check svg { display:block; width:16px; height:16px; max-width:none; margin:0; }
 @media (prefers-reduced-motion:reduce) { .flow-task-check,.flow-task-check * { transition:none!important; } }
 .markdown-preview a { color: var(--blue); text-decoration: underline dotted; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .markdown-preview a:hover { text-decoration-style: solid; }
