@@ -8,9 +8,11 @@ import './workspace-tree.css';
 
 type Props = {
   workspaces: Workspace[]; folders: Folder[]; documents: FlowDocument[]; allDocuments: FlowDocument[];
-  activeId: string; activeWorkspaceId: string; search: string; searchHits: SearchHit[];
+  activeId: string; activeWorkspaceId: string; selectedFolderId: string | null; search: string; searchHits: SearchHit[];
   searchPending: boolean; newFolderId: string | null; reveal: { id: string } | null;
   onOpen: (id: string) => void;
+  onSelectFolder: (id: string | null) => void;
+  onNewPageInSelection: () => void;
   onNewDocument: (workspaceId: string, folderId?: string, parentId?: string) => void;
   onNewFolder: (workspaceId: string) => void;
   onRenameFolder: (id: string, name: string) => void;
@@ -53,8 +55,8 @@ function Rename({ title, onSave, onCancel }: { title: string; onSave: (s: string
     onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); finish(e.key === 'Enter'); } }} />;
 }
 function WorkspaceTree({
-  workspaces, folders, documents, allDocuments, activeId, activeWorkspaceId, search, searchHits, searchPending, newFolderId, reveal,
-  onOpen, onNewDocument, onNewFolder, onRenameFolder, onRenameDocument, onDuplicateDocument, onMovePage, onDeleteFolder, onDeleteDocument,
+  workspaces, folders, documents, allDocuments, activeId, activeWorkspaceId, selectedFolderId, search, searchHits, searchPending, newFolderId, reveal,
+  onOpen, onSelectFolder, onNewPageInSelection, onNewDocument, onNewFolder, onRenameFolder, onRenameDocument, onDuplicateDocument, onMovePage, onDeleteFolder, onDeleteDocument,
 }: Props) {
   const [closed, setClosed] = useState<Set<string>>(() => readClosedTree());
   const closedRef = useRef(closed);
@@ -191,7 +193,7 @@ function WorkspaceTree({
       {!searching && <div><button type="button" title="New folder" aria-label="New folder" disabled={!defaultWorkspace}
         onClick={() => onNewFolder(defaultWorkspace)}><TreeGlyph kind="folder"/></button>
         <button type="button" title="New page" aria-label="New page" disabled={!defaultWorkspace}
-          onClick={() => onNewDocument(defaultWorkspace)}><Icon name="plus" size={16}/></button></div>}
+          onClick={onNewPageInSelection}><Icon name="plus" size={16}/></button></div>}
     </div>
     <div className="filetree-scroll private-tree" role="tree" aria-label={searching ? 'Search results' : 'Private pages'}>
       {searching ? <>
@@ -205,29 +207,29 @@ function WorkspaceTree({
       </> : <>
         {tree.topLevelFolders.map(folder => {
           const open = !closed.has(folder.id);
-          return <div key={folder.id} className="workspace-sibling-folder" role="treeitem" aria-level={1} aria-expanded={open}>
-            <div className={'filetree-row private-page-row private-folder-row' + (drop === folder.id ? ' is-drop' : '')}
+          return <div key={folder.id} className="workspace-sibling-folder" role="treeitem" aria-level={1} aria-expanded={open} aria-selected={selectedFolderId === folder.id}>
+            <div className={'filetree-row private-page-row private-folder-row' + (drop === folder.id ? ' is-drop' : '') + (selectedFolderId === folder.id ? ' is-selected-folder' : '')}
               style={{ paddingInlineStart: 2 }}
               onDragOver={e => dragOver(e, folder.id)} onDrop={e => dropped(e, undefined, folder.id)}
               onDragLeave={() => setDrop(old => old === folder.id ? null : old)}>
-              <button type="button" className="workspace-folder-toggle" onClick={() => toggle(folder.id)}
+              <button type="button" className="workspace-folder-toggle" onClick={() => { onSelectFolder(folder.id); toggle(folder.id); }}
                 aria-label={(open ? 'Collapse ' : 'Expand ') + folder.name}>
                 <span className={'workspace-root-chevron' + (open ? ' is-open' : '')}><Icon name="chevron" size={12}/></span>
                 <TreeGlyph kind="folder" open={open}/>
               </button>
               {editing === folder.id ? <Rename title={folder.name} onSave={value => { onRenameFolder(folder.id, value); setEditing(null); }} onCancel={() => setEditing(null)}/>
-                : <button type="button" className="filetree-label" onClick={() => toggle(folder.id)}>{folder.name}</button>}
+                : <button type="button" className="filetree-label" onClick={() => { onSelectFolder(folder.id); toggle(folder.id); }}>{folder.name}</button>}
               <button type="button" className="private-add-child" aria-label={'Add page to ' + folder.name} onClick={() => { expand(folder.id); onNewDocument(folder.workspaceId, folder.id); }}><Icon name="plus" size={14}/></button>
               {more(folder.id, 'folder', folder.name)}
             </div>
             {open && <div role="group">{(tree.children.get('folder:' + folder.id) || []).map(doc => row(doc, 1))}</div>}
           </div>;
         })}
-        <div className="workspace-root" role="treeitem" aria-level={1} aria-expanded={!closed.has(ROOT)}>
-          <div className={'filetree-row workspace-root-row' + (drop === ROOT ? ' is-drop' : '')}
+        <div className="workspace-root" role="treeitem" aria-level={1} aria-expanded={!closed.has(ROOT)} aria-selected={selectedFolderId === null}>
+          <div className={'filetree-row workspace-root-row' + (drop === ROOT ? ' is-drop' : '') + (selectedFolderId === null ? ' is-selected-folder' : '')}
             onDragOver={e => dragOver(e, ROOT)} onDrop={e => { dropped(e); expand(ROOT); }}
             onDragLeave={() => setDrop(old => old === ROOT ? null : old)}>
-            <button type="button" className="workspace-root-toggle" onClick={() => toggle(ROOT)}
+            <button type="button" className="workspace-root-toggle" onClick={() => { onSelectFolder(null); toggle(ROOT); }}
               aria-label={(closed.has(ROOT) ? 'Expand ' : 'Collapse ') + 'workspace'}>
               <span className={'workspace-root-chevron' + (!closed.has(ROOT) ? ' is-open' : '')}><Icon name="chevron" size={12}/></span>
               <TreeGlyph kind="folder" open={!closed.has(ROOT)}/>
@@ -247,7 +249,7 @@ function WorkspaceTree({
       </>}
     </div>
     {menu && createPortal(<div role="menu" className="filetree-menu private-page-menu" style={{ left: menu.x, top: menu.y }}>
-      <div className="private-menu-label"><SuppliedIcon kind="lock" size={13}/> Private pages</div>
+      <div className="private-menu-label"><SuppliedIcon kind="lock" size={13}/><span>Private pages</span></div>
       {menu.kind === 'page' && <button type="button" role="menuitem" onClick={() => {
         const page = byId.get(menu.id); if (page && !page.asset) { expand(page.id); onNewDocument(page.workspaceId, page.folderId, page.id); } setMenu(null);
       }}><Icon name="plus" size={15}/> Add subpage</button>}

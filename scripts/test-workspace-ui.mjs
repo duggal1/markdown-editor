@@ -175,3 +175,15 @@ assert.match(app, /setActiveId\(first\.id\);\s*setWorkspaceId/);
 assert.match(app, /setActiveId\(id\);\s*setTreeReveal\(\{ id \}\)/);
 assert.match(app, /reveal=\{treeReveal\}/);
 console.log('Persistent workspace, folder and subpage disclosure passed.');
+
+assert.match(app, /const \[selectedFolderId, setSelectedFolderId\] = useState<string \| null>\(null\)/);
+assert.match(app, /makeDocument\(folder\?\.workspaceId \|\| workspaceId, folder\?\.id\)/);
+assert.match(app, /className="private-new-page" onClick=\{createPageInSelection\}/);
+assert.match(tree, /onClick=\{onNewPageInSelection\}/);
+assert.match(tree, /onSelectFolder\(folder\.id\); toggle\(folder\.id\)/);
+assert.match(tree, /onSelectFolder\(null\); toggle\(ROOT\)/);
+assert.match(app, /setSelectedFolderId\(doc\.folderId \|\| null\)/);
+assert.match(app, /<LivePageTitle key=\{active\.id\} title=\{active\.title/);
+assert.match(app, /if \(value\.trim\(\)\) onRename\(value\.trim\(\)\)/);
+assert.match(treeCss, /--tree-menu-hover:#171717/);
+assert.match(treeCss, /transition:background-color 65ms ease-out/);
