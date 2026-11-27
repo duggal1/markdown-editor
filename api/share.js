@@ -108,6 +108,16 @@ async function retireVersion(id, version, count) {
   await setTtlMany(partPaths(id, version, count), { ttlDays: 1 }).catch(() => {});
 }
 
+// Small Markdown documents can be returned in the manifest response without
+// an additional capability request and browser download. Verify stored bytes.
+async function readInlinePart(path, expectedBytes, checksum) {
+  if (!Number.isSafeInteger(expectedBytes) || expectedBytes < 0 || expectedBytes > 128 * 1024) return null;
+  const item = await get(path, { access: 'private', useCache: false });
+  if (!item?.stream || item.statusCode !== 200) return null;
+  const data = Buffer.from(await new Response(item.stream).arrayBuffer());
+  if (data.length !== expectedBytes || createHash('sha256').update(data).digest('hex') !== checksum) return null;
+  return new TextDecoder('utf-8', { fatal: true }).decode(data);
+}
 // Revalidate authorization before returning 304; revocation must never be hidden by a cache hit.
 function unchanged(req, res, revision) {
   const etag = '"' + createHash('sha256').update(JSON.stringify(revision)).digest('hex') + '"';
@@ -145,6 +155,11 @@ export default async function handler(req, res) {
         if (!backup.bytes) return reply(res, 200, { title, language, updatedAt, markdown: '' });
         const paths = Array.from({ length: Math.ceil(backup.bytes / (backup.partBytes || LEGACY_PART)) },
           (_, i) => shared.backupRoot + '/parts/' + backup.version + '/' + i + '.bin');
+        if (req.query?.inline === '1' && paths.length === 1 && backup.bytes <= 128 * 1024) {
+          const markdown = await readInlinePart(paths[0], backup.bytes, backup.checksum);
+          if (markdown === null) return reply(res, 503, { error: 'Cloud document unavailable' });
+          return reply(res, 200, { title, language, updatedAt, markdown });
+        }
         return reply(res, 200, { title, language, updatedAt, bytes: backup.bytes,
           checksum: backup.checksum, urls: await signedUrls(paths, 'get') });
       }
