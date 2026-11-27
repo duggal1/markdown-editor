@@ -27,6 +27,7 @@ export async function consumePlannerStream(response: Response, onEvent: (event: 
       let end: number;
       while ((end = buffer.indexOf('\n')) !== -1) {
         consume(buffer.slice(0, end)); buffer = buffer.slice(end + 1);
+        if (finished) return;
       }
       if (buffer.length > 200000) throw Error('Response frame too large.');
       if (done) { if (buffer.trim()) consume(buffer); break; }
