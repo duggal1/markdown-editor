@@ -29,7 +29,7 @@ function loadHandler(file) {
   const source = readFileSync(new URL(file, import.meta.url), 'utf8')
     .replace(/^import .*;\s*$/gm, '').replace('export default async function handler', 'async function handler');
   return new Function('deps', 'Response', 'Buffer', 'process', 'console',
-    'const { createHash, randomBytes, timingSafeEqual, del, get, head, issueSignedToken, list, presignUrl, put, setTtl } = deps; const headMany = paths => Promise.all(paths.map(head));\n' +
+    'const { createHash, randomBytes, timingSafeEqual, del, get, head, issueSignedToken, list, presignUrl, put, setTtl } = deps; const headMany = paths => Promise.all(paths.map(head)); const setTtlMany = (paths, opts) => Promise.all(paths.map(path => setTtl(path,opts))); const readVersioned = async path => { const meta = await head(path); const object = await get(path); return {etag:meta?.etag,value:object?.stream ? await new Response(object.stream).json():null}; };\n' +
     source + '\nreturn handler;')(deps, Response, Buffer, { env: { BLOB_READ_WRITE_TOKEN: 'test' } }, console);
 }
 const backup = loadHandler('../api/backup.js');
