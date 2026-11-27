@@ -57,8 +57,11 @@ export async function put(path, body, options = {}) {
   if (!rows.length) throw conflict();
   return rows[0];
 }
+let preparedHead;
+const headQuery = () => preparedHead ||= database().select(fields).from(objects)
+  .where(and(eq(objects.path, sql.placeholder('path')), or(isNull(objects.expiresAt), sql`${objects.expiresAt} > now()`))).limit(1).prepare('flow_object_head_v1');
 export async function head(path) {
-  const [row] = await database().select(fields).from(objects).where(byPath(path)).limit(1);
+  const [row] = await headQuery().execute({ path });
   return row || null;
 }
 export async function get(path, options = {}) {
@@ -75,8 +78,9 @@ export async function del(paths) {
   const values = Array.isArray(paths) ? paths : [paths];
   if (values.length) await database().delete(objects).where(inArray(objects.path, values));
 }
-export async function setTtl(path, options) {
-  await database().update(objects).set({ expiresAt: expiry(options.ttlDays) }).where(eq(objects.path, path));
+export async function setTtl(path, options) { await setTtlMany([path], options); }
+export async function setTtlMany(paths, options) {
+  if (paths.length) await database().update(objects).set({ expiresAt: expiry(options.ttlDays) }).where(inArray(objects.path, paths));
 }
 export async function list({ prefix, limit = 1000, cursor }) {
   const predicate = and(live(), sql`left(${objects.path}, ${prefix.length}) = ${prefix}`,
@@ -92,7 +96,7 @@ export async function list({ prefix, limit = 1000, cursor }) {
 export async function heads(paths) {
   if (!paths.length) return [];
   const db = database();
-  const result = await db.batch(paths.map(path => db.select(fields).from(objects).where(byPath(path)).limit(1)),
+  const result = await db.batch(paths.map(path => headQuery().bind({ path })),
     { readOnly: true, isolation: 'repeatable read', ...(process.env.FLOW_DB_METRICS === '1' ? { metrics: 'us' } : {}) });
   if (result.metrics) console.info('Flow storage head batch', { total: result.metrics.total, roundTrips: result.metrics.roundTrips });
   return result.map(rows => rows[0] || null);
