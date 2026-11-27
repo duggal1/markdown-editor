@@ -41,7 +41,7 @@ import {
 const MarkdownPreview = lazy(() => import('./components/MarkdownPreview'));
 
 type TreeActions = Pick<ComponentProps<typeof WorkspaceTree>,
-  'onOpen' | 'onNewDocument' | 'onNewFolder' | 'onRenameFolder' | 'onRenameDocument' |
+  'onOpen' | 'onSelectFolder' | 'onNewPageInSelection' | 'onNewDocument' | 'onNewFolder' | 'onRenameFolder' | 'onRenameDocument' |
   'onDuplicateDocument' | 'onMovePage' | 'onDeleteFolder' | 'onDeleteDocument'>;
 // Keep callback identities stable for the memoized tree, but dispatch to the
 // latest committed closures (workspace, folders and delete state can change).
@@ -50,6 +50,8 @@ function useTreeActions(actions: TreeActions): TreeActions {
   useLayoutEffect(() => { latest.current = actions; }, [actions]);
   return useMemo<TreeActions>(() => ({
     onOpen: (...args) => latest.current.onOpen(...args),
+    onSelectFolder: (...args) => latest.current.onSelectFolder(...args),
+    onNewPageInSelection: () => latest.current.onNewPageInSelection(),
     onNewDocument: (...args) => latest.current.onNewDocument(...args),
     onNewFolder: (...args) => latest.current.onNewFolder(...args),
     onRenameFolder: (...args) => latest.current.onRenameFolder(...args),
@@ -99,6 +101,23 @@ function AssetPreview({ document: doc, src, onExport, theme }: {
             </div>}
   </div>;
 }
+// The input keeps whitespace while typing, but only valid titles enter the shared document state.
+function LivePageTitle({ title, onRename }: { title: string; onRename: (title: string) => void }) {
+  const [draft, setDraft] = useState(title);
+  const [focused, setFocused] = useState(false);
+  return <input className="private-title-input" aria-label="Page title" title={title}
+    value={focused ? draft : title} maxLength={160}
+    onFocus={() => { setDraft(title); setFocused(true); }}
+    onChange={event => {
+      const value = event.target.value;
+      setDraft(value);
+      if (value.trim()) onRename(value.trim());
+    }}
+    onBlur={() => setFocused(false)}
+    onKeyDown={event => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) event.currentTarget.blur(); }}
+  />;
+}
+
 export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -110,6 +129,8 @@ export default function App() {
   const [treeReveal, setTreeReveal] = useState<{ id: string } | null>(null);
   const activeIdRef = useRef('');
   const [workspaceId, setWorkspaceId] = useState('');
+  // Local creation context is separate from the storage workspace and open page.
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>('dark');
   const [accentTheme, setAccentTheme] = useState<AccentTheme>(() => parseAccentTheme(readPrefs().accentTheme));
   const [mode, setMode] = useState<Mode>('write');
@@ -270,6 +291,7 @@ export default function App() {
       activeIdRef.current = first.id;
       setActiveId(first.id);
       setWorkspaceId(chosenWorkspace.id);
+      setSelectedFolderId(first.folderId || null);
       setRecentIds(restoreRecent(prefs.recentIds, restored));
       setTheme(prefs.theme === 'dark' || prefs.theme === 'light' ? prefs.theme
         : 'dark');
@@ -592,6 +614,7 @@ export default function App() {
     modeRestore.current = null;
     if (previewScrollRef.current) previewScrollRef.current.scrollTop = 0;
     setWorkspaceId(doc.workspaceId);
+    setSelectedFolderId(doc.folderId || null);
     setDocs(current => {
       // Most visits do not edit anything. Avoid allocating an entire new array
       // in that case, while still reconciling any late editor cleanup or save.
@@ -621,6 +644,11 @@ export default function App() {
     void saveDoc(doc).catch(() => setSaveState('error'));
     window.requestAnimationFrame(() => editorRef.current?.focus());
   }, [selectDocument, workspaceId, workspaces]);
+
+  function createPageInSelection() {
+    const folder = folders.find(item => item.id === selectedFolderId);
+    makeDocument(folder?.workspaceId || workspaceId, folder?.id);
+  }
 
     function duplicateDocument(id: string) {
     const original = live.current.get(id);
@@ -723,6 +751,7 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
     setFolders(items => [...items, folder]);
     setQuery('');
     setNewFolderId(folder.id);
+    setSelectedFolderId(folder.id);
     void saveFolder(folder).catch(() => setNotice('Folder could not be saved.'));
   }
   function renameFolder(id: string, name: string) {
@@ -787,7 +816,10 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
         parentId: childId === id ? parentId : doc.parentId, updatedAt: Date.now() };
       scheduleSave(updated);
     }
-    if (seen.has(activeIdRef.current)) setWorkspaceId(targetWorkspace);
+    if (seen.has(activeIdRef.current)) {
+      setWorkspaceId(targetWorkspace);
+      setSelectedFolderId(current => current === (original.folderId || null) ? targetFolder || null : current);
+    }
     setDocs([...live.current.values()]);
   }
   function renameDocument(id: string, name: string) {
@@ -1516,7 +1548,8 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
   }, [loaded, docs, activeId]);
   const previousPageId = recentIds.find(id => id !== activeId && live.current.has(id));
   const treeActions = useTreeActions({
-    onOpen: selectDocument, onNewFolder: createFolder, onNewDocument: makeDocument,
+    onOpen: selectDocument, onSelectFolder: setSelectedFolderId, onNewPageInSelection: createPageInSelection,
+    onNewFolder: createFolder, onNewDocument: makeDocument,
     onRenameFolder: renameFolder, onRenameDocument: renameDocument, onDuplicateDocument: duplicateDocument,
     onMovePage: movePage, onDeleteFolder: id => { void eraseFolder(id); },
     onDeleteDocument: id => { if (live.current.has(id)) void deleteTarget({ kind: 'document', id }); },
@@ -1548,12 +1581,12 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
             aria-keyshortcuts="Meta+K Control+K" />
           <kbd aria-hidden="true">{/Mac|iPhone|iPad/i.test(navigator.platform) ? '⌘K' : 'Ctrl K'}</kbd>
         </label>
-        <button type="button" className="private-new-page" onClick={() => makeDocument(workspaceId)}>
+        <button type="button" className="private-new-page" onClick={createPageInSelection}>
           <Icon name="edit" size={17}/> New page <kbd>+</kbd>
         </button>
         <WorkspaceTree
           workspaces={workspaces} documents={matching} allDocuments={docs} folders={folders} newFolderId={newFolderId}
-          activeId={activeId} activeWorkspaceId={workspaceId} reveal={treeReveal}
+          activeId={activeId} activeWorkspaceId={workspaceId} selectedFolderId={folders.some(folder => folder.id === selectedFolderId) ? selectedFolderId : null} reveal={treeReveal}
           search={query} searchHits={searchResults} searchPending={searchPending}
           {...treeActions}
         />
@@ -1583,8 +1616,10 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
         <div className="document-meta">
           <motion.button {...pressMotion} className="square-button sidebar-toggle" title={sidebarOpen ? 'Hide sidebar' : 'Open sidebar'} aria-label={sidebarOpen ? 'Hide sidebar' : 'Open sidebar'}
             onClick={() => setSidebarOpen(current => !current)}><Icon name="sidebar" size={18} /></motion.button>
-          <span className="private-breadcrumb"><Icon name="file" size={15}/><span>{active?.title || 'Untitled'}</span></span>
-          <span className="private-visibility"><SuppliedIcon kind="lock" size={14}/>{active && (readShareRecord(active.id) || readSiteRecord(active.id)) ? 'Shared' : 'Private'}</span>
+          <span className="private-breadcrumb"><Icon name="file" size={15}/>{active
+            ? <LivePageTitle key={active.id} title={active.title || 'Untitled'} onRename={title => renameDocument(active.id, title)}/>
+            : <span>Untitled</span>}</span>
+          <span className="private-visibility"><SuppliedIcon kind="lock" size={14}/>{active && (readShareRecord(active.id) || readSiteRecord(active.id)) ? 'Shared' : <span className="private-visibility-label">Private</span>}</span>
 
         </div>
         <div className="header-actions">
