@@ -134,3 +134,27 @@ assert.match(blockCommandsSource, /window\.visualViewport\?\.addEventListener\('
 assert.match(blockCommandsSource, /snapshot\.doc !== this\.view\.state\.doc/);
 assert.match(blockCommandsSource, /this\.toolbar\.remove\(\)/);
 console.log('Contextual selection format transactions passed.');
+
+
+// Exercise the production bulk-input filter through real CodeMirror transactions.
+const { formatBulkTransaction } = await import('../src/lib/autoMarkdownInput.ts');
+const { history, undo } = await import('@codemirror/commands');
+const bulk = "We need to make the sound previews start immediately. We should keep the browser memory footprint small.";
+const extensions = [history(), EditorState.transactionFilter.of(tr => formatBulkTransaction(tr, () => true))];
+function insertBulk(source, at, text, userEvent = 'input.type') {
+  const state = EditorState.create({doc: source, selection: {anchor: at}, extensions});
+  return state.update({changes: {from: at, insert: text}, selection: {anchor: at + text.length}, userEvent}).state;
+}
+const prefix = 'Existing complete paragraph.';
+const appended = insertBulk(prefix, prefix.length, bulk);
+assert.equal(appended.doc.toString(), prefix + '\n\n- We need to make the sound previews start immediately.\n- We should keep the browser memory footprint small.');
+assert.equal(appended.selection.main.head, appended.doc.length);
+let undone;
+assert.equal(undo({state: appended, dispatch: tr => { undone = tr.state; }}), true);
+assert.equal(undone.doc.toString(), prefix, 'Bulk dictation and Markdown conversion must undo together.');
+assert.equal(insertBulk('', 0, bulk, 'input.paste').doc.toString(), formatPlainTextAsMarkdown(bulk));
+assert.equal(insertBulk('Existing paragraph.', 8, bulk).doc.toString(), 'Existing' + bulk + ' paragraph.');
+assert.equal(insertBulk('', 0, bulk, 'input.type.compose').doc.toString(), bulk);
+assert.equal(insertBulk('', 0, bulk, 'input.paste.autoMarkdown').doc.toString(), bulk);
+assert.equal(insertBulk('', 0, 'Hello').doc.toString(), 'Hello');
+console.log('Production bulk-input transaction and undo regressions passed.');
