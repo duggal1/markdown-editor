@@ -2877,3 +2877,14 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   .private-workspace .private-title-input { width:clamp(56px,18ch,160px); }
   .private-workspace .private-visibility { margin-inline-start:4px; }
 }
+
+/* The two panes retain the same track ratios throughout mode changes. Delay
+   visibility only for animated exits; inert disables focus and clicks immediately. */
+.editor-area.has-mode-motion > .editor-pane,
+.editor-area.has-mode-motion > .preview-pane { transition:visibility 0s; }
+.editor-area.has-mode-motion.mode-write > .preview-pane,
+.editor-area.has-mode-motion.mode-preview > .editor-pane { transition:visibility 0s 360ms; }
+@media (prefers-reduced-motion:reduce) {
+  .editor-area.has-mode-motion > .editor-pane,
+  .editor-area.has-mode-motion > .preview-pane { transition:none; }
+}
