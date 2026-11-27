@@ -77,7 +77,7 @@ assert.match(decodeURIComponent(faviconLink.href), /#2563eb/);
 assert.doesNotMatch(css, /data-background='blue'/);
 assert.match(app, /\(\['dark', 'light'\] as const\)\.map/);
 const previewColors = read('src/lib/previewColors.ts');
-assert.match(preview, /rehypePlugins=\{\[rehypeRaw, \[rehypeSanitize, safeMarkdownHtml\], rehypePreviewColors\]\}/);
+assert.match(preview, /rehypePlugins=\{\[rehypeRaw, \[rehypeSanitize, safeMarkdownHtml\], rehypePreviewColors, rehypeTaskRows\]\}/);
 assert.doesNotMatch(preview, /attachPreviewColorPicker|onEditColor/);
 assert.doesNotMatch(app, /onEditColor/);
 const hexMapping = { exports: {} };
