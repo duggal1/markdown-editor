@@ -208,7 +208,7 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
           <span className={busy ? 'planner-shimmer' : 'planner-status-label'}>{busy ? (contextLoading ? 'Reading GitHub…' : stream.content ? 'Writing…' : 'Thinking…') : stopped ? 'Stopped' : error ? 'Interrupted' : 'Thought process'}</span>
           <span className="planner-thinking-chevron"><Icon name="chevron" size={12}/></span>
         </button>
-        <AnimatePresence initial={false}>
+        <AnimatePresence>
           {thinkingOpen && <motion.div key="thinking-body" className="planner-thinking-reveal"
             initial={reducedMotion ? false : { height: 0, opacity: 0, filter: 'blur(6px)' }}
             animate={{ height: 'auto', opacity: 1, filter: 'blur(0px)' }}
