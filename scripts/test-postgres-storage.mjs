@@ -131,6 +131,8 @@ try {
   const inlinePublished = await call(backup,'POST',noteBody,{},owner);
   assert.equal(inlinePublished.status,200); assert.ok(inlinePublished.data.id);
   assert.equal((await call(share,'GET',{},{id:inlinePublished.data.id})).status,200);
+  const inlineRead = await call(share,'GET',{},{id:inlinePublished.data.id,inline:'1'});
+  assert.equal(inlineRead.data.markdown,noteText); assert.equal(inlineRead.data.urls,undefined);
   const repeat = await call(backup,'POST',noteBody,{},owner);
   assert.equal(repeat.data.id,inlinePublished.data.id); assert.equal(repeat.data.unchanged,true);
   assert.equal((await call(backup,'POST',{...noteBody,meta:{...noteBody.meta,updatedAt:0}}, {},owner)).status,409);
