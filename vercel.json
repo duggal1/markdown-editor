@@ -1,4 +1,5 @@
 {
+  "functions": { "api/planner.js": { "maxDuration": 90 } },
   "rewrites": [
     {
       "source": "/slug/:id",
