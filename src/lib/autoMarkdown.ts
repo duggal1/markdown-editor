@@ -12,6 +12,7 @@ const listMarker = /^ {0,3}(?:[-+*]\s+|\d{1,9}[.)]\s+)\S/;
 const markup = /^(?: {0,3}(?:#{1,6}\s|[-+*]\s|\d{1,9}[.)]\s|>|<|\||\[[^\]]+\]:|(?:-{3,}|\*{3,}|_{3,})\s*$)| {4}|\t)/;
 const inlineMarkup = /[\x60]|\[[^\]]+\]\(|\*\*|__|\\[\\*#_]|<[^>]+>|\s{2}$/;
 const requirement = /^(?:["'(]?\s*)(?:so\s+)?(?:we (?:also )?(?:need|must|should|want|have to|can|will)|(?:i|you) (?:also )?(?:need|want|must|should|have to)|(?:it|this|that|they|the .{1,45}?) (?:must|should|needs? to|has to)|(?:make sure|ensure|add|remove|keep|fix|build|implement|preserve|support|include|avoid|do not|don't|use|replace|reduce|improve|create|test|enable|disable)\b)/i;
+const additive = /^(?:also|in addition|another (?:thing|requirement|feature|issue)|one more thing)[,:]?\s+/i;
 const sequence = /^(?:first(?:ly| of all)?|second(?:ly)?|third(?:ly)?|fourth(?:ly)?|fifth(?:ly)?|finally|lastly|next)(?:[,:]\s*|\s+)/i;
 
 function feature(line: string): { label: string; description: string } | null {
@@ -66,27 +67,27 @@ function inlineList(value: string): string | null {
 }
 
 /** Keep every sentence and its original order. Only infer a list from independent requirements. */
-function structureProse(value: string): string {
+function structureProse(value: string, transcript = false): string {
   if (inlineMarkup.test(value) || /https?:\/\//i.test(value)) return value;
   const explicit = inlineList(value);
   if (explicit) return explicit;
-  if (value.length < 80) return value;
+  if (value.length < 80 && !transcript) return value;
   const units = sentences(value);
-  if (units.length < 2) return value;
+  if (units.length < 2 && !transcript) return value;
   const groups: string[] = [];
   let lead = '';
   let last = '';
   const flush = () => { if (last) groups.push(last); last = ''; };
   for (const unit of units) {
-    const action = requirement.test(unit) || sequence.test(unit);
-    if (action && unit.length >= 28) {
+    const action = requirement.test(unit) || sequence.test(unit) || (transcript && additive.test(unit));
+    if (action && unit.length >= (transcript ? 20 : 28)) {
       flush(); last = unit;
     } else if (last) last += ' ' + unit;
     else lead += (lead ? ' ' : '') + unit;
   }
   flush();
   const ordered = groups.length >= 2 && groups.every(g => sequence.test(g)) && /^(?:first|firstly)\b/i.test(groups[0]);
-  if (groups.length >= 2 && groups.every(g => g.length >= 35)) {
+  if (groups.length >= (transcript ? 1 : 2) && groups.every(g => g.length >= (transcript ? 20 : 35))) {
     return (lead ? lead + '\n\n' : '') + groups.map((g, i) => (ordered ? (i + 1) + '. ' : '- ') + g).join('\n');
   }
   // Long unstructured speech gets breathing room, not a bullet per sentence.
@@ -104,7 +105,7 @@ function structureProse(value: string): string {
 }
 
 export function shouldAutoFormatPaste(value: string): boolean {
-  return value.length <= MAX_CHARS && (value.includes('\n') || value.length >= 110) &&
+  return value.length <= MAX_CHARS && (value.includes('\n') || value.length >= 80) &&
     !!value.trim() && !detectRawCode(value);
 }
 
@@ -153,6 +154,15 @@ export function formatPlainTextAsMarkdown(source: string, options: MarkdownForma
     if (blocks[i].kind !== 'blank') following = blocks[i];
   }
   const first = blocks.findIndex(b => b.kind !== 'blank');
+  // Decide whether the input is a requirements transcript across paragraph boundaries.
+  // Do not reinterpret authored Markdown documents as transcripts.
+  const authored = blocks.some(b => b.kind === 'heading' || b.kind === 'list');
+  let actionParagraphs = 0;
+  if (!authored) for (const b of blocks) {
+    if (b.kind === 'prose' && sentences(b.text.trim()).some(unit => requirement.test(unit) || sequence.test(unit))) actionParagraphs++;
+    if (actionParagraphs >= 2) break;
+  }
+  const transcript = !authored && actionParagraphs >= 2;
   let previousContent: Block | undefined;
   const output: Block[] = [];
   let level = 0;
@@ -189,21 +199,32 @@ export function formatPlainTextAsMarkdown(source: string, options: MarkdownForma
       level = depth;
       output.push({ kind: 'heading', text: '#'.repeat(depth) + ' ' + value, generated: true }); continue;
     }
+    // Use a short extractive title when the speaker explicitly identifies a
+    // problem. Keep the original sentence in place; never replace the body.
+    if (transcript && i === first && options.atDocumentStart !== false && !inlineMarkup.test(value)) {
+      const problem = /\b(?:it is|it's|this is|the issue is)\s+(?:an?|the)\s+([a-z][a-z -]{2,45}\s+(?:problem|issue|bottleneck))\./i.exec(value);
+      if (problem) {
+        const label = problem[1].trim();
+        output.push({ kind: 'heading', text: '# ' + label[0].toUpperCase() + label.slice(1), generated: true });
+        level = 1;
+      }
+    }
     // Spoken topic transitions are useful headings when the transcript itself
     // supplies a short, explicit question or signpost. Never invent a summary.
-    const firstSentence = value.length >= 140 ? sentences(value)[0] : '';
+    const firstSentence = value.length >= (transcript ? 75 : 140) ? sentences(value)[0] : '';
     const topic = firstSentence.length >= 15 && firstSentence.length <= 95 &&
       ((i === first && options.atDocumentStart !== false && /^(?:what (?:is|are)|how (?:can|do|does|should)|why (?:is|are|do))\b.*\?$/i.test(firstSentence)) ||
-       ((i === first || (before?.kind === 'blank' && precedingContent?.kind !== 'heading')) && /^(?:now,\s+what|let me talk about|let's talk about)\b/i.test(firstSentence)));
+       ((i === first || (before?.kind === 'blank' && precedingContent?.kind !== 'heading')) && /^(?:now,\s+what|let me talk about|let's talk about)\b/i.test(firstSentence)) ||
+       (transcript && before?.kind === 'blank' && precedingContent?.kind !== 'heading' && /^(?:what(?:'s| is| will) (?:gonna|going to) happen|what (?:do|should) we (?:do|change)|how (?:can|do|should) we)\b.*\?$/i.test(firstSentence)));
     if (topic && firstSentence.length < value.length) {
       const depth = i === first && options.atDocumentStart !== false ? 1 : 2;
       level = depth;
       output.push({ kind: 'heading', text: '#'.repeat(depth) + ' ' + firstSentence, generated: true });
       const rest = value.slice(firstSentence.length).trimStart();
-      output.push({ kind: 'prose', text: structureProse(rest), generated: true });
+      output.push({ kind: 'prose', text: structureProse(rest, transcript), generated: true });
       continue;
     }
-    const structured = structureProse(value);
+    const structured = structureProse(value, transcript);
     output.push({ kind: 'prose', text: structured === value ? b.text : structured, generated: structured !== value });
   }
   const result: string[] = [];
@@ -232,4 +253,18 @@ export function formatPlainTextAsMarkdown(source: string, options: MarkdownForma
 /** Compatibility for worker and existing callers; no second formatting engine. */
 export function formatMarkdownDocument(source: string, options: MarkdownFormatOptions = {}): string {
   return formatPlainTextAsMarkdown(source, { ...options, manual: options.manual ?? true });
+}
+
+/** Bulk input may start at a line boundary or append to complete prose.
+ * Never reinterpret arbitrary fragments inserted inside a sentence. */
+export function bulkInsertionBoundary(before: string, after: string): 'line' | 'append' | null {
+  if (after.trim()) return null;
+  if (!before.trim()) return 'line';
+  return /[.!?]["')\]]?\s*$/.test(before) ? 'append' : null;
+}
+
+/** Separate an appended formatted block without altering any existing source. */
+export function finishBulkInsertion(source: string, formatted: string, boundary: 'line' | 'append'): string {
+  if (formatted === source) return source;
+  return boundary === 'append' ? '\n\n' + formatted.replace(/^\n+/, '') : formatted;
 }

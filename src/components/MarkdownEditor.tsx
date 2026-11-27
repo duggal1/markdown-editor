@@ -8,7 +8,7 @@ import { indentWithTab, insertNewline } from '@codemirror/commands';
 import { HighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
 import { detectRawCode, type CodeLanguage } from '../lib/code';
-import { formatPlainTextAsMarkdown, shouldAutoFormatPaste } from '../lib/autoMarkdown';
+import { bulkInsertionBoundary, finishBulkInsertion, formatPlainTextAsMarkdown, shouldAutoFormatPaste } from '../lib/autoMarkdown';
 import { formatMarkdownAction, WORKER_THRESHOLD } from '../lib/autoMarkdownAction';
 import { listEnterIntent } from '../lib/listEditing';
 import { repairLanguage } from '../lib/codeRepair';
@@ -251,12 +251,13 @@ function MarkdownEditor({
               if (!text || repairLanguage(text, fileLanguage) || !shouldAutoFormatPaste(text)) return false;
               const range = target.state.selection.main;
               if (target.state.selection.ranges.length !== 1 || !proseContext(target.state, range.from, range.to)) return false;
-              // Pasting into the middle of a sentence must not inject block markers.
-              if (target.state.doc.lineAt(range.from).from !== range.from ||
-                  target.state.doc.lineAt(range.to).to !== range.to) return false;
+              const doc = target.state.doc;
+              const boundary = bulkInsertionBoundary(doc.sliceString(doc.lineAt(range.from).from, range.from),
+                doc.sliceString(range.to, doc.lineAt(range.to).to));
+              if (!boundary) return false;
               const options = { atDocumentStart: range.from === 0, manual: false };
               if (text.length < WORKER_THRESHOLD) {
-                const formatted = formatPlainTextAsMarkdown(text, options);
+                const formatted = finishBulkInsertion(text, formatPlainTextAsMarkdown(text, options), boundary);
                 if (formatted === text) return false;
                 event.preventDefault();
                 target.dispatch({ ...target.state.replaceSelection(formatted), userEvent: 'input.paste' });
@@ -267,7 +268,8 @@ function MarkdownEditor({
               target.dispatch({ ...target.state.replaceSelection(text), userEvent: 'input.paste' });
               const snapshot = target.state.doc;
               const insertedEnd = target.state.selection.main.head;
-              void formatMarkdownAction(text, options).then(formatted => {
+              void formatMarkdownAction(text, options).then(result => {
+                const formatted = finishBulkInsertion(text, result, boundary);
                 if (formatted === text || viewRef.current !== target || target.state.doc !== snapshot) return;
                 target.dispatch({ changes: { from: range.from, to: insertedEnd, insert: formatted }, userEvent: 'input.format' });
               }).catch(() => { /* Original insertion is already saved. */ });
@@ -282,17 +284,19 @@ function MarkdownEditor({
                 tr.startState.selection.ranges.length !== 1) return tr;
             const edits: { fromA: number; toA: number; fromB: number; toB: number; text: string }[] = [];
             tr.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
-              if (inserted.length >= 110 && inserted.length < WORKER_THRESHOLD)
+              if (inserted.length >= 80 && inserted.length < WORKER_THRESHOLD)
                 edits.push({ fromA, toA, fromB, toB, text: inserted.toString() });
               else edits.push({ fromA, toA, fromB, toB, text: '' });
             });
             if (edits.length !== 1) return tr;
             const edit = edits[0];
             const doc = tr.startState.doc;
-            if (!edit.text || !proseContext(tr.startState, edit.fromA, edit.toA) ||
-                doc.lineAt(edit.fromA).from !== edit.fromA || doc.lineAt(edit.toA).to !== edit.toA ||
+            const boundary = bulkInsertionBoundary(doc.sliceString(doc.lineAt(edit.fromA).from, edit.fromA),
+              doc.sliceString(edit.toA, doc.lineAt(edit.toA).to));
+            if (!edit.text || !boundary || !proseContext(tr.startState, edit.fromA, edit.toA) ||
                 repairLanguage(edit.text, fileLanguage) || !shouldAutoFormatPaste(edit.text)) return tr;
-            const formatted = formatPlainTextAsMarkdown(edit.text, { atDocumentStart: edit.fromA === 0 });
+            const formatted = finishBulkInsertion(edit.text,
+              formatPlainTextAsMarkdown(edit.text, { atDocumentStart: edit.fromA === 0 }), boundary);
             if (formatted === edit.text) return tr;
             return [tr, { changes: { from: edit.fromB, to: edit.toB, insert: formatted },
               selection: { anchor: edit.fromB + formatted.length }, sequential: true }];

@@ -216,6 +216,31 @@ assert.equal(format('---\ntitle: Example\n---\nSome text.'), '---\ntitle: Exampl
 assert.equal(format('A simple note.'), 'A simple note.');
 assert.match(readFileSync(new URL('../src/components/MarkdownEditor.tsx', import.meta.url), 'utf8'), /EditorState\.transactionFilter\.of/);
 assert.match(app, /await formatMarkdownAction\(decoded/);
+// Production screenshot: requirements occur across paragraphs, not in one list.
+const screenshotTranscript = [
+  "One thing that we need to add. It is not a UI problem. It's not a back-end problem. It's an architecture problem. Calling it a problem is wrong because I haven't even tested it. But in my years of experience as an engineer, it always happens.",
+  "What's gonna happen? We already need to prepare for it by using a genuinely modern elite architecture. When you click on preview sound, it's gonna take an initial 1 or 2 or 3 seconds to load the sound and serve it. That's wrong. We need to cache all the sounds without caching it on the user's browser, which is too heavy.",
+  "We need to cache in a way so that when you preview the sound, it's gonna be very fast. Right? It's gonna play the sound very fast without all that lag or delay. Also, the sound by default, slightly louder."
+].join('\n\n');
+const screenshotOutput = format(screenshotTranscript);
+assert.match(screenshotOutput, /^# Architecture problem/);
+assert.match(screenshotOutput, /^## What's gonna happen\?/m);
+assert.match(screenshotOutput, /^- We need to cache all the sounds/m);
+assert.match(screenshotOutput, /^- We need to cache in a way/m);
+assert.match(screenshotOutput, /^- Also, the sound by default, slightly louder\./m);
+assert.equal(format(screenshotOutput), screenshotOutput);
+const bodyOnly = screenshotOutput.replace(/^#{1,2} .+\n\n/gm, '').replace(/^- /gm, '').replace(/\s+/g, ' ').trim();
+const preserved = screenshotTranscript.replace("What's gonna happen? ", '').replace(/\s+/g, ' ').trim();
+assert.equal(bodyOnly, preserved, 'No transcript sentence may disappear or be reordered');
+const { bulkInsertionBoundary, finishBulkInsertion } = module.exports;
+assert.equal(bulkInsertionBoundary('Existing complete paragraph.', ''), 'append');
+assert.equal(bulkInsertionBoundary('Existing', ' paragraph.'), null);
+assert.equal(bulkInsertionBoundary('', ''), 'line');
+assert.equal(finishBulkInsertion(screenshotTranscript, screenshotOutput, 'append'), '\n\n' + screenshotOutput);
+assert.equal(finishBulkInsertion('literal', 'literal', 'append'), 'literal');
+const editorSource = readFileSync(new URL('../src/components/MarkdownEditor.tsx', import.meta.url), 'utf8');
+assert.match(editorSource, /finishBulkInsertion\(text, formatPlainTextAsMarkdown\(text, options\), boundary\)/);
+assert.match(editorSource, /finishBulkInsertion\(edit\.text,/);
 console.log('Auto Markdown regression cases passed.');
 {
 const { repairMixedCode } = codeModule.exports;
