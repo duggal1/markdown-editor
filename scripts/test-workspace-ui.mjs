@@ -210,3 +210,9 @@ assert.match(app, /requestAnimationFrame\(\(\) => \{[\s\S]*?recoverMissingBackup
 assert.match(app, /if \(!alive\) return;\s*if \(recovered.workspaces.length\)/);
 assert.match(app, /recovered.documents.filter\(doc => !live.current.has\(doc.id\)\)/);
 console.log('Local-first startup and non-destructive background recovery policy passed.');
+
+assert.match(app, /const normalized = normalizeStartupDocument\(selected\)/);
+assert.match(app, /const restored = data\.documents\.map\(doc => doc\.id === selected\.id \? normalized : doc\)/);
+assert.match(app, /const deadline = performance\.now\(\) \+ 6/);
+assert.match(app, /startupPending\.current\.delete\(id\)\) \{/);
+assert.match(app, /if \(startupPending\.current\.size\) maintenanceTimer = window\.setTimeout\(repairInactive, 32\)/);
