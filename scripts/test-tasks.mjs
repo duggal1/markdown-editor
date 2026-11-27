@@ -68,3 +68,9 @@ assert.doesNotMatch(planner, /className="planner-kicker"/);
 assert.match(plannerCss, /\.planner-page \.planner-inline-input:is\(:focus,:focus-visible\)[^}]*outline:0; box-shadow:none/);
 assert.match(plannerCss, /\.planner-row \{[^}]*border-radius:999px/);
 assert.match(plannerCss, /\.planner-scroll::-webkit-scrollbar \{ display:none/);
+
+assert.match(preview, /rehypePreviewColors, rehypeTaskRows/);
+assert.match(preview, /className:\['flow-task-label'\]/);
+assert.match(css, /li\.task-list-item \{ display:grid; grid-template-columns:24px minmax\(0,1fr\)/);
+assert.match(css, /preview-task-check\[aria-checked=true\] ~ \.flow-task-label \{ opacity:\.48; text-decoration:line-through/);
+assert.doesNotMatch(css, /vertical-align:-8px/);
