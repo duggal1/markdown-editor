@@ -162,3 +162,8 @@ try {
   if (originalAccess === undefined) delete process.env.FLOW_PLANNER_ACCESS_KEY; else process.env.FLOW_PLANNER_ACCESS_KEY=originalAccess;
 }
 console.log('Planner endpoint single-key regression passed');
+
+const { DEFAULT_ACCENT, parseAccentTheme } = await import('../src/lib/accentTheme.ts');
+assert.equal(DEFAULT_ACCENT,'blue');
+assert.equal(parseAccentTheme(undefined),'blue');
+assert.equal(parseAccentTheme('orange'),'orange');

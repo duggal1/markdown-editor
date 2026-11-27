@@ -1,5 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from './Icons';
+import { TaskCheck } from './TaskCheck';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { appendPlannerItems, editPlannerRow, plannerRows, selectPlannerContext, type PlannerItem, type PlannerKind, type PlannerRow } from '../lib/planner';
 import { setTaskChecked } from '../lib/taskList';
 import { consumePlannerStream, streamedItems } from '../lib/plannerStream';
@@ -27,23 +29,17 @@ function GithubMark() {
   return <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .75a11.25 11.25 0 0 0-3.56 21.92c.56.1.77-.24.77-.54v-2.1c-3.13.68-3.79-1.32-3.79-1.32-.51-1.3-1.25-1.65-1.25-1.65-1.02-.7.08-.69.08-.69 1.13.08 1.72 1.16 1.72 1.16 1 1.72 2.63 1.22 3.27.93.1-.73.39-1.22.71-1.5-2.5-.29-5.13-1.25-5.13-5.56 0-1.23.44-2.24 1.16-3.03-.12-.28-.5-1.43.11-2.98 0 0 .95-.3 3.09 1.16a10.8 10.8 0 0 1 5.63 0c2.14-1.46 3.09-1.16 3.09-1.16.61 1.55.23 2.7.11 2.98.72.79 1.16 1.8 1.16 3.03 0 4.32-2.63 5.27-5.14 5.55.4.35.76 1.04.76 2.1v3.08c0 .3.21.65.78.54A11.25 11.25 0 0 0 12 .75Z"/></svg>;
 }
 function readAccess() { try { return sessionStorage.getItem(ACCESS) || ''; } catch { return ''; } }
-function Check({ done }: { done: boolean }) {
-  return <svg width="17" height="17" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-    <rect x="1.5" y="1.5" width="15" height="15" rx="3" fill={done ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.2"/>
-    {done && <path d="m5 9 2.6 2.6 5.3-5.3" stroke="var(--surface)" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round"/>}
-  </svg>;
-}
 const ItemRow = memo(function ItemRow({ row, kind, onEdit }: { row: PlannerRow; kind: PlannerKind; onEdit: Props['onEdit'] }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(row.text);
   const canceled = useRef(false);
   function finish() { if (!canceled.current && draft.trim()) onEdit(source => editPlannerRow(source, kind, row, draft)); setEditing(false); }
   return <div className={'planner-row' + (row.done ? ' is-done' : '')}>
-    {kind === 'todo' ? <button type="button" className="planner-check" role="checkbox" aria-checked={row.done} aria-label={row.text}
-      onClick={() => onEdit(source => {
+    {kind === 'todo' ? <TaskCheck className="planner-check" checked={row.done} label={row.text}
+      onToggle={() => onEdit(source => {
         const current = plannerRows(source, kind).find(item => item.line === row.line);
         return current?.text === row.text && current.category === row.category ? setTaskChecked(source, row.line, !current.done) : source;
-      })}><Check done={row.done}/></button> : <Icon name="bookmark" size={15} className="planner-memory-mark"/>}
+      })}/> : <Icon name="bookmark" size={15} className="planner-memory-mark"/>}
     {editing ? <input className="planner-inline-input" aria-label="Edit item" autoFocus maxLength={1200} value={draft}
       onChange={e => setDraft(e.target.value)} onBlur={finish} onKeyDown={e => {
         if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
@@ -58,6 +54,8 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
   const [githubDraft, setGithubDraft] = useState(github || '');
   const [githubOpen, setGithubOpen] = useState(github === null);
   const promptRef = useRef<HTMLTextAreaElement>(null);
+  const addRef = useRef<HTMLInputElement>(null);
+  const reducedMotion = useReducedMotion();
   const [githubCatalog, setGithubCatalog] = useState<RepoCatalog | null>(null);
   const [githubLoading, setGithubLoading] = useState(false);
   const [githubError, setGithubError] = useState('');
@@ -119,7 +117,7 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
   function add() {
     if (!draft.trim()) return;
     onEdit(source => appendPlannerItems(source, kind, [{ text: draft, category: 'Inbox' }]));
-    setDraft(''); setFilter('all');
+    setDraft(''); setFilter('all'); addRef.current?.focus();
   }
   async function generate() {
     if (!prompt.trim() || request.current) return;
@@ -191,7 +189,7 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
       {githubOpen && <form className="planner-github-form" onSubmit={event => { event.preventDefault(); connectGithub(); }}>
         <label htmlFor="planner-github-owner">Public GitHub repositories</label>
         <input id="planner-github-owner" placeholder="Username or repository URL" value={githubDraft} onChange={event => setGithubDraft(event.target.value)} maxLength={240} autoComplete="off" spellCheck={false} disabled={busy}/>
-        <div className="planner-github-actions"><span>No token required.</span><button type="button" disabled={busy} onClick={skipGithub}>{github ? 'Disconnect' : 'Skip'}</button><button type="submit" className="planner-action" disabled={busy || !githubDraft.trim()}>{github ? 'Update' : 'Connect'}</button></div>
+        <div className="planner-github-actions"><span>No token required.</span><button type="button" className="planner-github-disconnect" disabled={busy} onClick={skipGithub}>{github ? 'Disconnect' : 'Skip'}</button><button type="submit" className="planner-action planner-github-update" disabled={busy || !githubDraft.trim()}>{github ? 'Update' : 'Connect'}</button></div>
       </form>}
       {githubError && <div className="planner-github-error" role="status"><span>{githubError}</span>{github && <button type="button" disabled={busy || githubLoading} onClick={() => setGithubRevision(value => value + 1)}>Retry</button>}</div>}
     </div>
@@ -210,7 +208,15 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
           <span className={busy ? 'planner-shimmer' : 'planner-status-label'}>{busy ? (contextLoading ? 'Reading GitHub…' : stream.content ? 'Writing…' : 'Thinking…') : stopped ? 'Stopped' : error ? 'Interrupted' : 'Thought process'}</span>
           <span className="planner-thinking-chevron"><Icon name="chevron" size={12}/></span>
         </button>
-        <div ref={thinkingScroll} hidden={!thinkingOpen} className="planner-thinking-text"><StreamWords text={stream.reasoning} live={busy}/></div>
+        <AnimatePresence initial={false}>
+          {thinkingOpen && <motion.div key="thinking-body" className="planner-thinking-reveal"
+            initial={reducedMotion ? false : { height: 0, opacity: 0, filter: 'blur(6px)' }}
+            animate={{ height: 'auto', opacity: 1, filter: 'blur(0px)' }}
+            exit={reducedMotion ? { height: 0, opacity: 0 } : { height: 0, opacity: 0, filter: 'blur(6px)' }}
+            transition={{ duration: reducedMotion ? 0 : 0.32, ease: [0.16, 1, 0.3, 1] }}>
+            <div ref={thinkingScroll} className="planner-thinking-text"><StreamWords text={stream.reasoning} live={busy}/></div>
+          </motion.div>}
+        </AnimatePresence>
       </div>}
       {error && <div className="planner-error" role="alert"><span>{error}</span><button type="button" disabled={busy || !prompt.trim()} onClick={() => { void generate(); }}>Retry</button></div>}
     </section>
@@ -223,7 +229,7 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
       <div className="planner-section-head"><span>{kind === 'todo' ? 'Your tasks' : 'Your memory'}</span>
         {kind === 'todo' && <div className="planner-filters" role="group" aria-label="Filter tasks">{(['all', 'open', 'done'] as const).map(value => <button type="button" key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>{value === 'all' ? 'All' : value === 'open' ? 'Open' : 'Done'}{filter === value && <span className="planner-filter-count">{counts[value]}</span>}</button>)}</div>}
       </div>
-      <form className="planner-add" onSubmit={e => { e.preventDefault(); add(); }}><Icon name="plus" size={16}/><input aria-label={kind === 'todo' ? 'New task' : 'New memory'} placeholder={kind === 'todo' ? 'Add a task…' : 'Add a memory…'} maxLength={1200} value={draft} onChange={e => setDraft(e.target.value)}/><button type="submit" disabled={!draft.trim()}>Add</button></form>
+      <form className="planner-add" onSubmit={e => { e.preventDefault(); add(); }}><button type="button" className="planner-add-icon" aria-label={kind === 'todo' ? 'Add task' : 'Add memory'} onClick={() => { if (draft.trim()) add(); else addRef.current?.focus(); }}><Icon name="plus" size={16}/></button><input ref={addRef} aria-label={kind === 'todo' ? 'New task' : 'New memory'} placeholder={kind === 'todo' ? 'Add a task…' : 'Add a memory…'} maxLength={1200} value={draft} onChange={e => setDraft(e.target.value)}/><button type="submit" disabled={!draft.trim()}>Add</button></form>
       {!groups.length && <p className="planner-empty">{rows.length ? (filter === 'done' ? 'No completed tasks.' : 'No open tasks.') : kind === 'todo' ? 'No tasks yet.' : 'No memories yet.'}{rows.length > 0 && filter !== 'all' && <button type="button" onClick={() => setFilter('all')}>Show all</button>}</p>}
       {groups.map(([category, items]) => <section key={category} className="planner-group"><h2>{category}<small>{items.length}</small></h2>
         {items.map(row => <ItemRow key={row.line + ':' + row.text} row={row} kind={kind} onEdit={onEdit}/>)}</section>)}
