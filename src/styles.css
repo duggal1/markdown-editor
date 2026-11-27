@@ -2857,7 +2857,16 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .private-workspace .private-title-input:hover { background:var(--hover); }
 .private-workspace .private-title-input:focus-visible { outline:1px solid var(--muted); outline-offset:-1px; text-overflow:clip; }
 .private-workspace .private-visibility { margin-inline-start:10px; flex:none; }
-.private-visibility-label { color:#1d4ed8; text-decoration:underline dotted; text-underline-offset:3px; }
+.private-visibility:has(.private-visibility-label) { color:var(--palette-blue-600); }
+.private-visibility-label { color:inherit; text-decoration:none; }
+.private-visibility:has(.private-visibility-label) > :is(.phosphor-icon,.pixel-huge-icon,svg) { color:inherit; }
+/* Center the privacy status within the editor header, not the browser or sidebar.
+   Compact layouts keep it inline to avoid collisions with title and actions. */
+@media(min-width:1100px) {
+  .private-workspace .topbar { position:relative; }
+  .private-workspace .private-visibility { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); margin-inline-start:0; }
+  .private-workspace .document-meta { max-width:calc(50% - 44px); }
+}
 @media(max-width:800px) {
   .private-workspace .private-title-input { width:clamp(56px,18ch,160px); }
   .private-workspace .private-visibility { margin-inline-start:4px; }
