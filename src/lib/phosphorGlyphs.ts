@@ -1,137 +1,72 @@
-import slidersGlyph from '@phosphor-icons/core/assets/regular/sliders-horizontal.svg?raw';
-import desktopGlyph from '@phosphor-icons/core/assets/regular/desktop.svg?raw';
-import phoneGlyph from '@phosphor-icons/core/assets/regular/device-mobile.svg?raw';
-import tabletGlyph from '@phosphor-icons/core/assets/regular/device-tablet.svg?raw';
-import caretDownGlyph from '@phosphor-icons/core/assets/regular/caret-down.svg?raw';
-import refreshGlyph from '@phosphor-icons/core/assets/regular/arrow-clockwise.svg?raw';
-import maximizeGlyph from '@phosphor-icons/core/assets/regular/arrows-out.svg?raw';
-import sidebarGlyph from '@phosphor-icons/core/assets/regular/sidebar-simple.svg?raw';
-import searchGlyph from '@phosphor-icons/core/assets/regular/magnifying-glass.svg?raw';
-import plusGlyph from '@phosphor-icons/core/assets/regular/plus.svg?raw';
-import fileGlyph from '@phosphor-icons/core/assets/regular/file-text.svg?raw';
-import folderGlyph from '@phosphor-icons/core/assets/regular/folder.svg?raw';
-import backGlyph from '@phosphor-icons/core/assets/regular/arrow-left.svg?raw';
-import forwardGlyph from '@phosphor-icons/core/assets/regular/arrow-right.svg?raw';
-import chevronGlyph from '@phosphor-icons/core/assets/regular/caret-right.svg?raw';
-import downloadGlyph from '@phosphor-icons/core/assets/regular/download-simple.svg?raw';
-import uploadGlyph from '@phosphor-icons/core/assets/regular/upload-simple.svg?raw';
-import moonGlyph from '@phosphor-icons/core/assets/regular/moon.svg?raw';
-import sunGlyph from '@phosphor-icons/core/assets/regular/sun.svg?raw';
-import eyeGlyph from '@phosphor-icons/core/assets/regular/eye.svg?raw';
-import splitGlyph from '@phosphor-icons/core/assets/regular/columns.svg?raw';
-import editGlyph from '@phosphor-icons/core/assets/regular/pencil-simple.svg?raw';
-import linkGlyph from '@phosphor-icons/core/assets/regular/link-simple.svg?raw';
-import codeGlyph from '@phosphor-icons/core/assets/regular/code.svg?raw';
-import quoteGlyph from '@phosphor-icons/core/assets/regular/quotes.svg?raw';
-import listGlyph from '@phosphor-icons/core/assets/regular/list-bullets.svg?raw';
-import todoGlyph from '@phosphor-icons/core/assets/regular/list-checks.svg?raw';
-import closeGlyph from '@phosphor-icons/core/assets/regular/x.svg?raw';
-import trashGlyph from '@phosphor-icons/core/assets/regular/trash.svg?raw';
-import moreGlyph from '@phosphor-icons/core/assets/regular/dots-three.svg?raw';
-import menuGlyph from '@phosphor-icons/core/assets/regular/list.svg?raw';
-import historyGlyph from '@phosphor-icons/core/assets/regular/clock-counter-clockwise.svg?raw';
-import copyGlyph from '@phosphor-icons/core/assets/regular/copy.svg?raw';
-import checkGlyph from '@phosphor-icons/core/assets/regular/check.svg?raw';
-import bookmarkGlyph from '@phosphor-icons/core/assets/regular/bookmark-simple.svg?raw';
-import svgGlyph from '@phosphor-icons/core/assets/regular/image-square.svg?raw';
-import terminalGlyph from '@phosphor-icons/core/assets/regular/terminal.svg?raw';
-import cursorGlyph from '@phosphor-icons/core/assets/regular/cursor.svg?raw';
-import textGlyph from '@phosphor-icons/core/assets/regular/text-t.svg?raw';
-import arrowUpRightGlyph from '@phosphor-icons/core/assets/regular/arrow-up-right.svg?raw';
-import imageAddGlyph from '@phosphor-icons/core/assets/regular/image.svg?raw';
-import undoGlyph from '@phosphor-icons/core/assets/regular/arrow-u-up-left.svg?raw';
-import formatGlyph from '@phosphor-icons/core/assets/regular/magic-wand.svg?raw';
-import boldGlyph from '@phosphor-icons/core/assets/regular/text-b.svg?raw';
-import italicGlyph from '@phosphor-icons/core/assets/regular/text-italic.svg?raw';
-import settingsGlyph from '@phosphor-icons/core/assets/regular/gear-six.svg?raw';
-import lockGlyph from '@phosphor-icons/core/assets/regular/lock-simple.svg?raw';
-import globeGlyph from '@phosphor-icons/core/assets/regular/globe.svg?raw';
-import globeOffGlyph from '@phosphor-icons/core/assets/regular/warning-circle.svg?raw';
-import h1Glyph from '@phosphor-icons/core/assets/regular/text-h-one.svg?raw';
-import h2Glyph from '@phosphor-icons/core/assets/regular/text-h-two.svg?raw';
-import h3Glyph from '@phosphor-icons/core/assets/regular/text-h-three.svg?raw';
-import h4Glyph from '@phosphor-icons/core/assets/regular/text-h-four.svg?raw';
-import numberGlyph from '@phosphor-icons/core/assets/regular/list-numbers.svg?raw';
-import dividerGlyph from '@phosphor-icons/core/assets/regular/minus.svg?raw';
-import tableGlyph from '@phosphor-icons/core/assets/regular/table.svg?raw';
-import htmlGlyph from '@phosphor-icons/core/assets/regular/code-block.svg?raw';
-import gripGlyph from '@phosphor-icons/core/assets/regular/dots-six-vertical.svg?raw';
-
-import fileJsGlyph from '@phosphor-icons/core/assets/regular/file-js.svg?raw';
-import fileTsGlyph from '@phosphor-icons/core/assets/regular/file-ts.svg?raw';
-import fileHtmlGlyph from '@phosphor-icons/core/assets/regular/file-html.svg?raw';
-import databaseGlyph from '@phosphor-icons/core/assets/regular/database.svg?raw';
-
-// All markup is imported at build time from Phosphor; never interpolate user text.
+// Flow's hand-authored 24-unit icon system. Static geometry only; no imported SVG pack or user markup.
 const glyphs = {
-  fileJs: fileJsGlyph,
-  fileTs: fileTsGlyph,
-  fileHtml: fileHtmlGlyph,
-  database: databaseGlyph,
-  sliders: slidersGlyph,
-  desktop: desktopGlyph,
-  phone: phoneGlyph,
-  tablet: tabletGlyph,
-  caretDown: caretDownGlyph,
-  refresh: refreshGlyph,
-  maximize: maximizeGlyph,
-  sidebar: sidebarGlyph,
-  search: searchGlyph,
-  plus: plusGlyph,
-  file: fileGlyph,
-  folder: folderGlyph,
-  back: backGlyph,
-  forward: forwardGlyph,
-  chevron: chevronGlyph,
-  download: downloadGlyph,
-  upload: uploadGlyph,
-  moon: moonGlyph,
-  sun: sunGlyph,
-  eye: eyeGlyph,
-  split: splitGlyph,
-  edit: editGlyph,
-  link: linkGlyph,
-  code: codeGlyph,
-  quote: quoteGlyph,
-  list: listGlyph,
-  todo: todoGlyph,
-  close: closeGlyph,
-  trash: trashGlyph,
-  more: moreGlyph,
-  menu: menuGlyph,
-  history: historyGlyph,
-  copy: copyGlyph,
-  check: checkGlyph,
-  bookmark: bookmarkGlyph,
-  svg: svgGlyph,
-  terminal: terminalGlyph,
-  cursor: cursorGlyph,
-  text: textGlyph,
-  arrowUpRight: arrowUpRightGlyph,
-  imageAdd: imageAddGlyph,
-  undo: undoGlyph,
-  format: formatGlyph,
-  bold: boldGlyph,
-  italic: italicGlyph,
-  settings: settingsGlyph,
-  lock: lockGlyph,
-  globe: globeGlyph,
-  globeOff: globeOffGlyph,
-  h1: h1Glyph,
-  h2: h2Glyph,
-  h3: h3Glyph,
-  h4: h4Glyph,
-  number: numberGlyph,
-  divider: dividerGlyph,
-  table: tableGlyph,
-  html: htmlGlyph,
-  grip: gripGlyph,
+  "fileJs": "M5 2.5h8l6 6v13H5z M13 2.5v6h6 M9 13v4q0 2-2 2 M14 13h3l-3 3h3v3h-3",
+  "fileTs": "M5 2.5h8l6 6v13H5z M13 2.5v6h6 M7 13h5m-2.5 0v6 M14 13h3l-3 3h3v3h-3",
+  "fileHtml": "M5 2.5h8l6 6v13H5z M13 2.5v6h6 M10 13l-3 3 3 3m4-6 3 3-3 3",
+  "database": "M4 6c0-2 3.6-3.5 8-3.5S20 4 20 6s-3.6 3.5-8 3.5S4 8 4 6v12c0 2 3.6 3.5 8 3.5s8-1.5 8-3.5V6 M4 12c0 2 3.6 3.5 8 3.5s8-1.5 8-3.5",
+  "sliders": "M3 7h5m4 0h9M3 17h9m4 0h5 M8 4v6m8 4v6",
+  "desktop": "M3 4h18v13H3z M12 17v4m-4 0h8",
+  "phone": "M7 2.5h10a1.5 1.5 0 011.5 1.5v16a1.5 1.5 0 01-1.5 1.5H7A1.5 1.5 0 015.5 20V4A1.5 1.5 0 017 2.5z M10 18.5h4",
+  "tablet": "M5 2.5h14a1.5 1.5 0 011.5 1.5v16a1.5 1.5 0 01-1.5 1.5H5A1.5 1.5 0 013.5 20V4A1.5 1.5 0 015 2.5z M10 18.5h4",
+  "caretDown": "m6 9 6 6 6-6",
+  "refresh": "M20 11a8 8 0 10-2 6m2-12v6h-6",
+  "maximize": "M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6",
+  "sidebar": "M3 4h18v16H3z M9 4v16",
+  "search": "M15.6 15.6 21 21 M17.5 10.5a7 7 0 11-14 0 7 7 0 0114 0z",
+  "plus": "M12 4v16M4 12h16",
+  "file": "M5 3h8l6 6v12H5z M13 3v6h6 M8.5 13h7m-7 4h5",
+  "folder": "M3 7V5h6l2 2h10v13H3z",
+  "back": "M19 12H5m6-6-6 6 6 6",
+  "forward": "M5 12h14m-6-6 6 6-6 6",
+  "chevron": "m9 6 6 6-6 6",
+  "download": "M12 3v12m-5-5 5 5 5-5 M4 17v4h16v-4",
+  "upload": "M12 15V3m-5 5 5-5 5 5 M4 17v4h16v-4",
+  "moon": "M20.5 14.5A8.5 8.5 0 019.5 3.5a8.5 8.5 0 1011 11z",
+  "sun": "M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2M19 5l-2 2M7 17l-2 2 M16.5 12a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z",
+  "eye": "M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z M14.5 12a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z",
+  "split": "M3 4h18v16H3z M12 4v16",
+  "edit": "m4 16 11-11 5 5L9 21H4z M12.5 7.5l5 5",
+  "link": "M10 8l3-3a4.2 4.2 0 016 6l-3 3M14 16l-3 3a4.2 4.2 0 01-6-6l3-3m1 5 6-6",
+  "code": "m8 6-6 6 6 6m8-12 6 6-6 6m-2-15-4 18",
+  "quote": "M9 6H4v7h5c0 3-1 4-4 5 M20 6h-5v7h5c0 3-1 4-4 5",
+  "list": "M8 6h13M8 12h13M8 18h13 M3 6h.1M3 12h.1M3 18h.1",
+  "todo": "m3 6 2 2 3-4m-5 10 2 2 3-4 M11 7h10m-10 8h10",
+  "close": "m6 6 12 12M18 6 6 18",
+  "trash": "M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7",
+  "more": "M5 12h.1M12 12h.1M19 12h.1",
+  "menu": "M4 6h16M4 12h16M4 18h16",
+  "history": "M3 11a9 9 0 119 10m-9-16v6h6 M12 7v5l4 2",
+  "copy": "M8 8h12v13H8z M16 8V3H3v13h5",
+  "check": "m5 12 4 4L19 6",
+  "bookmark": "M6 3h12v18l-6-4-6 4z",
+  "svg": "M3 4h18v16H3z M3 16l5-5 4 4 4-6 5 6M8 8h.1",
+  "terminal": "M3 4h18v16H3z m4 5 4 3-4 3m6 0h4",
+  "cursor": "m5 3 14 10-6 1-3 6z",
+  "text": "M4 5h16M12 5v14m-4 0h8",
+  "arrowUpRight": "M6 18 18 6M7 6h11v11",
+  "imageAdd": "M3 4h18v16H3z M3 16l5-5 4 4m3-2h5m-2.5-2.5v5 M8 8h.1",
+  "undo": "M8 4 3 9l5 5M3 9h10a7 7 0 010 14",
+  "format": "m5 19 12-12 3 3L8 22z M15 9l3 3M6 3v6M3 6h6m10-4v3m-1.5-1.5h3",
+  "bold": "M7 3h7a4.5 4.5 0 010 9H7zm0 9h8a4.5 4.5 0 010 9H7z",
+  "italic": "M10 4h9M5 20h9M14 4 10 20",
+  "settings": "M12 3 14 6l3.5-.2.7 3.4 3 2.8-3 2.8-.7 3.4L14 18l-2 3-2-3-3.5.2-.7-3.4-3-2.8 3-2.8.7-3.4L10 6z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
+  "lock": "M6 10h12v11H6z M9 10V7a3 3 0 016 0v3 M12 14v3",
+  "globe": "M21 12a9 9 0 11-18 0 9 9 0 0118 0z M3 12h18M12 3c5 5 5 13 0 18-5-5-5-13 0-18z",
+  "globeOff": "M4 4l16 16M20.5 15A9 9 0 009 3.5M15 20.5A9 9 0 013.5 9M3 12h9",
+  "h1": "M3 5v14m9-14v14M3 12h9m4-3 3-2v12m-3 0h6",
+  "h2": "M3 5v14m9-14v14M3 12h9m4-2a3 3 0 116 0c0 3-6 4-6 9h6",
+  "h3": "M3 5v14m9-14v14M3 12h9m4-3h4l-2 4c5 0 5 6-2 6",
+  "h4": "M3 5v14m9-14v14M3 12h9m7-5-4 7h7m-2-7v12",
+  "number": "M3 4l2-1v5m-2 0h4M3 12c0-3 5-3 5 0 0 2-5 3-5 6h5M11 6h10m-10 10h10",
+  "divider": "M4 12h16",
+  "table": "M3 4h18v16H3z M3 9h18M3 14.5h18M9 4v16M15 4v16",
+  "html": "M3 4h18v16H3z M3 8h18m6 4-3 3 3 3m6-6 3 3-3 3",
+  "grip": "M9 5h.1M15 5h.1M9 12h.1M15 12h.1M9 19h.1M15 19h.1"
 } as const;
 export type IconName = keyof typeof glyphs;
 export function phosphorMarkup(name: IconName): string {
-  return glyphs[name].replace(/fill="(?:#000000|#000|black)"/gi, 'fill="currentColor"')
-    .replace(/<svg\b/, '<svg aria-hidden="true" focusable="false"')
-    .replace(/\bwidth="[^"]*"/, 'width="100%"').replace(/\bheight="[^"]*"/, 'height="100%"');
+  const weight = name === 'more' || name === 'grip' ? 2.8 : 1.65;
+  return `<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" width="100%" height="100%" viewBox="0 0 24 24"><path d="${glyphs[name]}" fill="none" stroke="currentColor" stroke-width="${weight}" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
 export function phosphorElement(name: IconName, size = 16): SVGSVGElement {
   const template = document.createElement('template');
