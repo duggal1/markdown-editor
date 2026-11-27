@@ -10,6 +10,7 @@ export type Folder = { id: string; workspaceId: string; name: string; createdAt:
 export type FlowDocument = {
   id: string; workspaceId: string; folderId?: string; parentId?: string; title: string; titleAuto: boolean;
   markdown: string; createdAt: number; updatedAt: number;
+  plannerKind?: 'todo' | 'memory';
   fileName?: string; fileType?: 'text' | 'image' | 'binary'; language?: string; asset?: Blob;
 };
 export type Preferences = {

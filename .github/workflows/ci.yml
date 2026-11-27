@@ -41,6 +41,7 @@ jobs:
       - run: npm run test:tokens
       - run: npm run test:interactions
       - run: npm run test:tasks
+      - run: npm run test:planner
       - run: npm run test:titles
       - run: npm run test:pdf
       - uses: actions/upload-artifact@v4

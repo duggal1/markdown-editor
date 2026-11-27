@@ -6,6 +6,7 @@ import type { EditorView } from '@codemirror/view';
 import MarkdownEditor, { formatEditor } from './components/MarkdownEditor';
 import { setTaskChecked, taskMarkerEdit } from './lib/taskList';
 import WorkspaceTree from './components/WorkspaceTree';
+import { plannerId, type PlannerKind } from './lib/planner';
 import { finishVisit, sortWorkspaceDocuments, restoreRecent } from './lib/workspaceRecency';
 import { canExpireDraft, EMPTY_DRAFT_IDLE_MS } from './lib/emptyDraft';
 import { FlowMark, Icon, SuppliedIcon } from './components/Icons';
@@ -39,9 +40,10 @@ import {
 } from './lib/store';
 
 const MarkdownPreview = lazy(() => import('./components/MarkdownPreview'));
+const PlannerPage = lazy(() => import('./components/PlannerPage'));
 
 type TreeActions = Pick<ComponentProps<typeof WorkspaceTree>,
-  'onOpen' | 'onSelectFolder' | 'onNewPageInSelection' | 'onNewDocument' | 'onNewFolder' | 'onRenameFolder' | 'onRenameDocument' |
+  'onOpen' | 'onOpenPlanner' | 'onSelectFolder' | 'onNewPageInSelection' | 'onNewDocument' | 'onNewFolder' | 'onRenameFolder' | 'onRenameDocument' |
   'onDuplicateDocument' | 'onMovePage' | 'onDeleteFolder' | 'onDeleteDocument'>;
 // Keep callback identities stable for the memoized tree, but dispatch to the
 // latest committed closures (workspace, folders and delete state can change).
@@ -50,6 +52,7 @@ function useTreeActions(actions: TreeActions): TreeActions {
   useLayoutEffect(() => { latest.current = actions; }, [actions]);
   return useMemo<TreeActions>(() => ({
     onOpen: (...args) => latest.current.onOpen(...args),
+    onOpenPlanner: (...args) => latest.current.onOpenPlanner(...args),
     onSelectFolder: (...args) => latest.current.onSelectFolder(...args),
     onNewPageInSelection: () => latest.current.onNewPageInSelection(),
     onNewDocument: (...args) => latest.current.onNewDocument(...args),
@@ -255,7 +258,7 @@ export default function App() {
       const restored = data.documents.map(original => {
         let doc = original;
         // Recover old inferred-code pages, never explicit source-file imports.
-        if (!doc.asset && doc.markdown.length < 180_000 &&
+        if (!doc.plannerKind && !doc.asset && doc.markdown.length < 180_000 &&
           (!doc.fileName || isMarkdownFile(doc.fileName) || !languageForFile(doc.fileName)) &&
           normalizeMixedContent(doc.markdown) !== doc.markdown) {
           const markdown = formatPlainTextAsMarkdown(doc.markdown, { atDocumentStart: true });
@@ -265,7 +268,7 @@ export default function App() {
             void saveDoc(doc).catch(() => setNotice('Could not save recovered Markdown structure.'));
           }
         }
-        if (doc.asset || doc.fileName || !doc.markdown.trim() ||
+        if (doc.plannerKind || doc.asset || doc.fileName || !doc.markdown.trim() ||
             (!doc.titleAuto && !isUntitledTitle(doc.title))) return doc;
         const title = inferTitle(doc.markdown, doc.language);
         if (title === doc.title && doc.titleAuto) return doc;
@@ -462,6 +465,11 @@ export default function App() {
     saveTimers.current.set(doc.id, window.setTimeout(() => flush(doc.id), localSaveDelay(doc.markdown.length, now - firstDirty)));
     const visual = visualTimers.current.get(doc.id);
     if (visual !== undefined) clearTimeout(visual);
+    if (doc.plannerKind) {
+      visualTimers.current.delete(doc.id);
+      workerRef.current?.postMessage({ type: 'upsert', document: { id: doc.id, workspaceId: doc.workspaceId, title: doc.title, markdown: doc.markdown, updatedAt: doc.updatedAt } });
+      return;
+    }
     visualTimers.current.set(doc.id, window.setTimeout(() => {
       const latest = live.current.get(doc.id);
       if (!latest) return;
@@ -539,7 +547,7 @@ export default function App() {
         });
       }
     }
-    if (next.title !== current.title || next.titleAuto !== current.titleAuto) {
+    if (current.plannerKind || next.title !== current.title || next.titleAuto !== current.titleAuto) {
       setDocs(items => items.map(item => item.id === next.id ? next : item));
     }
   }, [scheduleSave]);
@@ -563,6 +571,15 @@ export default function App() {
     const id = activeIdRef.current;
     const current = live.current.get(id);
     if (!current || current.asset) return;
+
+    if (current.plannerKind === 'todo') {
+      const next = setTaskChecked(current.markdown, lineNumber, checked);
+      if (next === current.markdown) return;
+      onEditorChange(next, id);
+      setPreviewText(next);
+      flush(id);
+      return;
+    }
 
     // CodeMirror is the editable source of truth in Write, Split and Preview.
     // Dispatching a one-character transaction preserves native undo/redo.
@@ -591,7 +608,7 @@ export default function App() {
     setPreviewText(next);
     const updated = live.current.get(id);
     if (updated) setDocs(items => items.map(doc => doc.id === id ? updated : doc));
-  }, [onEditorChange]);
+  }, [onEditorChange, flush]);
 
   const selectDocument = useCallback((id: string) => {
     const doc = live.current.get(id);
@@ -625,6 +642,42 @@ export default function App() {
     setSaveState('idle');
     if (window.innerWidth < 800) setSidebarOpen(false);
   }, [flush, cancelHeadingMotion]);
+
+  const openPlanner = useCallback((kind: PlannerKind, targetWorkspace: string, folderId?: string) => {
+    if (!workspaces.some(ws => ws.id === targetWorkspace)) return;
+    const folder = folderId ? folders.find(item => item.id === folderId && item.workspaceId === targetWorkspace) : undefined;
+    if (folderId && !folder) return;
+    const id = plannerId(kind, targetWorkspace, folderId);
+    let doc = live.current.get(id);
+    if (!doc) {
+      const stamp = Date.now();
+      const label = kind === 'todo' ? 'To-do' : 'Memory';
+      doc = { id, workspaceId: targetWorkspace, folderId, title: folder ? label + ' · ' + folder.name : label,
+        titleAuto: false, plannerKind: kind, markdown: '', createdAt: stamp, updatedAt: stamp };
+      live.current.set(id, doc);
+      const created = doc;
+      setDocs(items => items.some(item => item.id === id) ? items : [created, ...items]);
+      scheduleSave(doc);
+    }
+    setQuery('');
+    selectDocument(id);
+    if (modeRef.current === 'preview') { modeRef.current = 'write'; setMode('write'); }
+    flush(id);
+  }, [workspaces, folders, selectDocument, scheduleSave, flush]);
+
+  const editPlanner = useCallback((id: string, change: (source: string) => string) => {
+    const current = live.current.get(id);
+    if (!current?.plannerKind) return;
+    const next = change(current.markdown);
+    if (next === current.markdown) return;
+    onEditorChange(next, id);
+    if (activeIdRef.current === id) setPreviewText(next);
+    flush(id);
+  }, [onEditorChange, flush]);
+
+  const editActivePlanner = useCallback((change: (source: string) => string) => {
+    editPlanner(activeId, change);
+  }, [activeId, editPlanner]);
 
   const makeDocument = useCallback((targetWorkspace?: string, targetFolder?: string, parentId?: string) => {
     if (!workspaces.length) return;
@@ -1225,6 +1278,9 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
     void importFiles(Array.from(event.dataTransfer.files));
   }
   const active = live.current.get(activeId) || docs.find(doc => doc.id === activeId);
+  const plannerMemory = active?.plannerKind === 'todo'
+    ? [live.current.get(plannerId('memory', active.workspaceId))?.markdown,
+      active.folderId ? live.current.get(plannerId('memory', active.workspaceId, active.folderId))?.markdown : ''].filter(Boolean).join('\n\n') : '';
   const activeFileLanguage = active?.language || languageForFile(active?.fileName || '');
   const activeRepairLanguage = useMemo(() => active && !active.asset
     ? repairLanguage(active.markdown.slice(0, 8192), activeFileLanguage) : null, [active, activeFileLanguage]);
@@ -1548,7 +1604,7 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
   }, [loaded, docs, activeId]);
   const previousPageId = recentIds.find(id => id !== activeId && live.current.has(id));
   const treeActions = useTreeActions({
-    onOpen: selectDocument, onSelectFolder: setSelectedFolderId, onNewPageInSelection: createPageInSelection,
+    onOpen: selectDocument, onOpenPlanner: openPlanner, onSelectFolder: setSelectedFolderId, onNewPageInSelection: createPageInSelection,
     onNewFolder: createFolder, onNewDocument: makeDocument,
     onRenameFolder: renameFolder, onRenameDocument: renameDocument, onDuplicateDocument: duplicateDocument,
     onMovePage: movePage, onDeleteFolder: id => { void eraseFolder(id); },
@@ -1617,7 +1673,7 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
           <motion.button {...pressMotion} className="square-button sidebar-toggle" title={sidebarOpen ? 'Hide sidebar' : 'Open sidebar'} aria-label={sidebarOpen ? 'Hide sidebar' : 'Open sidebar'}
             onClick={() => setSidebarOpen(current => !current)}><Icon name="sidebar" size={18} /></motion.button>
           <span className="private-breadcrumb"><Icon name="file" size={15}/>{active
-            ? <LivePageTitle key={active.id} title={active.title || 'Untitled'} onRename={title => renameDocument(active.id, title)}/>
+            ? active.plannerKind ? <span>{active.title}</span> : <LivePageTitle key={active.id} title={active.title || 'Untitled'} onRename={title => renameDocument(active.id, title)}/>
             : <span>Untitled</span>}</span>
           <span className="private-visibility"><SuppliedIcon kind="lock" size={14}/>{active && (readShareRecord(active.id) || readSiteRecord(active.id)) ? 'Shared' : <span className="private-visibility-label">Private</span>}</span>
 
@@ -1639,7 +1695,7 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
             transition={motionOff ? { duration: 0 } : { duration: 0.17, ease: [0.22, 1, 0.36, 1] }}>
             <Icon name="edit" size={15}/><span>Draw</span></motion.a>
           <motion.button {...pressMotion} type="button" className="share-button"
-            title={activeHtml ? 'Share interactive HTML' : 'Share page'} aria-label="Share page" disabled={!active || Boolean(active.asset)}
+            title={activeHtml ? 'Share interactive HTML' : 'Share page'} aria-label="Share page" disabled={!active || Boolean(active.asset) || Boolean(active.plannerKind)}
             onClick={() => setShareOpen(true)}><Icon name="link" size={15} /><span>Share</span></motion.button>
           <motion.button {...pressMotion} type="button" className="export-button"
             title="Export page" aria-label="Export page" aria-haspopup="menu"
@@ -1695,7 +1751,8 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
           onWheelCapture={claimEditorScroll}
           onTouchStartCapture={claimEditorScroll}
           onKeyDownCapture={claimEditorScroll}>
-          {active?.asset ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} theme={theme} /> : active && <MarkdownEditor key={active.id} documentId={active.id} initialText={active.markdown}
+          {active?.plannerKind ? <Suspense fallback={<div className="preview-loading">Opening planner…</div>}><PlannerPage key={active.id} kind={active.plannerKind} markdown={active.markdown} memory={plannerMemory}
+            scope={folders.find(folder => folder.id === active.folderId)?.name || 'Workspace'} onEdit={editActivePlanner} /></Suspense> : active?.asset ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} theme={theme} /> : active && <MarkdownEditor key={active.id} documentId={active.id} initialText={active.markdown}
             fileLanguage={activeFileLanguage} viewRef={editorRef} onChange={onEditorChange} onPosition={onEditorPosition} />}
         </section>
         <section className="preview-pane" data-glass={activeHtml ? htmlSurfaceTone : undefined}
@@ -1714,7 +1771,7 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
             </Suspense>
           </motion.div>
         </section>
-        {active && !active.asset && !activeHtml && (!activeFileLanguage || activeFileLanguage === 'markdown') &&
+        {active && !active.plannerKind && !active.asset && !activeHtml && (!activeFileLanguage || activeFileLanguage === 'markdown') &&
           <PageOutline key={active.id} documentId={active.id} getSource={outlineSource}
             getPosition={outlinePosition} onJump={jumpToHeading} />}
         {mode === 'split' && !compact && <div className="split-resizer" role="separator" tabIndex={0}
@@ -1756,7 +1813,7 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
             }}><Icon name="download" size={15}/><span>Export as PDF</span><small>.pdf</small></button>
         </motion.div>}
       </AnimatePresence>, document.body)}
-      {shareOpen && active && (activeHtml || Boolean(readSiteRecord(active.id))
+      {shareOpen && active && !active.plannerKind && (activeHtml || Boolean(readSiteRecord(active.id))
         ? <HtmlSiteDialog key={active.id} documentId={active.id}
             title={live.current.get(active.id)?.title || active.title}
             getCurrent={() => live.current.get(active.id) || null}
