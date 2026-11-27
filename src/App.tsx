@@ -22,7 +22,8 @@ import { detectRawCode, isMarkdownFile, languageForFile, normalizeMixedContent }
 import { svgPreviewDocument } from './lib/svgPreview';
 import { locateSvgSource } from './lib/svgPalette';
 import { readTextImport } from './lib/textImport';
-import { formatPlainTextAsMarkdown, MAX_MANUAL_FORMAT_CHARS } from './lib/autoMarkdown';
+import { formatPlainTextAsMarkdown, shouldAutoFormatPaste, MAX_MANUAL_FORMAT_CHARS } from './lib/autoMarkdown';
+import { formatMarkdownAction } from './lib/autoMarkdownAction';
 import { repairLanguage } from './lib/codeRepair';
 import { repairCodeAction } from './lib/codeRepairAction';
 import { inferTitle, isUntitledTitle } from './lib/title';
@@ -127,7 +128,9 @@ function normalizeStartupDocument(original: FlowDocument): FlowDocument {
   let doc = original;
   if (!doc.plannerKind && !doc.asset && doc.markdown.length < 180_000 &&
       (!doc.fileName || isMarkdownFile(doc.fileName) || !languageForFile(doc.fileName)) &&
-      normalizeMixedContent(doc.markdown) !== doc.markdown) {
+      (normalizeMixedContent(doc.markdown) !== doc.markdown ||
+        (!/^(?: {0,3}#{1,6}\s| {0,3}[-+*]\s| {0,3}\d+[.)]\s| {0,3}>| {0,3}\x60{3,})/m.test(doc.markdown) &&
+          shouldAutoFormatPaste(doc.markdown)))) {
     const markdown = formatPlainTextAsMarkdown(doc.markdown, { atDocumentStart: true });
     if (markdown !== doc.markdown) {
       doc = { ...doc, markdown, language: undefined, updatedAt: Date.now() };
@@ -1246,7 +1249,9 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
           const plainText = !languageForFile(file.name) && !isMarkdownFile(file.name) &&
             (/\.txt$/i.test(file.name) || file.type === 'text/plain');
           const mixedMarkdown = isMarkdownFile(file.name) && normalizeMixedContent(decoded) !== decoded;
-          markdown = plainText || mixedMarkdown ? formatPlainTextAsMarkdown(decoded, { atDocumentStart: true }) : decoded;
+          markdown = plainText || mixedMarkdown
+            ? await formatMarkdownAction(decoded, { atDocumentStart: true, manual: false }).catch(() => decoded)
+            : decoded;
         }
       }
       const now = Date.now();

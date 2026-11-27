@@ -116,7 +116,7 @@ const long = 'Long plan\n\n' + Array.from({ length: 3600 }, (_, i) =>
   'Feature ' + i + ' — Explain the important production behavior and required acceptance test for this step.'
 ).join('\n');
 assert.ok(long.length > 180_000, 'Large-document regression must exceed the old action limit.');
-assert.equal(format(long), long, 'Automatic paste formatting retains its 180 KB safety guard.');
+assert.ok(format(long).includes('- **Feature 3599**'), 'Automatic formatting reaches the end of large plans.');
 const longFormatted = formatMarkdownDocument(long);
 assert.ok(longFormatted.startsWith('# Long plan'), 'Manual action should work on larger plans.');
 assert.ok(longFormatted.includes('- **Feature 3599** — Explain the important production behavior'),
@@ -133,7 +133,7 @@ assert.match(app, /lineAt\(range.from\).from/, 'Selection formatting must work o
 assert.match(app, /range.to === endLineStart/, 'A selection ending at the next line start must not alter that line.');
 assert.match(app, /view\.state\.doc !== originalDocument/, 'Async results must not overwrite newer typing.');
 assert.match(app, /onClick=\{\(\) => \{ void autoFormatDocument\(\); \}\}/);
-assert.match(app, /aria-busy=\{autoFormatting\}/, 'Formatting must show a visible loading state.');
+assert.match(app, /aria-busy=\{autoFormatting\}/, 'Code repair retains its own loading state.');
 assert.match(action, /WORKER_THRESHOLD = 50_000/);
 assert.match(action, /new Worker\(/, 'Long document formatting should not block the editor.');
 assert.match(worker, /formatMarkdownDocument\(event\.data\.source, event\.data\.options\)/);
@@ -194,6 +194,28 @@ assert.equal(detectRawCode('import SwiftUI\nstruct Home: View {\n var body: some
 assert.equal(detectRawCode('def hello():\n    print("Hi")\n'), 'python');
 assert.equal(detectRawCode('SELECT id FROM products;'), 'sql');
 
+const transcript = 'We need to rebuild the Director with a stable tracking pipeline. We should keep the recording interface unchanged. Right? We must verify exports on the target hardware.';
+assert.equal(shouldAutoFormatPaste(transcript), true);
+const transcriptMarkdown = format(transcript);
+assert.match(transcriptMarkdown, /^- We need to rebuild/m);
+assert.match(transcriptMarkdown, /^- We should keep/m);
+assert.match(transcriptMarkdown, /^- We must verify/m);
+assert.ok(transcriptMarkdown.includes('Right?'));
+assert.equal(format(transcriptMarkdown), transcriptMarkdown);
+const enumerated = 'Three things: 1. Keep recording stable. 2. Make exports faster. 3. Preserve the existing design.';
+assert.equal(format(enumerated), 'Three things:\n\n1. Keep recording stable.\n2. Make exports faster.\n3. Preserve the existing design.');
+assert.equal(format('• Recording quality\n• Export speed'), '- Recording quality\n- Export speed');
+const spoken = "What is incredible and what is garbage? Let's talk about what is garbage or what is bad. This and this is not even close. It is extremely laggy and super heavy. While recording, it is fine. But using it on studio, it is extremely laggy. Genuinely super laggy.\n\nNow, what is legitimate and what we need to steal? We need to fix the zoom and make the motion stable. We should preserve the existing recording interface.";
+const spokenOutput = format(spoken);
+assert.match(spokenOutput, /^# What is incredible and what is garbage\?/);
+assert.match(spokenOutput, /^## Now, what is legitimate/m);
+assert.equal(format(spokenOutput), spokenOutput, 'Spoken section recognition must be idempotent.');
+const authored = '# Notes\n\n- First item\n  - Nested item\n\n> A quote.\n> Another line.\n\nText with two spaces.  \nNext line.';
+assert.equal(format(authored), authored);
+assert.equal(format('---\ntitle: Example\n---\nSome text.'), '---\ntitle: Example\n---\nSome text.');
+assert.equal(format('A simple note.'), 'A simple note.');
+assert.match(readFileSync(new URL('../src/components/MarkdownEditor.tsx', import.meta.url), 'utf8'), /EditorState\.transactionFilter\.of/);
+assert.match(app, /await formatMarkdownAction\(decoded/);
 console.log('Auto Markdown regression cases passed.');
 {
 const { repairMixedCode } = codeModule.exports;

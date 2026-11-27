@@ -51,7 +51,7 @@ assert.match(src, /node\.name === 'FencedCode' \|\| node\.name === 'CodeBlock'/,
   'List-shaped text inside code fences must preserve code editing behavior.');
 assert.match(src, /keymap\.of\(\[indentWithTab\]\)/,
   'Tab indentation support must remain installed.');
-assert.match(src, /formatPlainTextAsMarkdown\(text, \{ atDocumentStart: atStart \}\)/,
+assert.match(src, /formatPlainTextAsMarkdown\(text, options\)/,
   'Paste formatting must not be replaced by the list typing fix.');
 assert.match(src, /change\.current\(update\.state\.doc\.toString\(\), documentId\)/,
   'Small edits must still reach the regular save and preview pipeline unchanged.');
