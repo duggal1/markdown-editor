@@ -27,7 +27,8 @@
     "db:migrate": "node scripts/migrate-postgres.mjs",
     "db:import-blob": "node scripts/import-blob.mjs",
     "test:postgres": "node scripts/test-postgres-storage.mjs",
-    "test:tokens": "node --import tsx scripts/test-tokenizer.mjs"
+    "test:tokens": "node --import tsx scripts/test-tokenizer.mjs",
+    "test:sync": "node scripts/test-sync.mjs"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.5.2",
@@ -55,7 +56,8 @@
     "@vercel/blob": "^2.0.0",
     "@phosphor-icons/core": "^2.1.1",
     "drizzle-orm": "1.0.0-rc.6",
-    "@fontsource-variable/instrument-sans": "5.3.0"
+    "@fontsource-variable/instrument-sans": "5.3.0",
+    "yjs": "^13.6.27"
   },
   "devDependencies": {
     "@types/react": "^19.2.0",
