@@ -66,11 +66,11 @@ function inlineList(value: string): string | null {
 }
 
 /** Keep every sentence and its original order. Only infer a list from independent requirements. */
-function structureProse(value: string, options: MarkdownFormatOptions): string {
+function structureProse(value: string): string {
   if (inlineMarkup.test(value) || /https?:\/\//i.test(value)) return value;
   const explicit = inlineList(value);
   if (explicit) return explicit;
-  if (value.length < (options.selection ? 100 : 110)) return value;
+  if (value.length < 80) return value;
   const units = sentences(value);
   if (units.length < 2) return value;
   const groups: string[] = [];
@@ -153,10 +153,13 @@ export function formatPlainTextAsMarkdown(source: string, options: MarkdownForma
     if (blocks[i].kind !== 'blank') following = blocks[i];
   }
   const first = blocks.findIndex(b => b.kind !== 'blank');
+  let previousContent: Block | undefined;
   const output: Block[] = [];
   let level = 0;
   for (let i = 0; i < blocks.length; i++) {
     const b = blocks[i];
+    const precedingContent = previousContent;
+    if (b.kind !== 'blank') previousContent = b;
     if (b.kind !== 'prose') {
       if (b.kind === 'heading') level = b.text.trimStart().match(/^#+/)![0].length;
       output.push(b); continue;
@@ -191,16 +194,16 @@ export function formatPlainTextAsMarkdown(source: string, options: MarkdownForma
     const firstSentence = value.length >= 140 ? sentences(value)[0] : '';
     const topic = firstSentence.length >= 15 && firstSentence.length <= 95 &&
       ((i === first && options.atDocumentStart !== false && /^(?:what (?:is|are)|how (?:can|do|does|should)|why (?:is|are|do))\b.*\?$/i.test(firstSentence)) ||
-       ((i === first || before?.kind === 'blank') && /^(?:now,\s+what|let me talk about|let's talk about)\b/i.test(firstSentence)));
+       ((i === first || (before?.kind === 'blank' && precedingContent?.kind !== 'heading')) && /^(?:now,\s+what|let me talk about|let's talk about)\b/i.test(firstSentence)));
     if (topic && firstSentence.length < value.length) {
       const depth = i === first && options.atDocumentStart !== false ? 1 : 2;
       level = depth;
       output.push({ kind: 'heading', text: '#'.repeat(depth) + ' ' + firstSentence, generated: true });
       const rest = value.slice(firstSentence.length).trimStart();
-      output.push({ kind: 'prose', text: structureProse(rest, options), generated: true });
+      output.push({ kind: 'prose', text: structureProse(rest), generated: true });
       continue;
     }
-    const structured = structureProse(value, options);
+    const structured = structureProse(value);
     output.push({ kind: 'prose', text: structured === value ? b.text : structured, generated: structured !== value });
   }
   const result: string[] = [];
