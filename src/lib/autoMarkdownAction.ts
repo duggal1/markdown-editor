@@ -1,6 +1,6 @@
 import { formatMarkdownDocument, type MarkdownFormatOptions } from './autoMarkdown';
 
-const WORKER_THRESHOLD = 50_000;
+export const WORKER_THRESHOLD = 50_000;
 
 /** Keep small edits immediate; perform large document formatting off the UI thread. */
 export function formatMarkdownAction(source: string, options: MarkdownFormatOptions): Promise<string> {
