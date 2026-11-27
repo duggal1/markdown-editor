@@ -79,10 +79,11 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
   function connectGithub() {
     const owner = githubOwner(githubDraft);
     if (!owner) { setGithubError('Enter a GitHub username or public repository URL.'); return; }
+    if (owner !== github) { setGithubCatalog(null); setGithubError(''); }
     setGithub(owner); saveGithub(owner); setGithubDraft(owner); setGithubOpen(false);
     if (owner === github) setGithubRevision(value => value + 1);
   }
-  function skipGithub() { saveGithub(''); setGithub(''); setGithubDraft(''); setGithubOpen(false); setGithubError(''); }
+  function skipGithub() { setGithubCatalog(null); saveGithub(''); setGithub(''); setGithubDraft(''); setGithubOpen(false); setGithubError(''); }
   const [filter, setFilter] = useState<'all' | 'open' | 'done'>('all');
   const [prompt, setPrompt] = useState('');
   const [draft, setDraft] = useState('');
@@ -124,7 +125,7 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
     streamBuffer.current = { reasoning: '', content: '' }; setStream({ ...streamBuffer.current });
     try {
       let repositories = '';
-      if (github && githubCatalog) {
+      if (github && githubCatalog && githubCatalog.repos.length) {
         setContextLoading(true);
         const lookup = new AbortController();
         const stopLookup = () => lookup.abort();

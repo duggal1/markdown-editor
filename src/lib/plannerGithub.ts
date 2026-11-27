@@ -10,6 +10,7 @@ const userPattern = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/i;
 const repoPattern = /^[a-z0-9_.-]{1,100}$/i;
 export function githubOwner(input: string): string {
   let owner = input.trim().replace(/^@/, '');
+  if (/^github\.com\//i.test(owner)) owner = 'https://' + owner;
   if (/^https?:\/\//i.test(owner)) {
     try {
       const url = new URL(owner);
@@ -101,7 +102,6 @@ export async function repoContext(input: string, catalog: RepoCatalog, signal: A
     const detail = await repoDetail(repo, signal, fetcher);
     return [repo.fullName, repo.language, repo.description, repo.archived ? 'Archived' : '', detail].filter(Boolean).join('\n').slice(0, 1750);
   }));
-  if (signal.aborted && !details.length && !catalog.repos.length) return '';
   const header = 'Public GitHub metadata only. ' + (catalog.complete ? '' : 'Catalog is partial. ') + 'Do not infer implementation or ownership beyond these records.';
   let context = [header, ...details].join('\n\n').slice(0, LIMIT);
   for (const repo of catalog.repos) {

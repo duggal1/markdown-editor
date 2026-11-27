@@ -103,3 +103,5 @@ await generatePlanner({input:'Fix Jupiter',kind:'todo',repositories:context,apiK
   return new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{content:'{"items":[{"text":"Fix cleaning","category":"Jupiter"}]}'}}]}));
 }});
 console.log('Public GitHub context tests passed');
+
+assert.equal(githubOwner('github.com/Example/flow'), 'example');
