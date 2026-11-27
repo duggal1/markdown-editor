@@ -7,7 +7,7 @@
 /* Flex children must keep their intrinsic height so long trees scroll, not clip. */
 .filetree-scroll > .filetree-workspace,
 .filetree-scroll > .filetree-result { flex:0 0 auto; }
-.filetree-row { position:relative; display:flex; align-items:center; gap:7px; width:100%; min-width:0; height:35px; padding:0 5px; border-radius:10px; color:var(--muted); transition:background-color .22s cubic-bezier(.22,1,.36,1),color .22s cubic-bezier(.22,1,.36,1); }
+.filetree-row { position:relative; display:flex; align-items:center; gap:7px; width:100%; min-width:0; height:35px; padding:0 5px; border-radius:10px; color:var(--muted); transition:background-color 65ms ease-out,color 65ms ease-out; }
 .filetree-row:hover, .filetree-row:focus-within { background:var(--neutral-100); }
 .filetree-row.is-drop { background:var(--active); }
 .filetree-root { color:var(--text); }
@@ -47,14 +47,14 @@
 .filetree-add-page:hover, .filetree-add-page:focus-visible {
   background:var(--neutral-200); color:var(--strong);
 }
-.filetree-more { display:grid; flex:0 0 24px; place-items:center; width:24px; height:26px; padding:0; border:0; border-radius:8px; background:transparent; color:var(--muted); opacity:0; transition:opacity .18s cubic-bezier(.22,1,.36,1), color .18s cubic-bezier(.22,1,.36,1), background-color .18s cubic-bezier(.22,1,.36,1); }
+.filetree-more { display:grid; flex:0 0 24px; place-items:center; width:24px; height:26px; padding:0; border:0; border-radius:8px; background:transparent; color:var(--muted); opacity:0; transition:opacity 55ms ease-out,color 65ms ease-out,background-color 65ms ease-out; }
 .filetree-row:hover .filetree-more, .filetree-row:focus-within .filetree-more, .filetree-more[aria-expanded='true'] { opacity:1; }
 .filetree-more:hover { background:var(--neutral-200); color:var(--strong); }
 .filetree-empty { padding:9px 13px 12px; color:var(--muted); font-size:11px; }
 .filetree-rename { flex:1; min-width:0; height:28px; padding:0 7px; border:0; border-radius:8px; background:var(--neutral-100); color:var(--strong); font:400 12px 'Geist Variable',sans-serif; }
 .filetree-rename:focus-visible { outline:1px solid var(--flow-accent); outline-offset:0; }
 .filetree-menu { position:fixed; z-index:2000; width:186px; padding:6px; border:0; border-radius:12px; background:#151515; color:var(--strong); box-shadow:none; }
-.filetree-menu button { display:flex; align-items:center; gap:10px; width:100%; height:36px; padding:0 10px; border:0; border-radius:8px; background:transparent; color:var(--text); text-align:left; font-size:12px; transition:background-color .19s cubic-bezier(.22,1,.36,1),color .19s cubic-bezier(.22,1,.36,1); }
+.filetree-menu button { display:flex; align-items:center; gap:10px; width:100%; height:36px; padding:0 10px; border:0; border-radius:8px; background:transparent; color:var(--text); text-align:left; font-size:12px; transition:background-color 65ms ease-out,color 65ms ease-out; }
 .filetree-menu button:hover:not(:disabled), .filetree-menu button:focus-visible { background:#232323; color:#fafafa; }
 .filetree-menu button.filetree-delete { color:#e899a4; }
 .filetree-menu button .pixel-huge-icon { flex:0 0 15px; color:var(--muted); }
@@ -177,3 +177,21 @@
 .workspace-folder-toggle { display:flex; align-items:center; gap:7px; height:30px; padding:0 0 0 3px; border:0; background:transparent; color:var(--muted); flex:none; cursor:pointer; }
 .workspace-sibling-folder > .private-folder-row .filetree-label { font-size:13px; }
 .filetree-result-path { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; font-weight:400; color:var(--muted); }
+
+/* Local folder selection and direct, paint-only pointer feedback. */
+.private-tree .filetree-row.is-selected-folder:not(.is-drop) { background:var(--neutral-100); }
+.private-tree .filetree-row.is-selected-folder:hover:not(.is-drop) { background:var(--hover); }
+.private-tree .private-add-child { transition:opacity 55ms ease-out; }
+.private-tree .workspace-root-chevron svg { transition:transform 90ms ease-out; }
+.private-page-menu { --tree-menu-icon:#b3b3b3; --tree-menu-hover:#171717; --tree-menu-delete:#e899a4; }
+:root[data-theme='light'] .private-page-menu { --tree-menu-icon:#555; --tree-menu-hover:#e5e5e5; --tree-menu-delete:#ae344c; }
+.filetree-menu.private-page-menu button:hover:not(:disabled),
+.filetree-menu.private-page-menu button:focus-visible { background:var(--tree-menu-hover); color:var(--strong); }
+.private-page-menu button > :is(svg,.workspace-glyph,.phosphor-icon,.pixel-huge-icon) { color:var(--tree-menu-icon); flex:none; }
+.private-page-menu button.filetree-delete,
+.private-page-menu button.filetree-delete > :is(svg,.phosphor-icon,.pixel-huge-icon) { color:var(--tree-menu-delete); }
+.private-menu-label > span:last-child { color:#1d4ed8; text-decoration:underline dotted; text-underline-offset:3px; }
+@media(prefers-reduced-motion:reduce) {
+  .private-tree .filetree-row,.private-tree .filetree-more,.private-tree .private-add-child,
+  .private-tree .workspace-root-chevron svg,.private-page-menu button { transition:none; }
+}
