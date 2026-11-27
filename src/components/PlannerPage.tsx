@@ -113,6 +113,7 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
     } finally {
       if (request.current === controller) {
         if (streamFrame.current !== null) { cancelAnimationFrame(streamFrame.current); streamFrame.current = null; }
+        if (controller.signal.aborted) setStopped(true);
         setStream({ ...streamBuffer.current }); request.current = null; setBusy(false);
       }
     }
@@ -148,9 +149,9 @@ export default function PlannerPage({ kind, markdown, memory, scope, onEdit }: P
       {error && <div className="planner-error" role="alert">{error}</div>}
     </section>
     {((busy && stream.content) || suggestions) && <section className="planner-suggestions" key={generation} aria-label={busy ? 'Generating items' : 'Suggested changes'}>
-      <div className="planner-section-head"><span className={busy ? 'planner-shimmer' : ''}>{busy ? (kind === 'todo' ? 'Writing tasks…' : 'Writing memories…') : suggestions?.length + (kind === 'todo' ? ' suggested tasks' : ' suggested memories')}</span></div>
+      <div className="planner-section-head"><span className={busy ? 'planner-shimmer' : ''}>{busy ? (kind === 'todo' ? 'Writing tasks…' : 'Writing memories…') : (suggestions?.length ?? 0) + (kind === 'todo' ? ' suggested tasks' : ' suggested memories')}</span></div>
       <div className="planner-suggest-list">{(suggestions || streamed.map(text => ({ text, category: '' }))).map((item, index) => <div className="planner-suggestion-row" key={index}><span className="planner-suggestion-index">{String(index + 1).padStart(2, '0')}</span><div>{item.category && <div className="planner-suggestion-category">{item.category}</div>}<p><StreamWords text={item.text} live={busy}/></p></div></div>)}</div>
-      {suggestions && <div className="planner-review-actions"><button type="button" onClick={() => { setSuggestions(null); setStream({ reasoning: '', content: '' }); }}>Discard</button><button type="button" className="planner-action" onClick={apply}>Add to {kind === 'todo' ? 'list' : 'memory'}</button></div>}
+      {suggestions && <div className="planner-review-actions"><button type="button" onClick={() => { setSuggestions(null); setStopped(false); setStream({ reasoning: '', content: '' }); }}>Discard</button><button type="button" className="planner-action" onClick={apply}>Add to {kind === 'todo' ? 'list' : 'memory'}</button></div>}
     </section>}
     <section className="planner-list" aria-label={kind === 'todo' ? 'Tasks' : 'Saved memories'}>
       <div className="planner-section-head"><span>{kind === 'todo' ? 'Your tasks' : 'Your memory'}</span>
