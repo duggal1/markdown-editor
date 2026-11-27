@@ -1,4 +1,5 @@
-import { needsBackupRecovery, queueBackup, queueBackupDeletion, restoreBackup, resumeBackup } from './backup';
+import { needsBackupRecovery, explicitBackupRecovery, missingBackupEntries, canRecoverBackupEntry, queueBackup, queueBackupDeletion, restoreBackup } from './backup';
+import { startupRecoveryMode } from './startupRecovery';
 import { restoreDocument } from './document';
 import { sameEmptyDraft } from './emptyDraft';
 import type { AccentTheme } from './accentTheme';
@@ -52,7 +53,7 @@ function database(): Promise<IDBDatabase> {
   }).catch(error => { dbPromise = undefined; throw error; });
   return dbPromise!;
 }
-type WorkspaceSnapshot = { workspaces: Workspace[]; folders: Folder[]; documents: FlowDocument[] };
+type WorkspaceSnapshot = { workspaces: Workspace[]; folders: Folder[]; documents: FlowDocument[]; recoverMissing?: boolean };
 /** All three stores are read from one consistent IndexedDB transaction. */
 async function readWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
   const db = await database();
@@ -294,8 +295,11 @@ async function loadWorkspaceOnce(): Promise<WorkspaceSnapshot> {
   mergeRecovery(readJson<FlowDocument>(RECOVERY));
   documents = [...byId.values()];
 
-  // Recover before creating any defaults. Healthy local loads never wait for the cloud.
-  if (needsBackupRecovery({ workspaces, folders, documents })) {
+  // A missing backup record is not a reason to block a usable workspace.
+  // Explicit recovery or unavailable local data still requires the full restore.
+  const recovery = startupRecoveryMode(documents.length, workspaces.length,
+    needsBackupRecovery({ workspaces, folders, documents }), explicitBackupRecovery(), !!readError);
+  if (recovery === 'blocking') {
     try {
       const cloud = await restoreBackup();
       for (const ws of cloud.workspaces) if (!workspaces.some(item => item.id === ws.id)) {
@@ -360,8 +364,39 @@ async function loadWorkspaceOnce(): Promise<WorkspaceSnapshot> {
     documents = [doc];
     await saveDoc(doc);
   }
-  resumeBackup({ workspaces, folders, documents });
-  return { workspaces, folders, documents };
+  return { workspaces, folders, documents, recoverMissing: recovery === 'background' };
+}
+/** Restore only absent, previously indexed records after local first paint.
+ * A single transaction checks each record again so another tab or a current
+ * local edit always wins. A missing/deleted index entry cannot be resurrected. */
+export async function recoverMissingBackup(data: WorkspaceSnapshot): Promise<WorkspaceSnapshot> {
+  const missing = missingBackupEntries(data);
+  const result: WorkspaceSnapshot = { workspaces: [], folders: [], documents: [] };
+  if (!missing.length) return result;
+  const cloud = await restoreBackup(missing);
+  const db = await database();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(['workspaces', 'folders', 'documents'], 'readwrite');
+    for (const kind of ['workspaces', 'folders', 'documents'] as const) {
+      const store = tx.objectStore(kind);
+      for (const value of cloud[kind]) {
+        const request = store.get(value.id);
+        request.onsuccess = () => {
+          if (request.result || !canRecoverBackupEntry({ kind, id: value.id })) return;
+          const write = store.add(value);
+          write.onsuccess = () => {
+            if (kind === 'documents') { committedDocuments.add(value); result.documents.push(value as FlowDocument); }
+            else if (kind === 'folders') result.folders.push(value as Folder);
+            else result.workspaces.push(value as Workspace);
+          };
+        };
+      }
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || Error('Background recovery failed'));
+    tx.onabort = () => reject(tx.error || Error('Background recovery aborted'));
+  });
+  return result;
 }
 export { inferTitle } from './title';
 
