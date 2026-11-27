@@ -187,3 +187,9 @@ assert.match(app, /<LivePageTitle key=\{active\.id\} title=\{active\.title/);
 assert.match(app, /if \(value\.trim\(\)\) onRename\(value\.trim\(\)\)/);
 assert.match(treeCss, /--tree-menu-hover:#171717/);
 assert.match(treeCss, /transition:background-color 65ms ease-out/);
+
+assert.match(style, /\.private-visibility:has\(\.private-visibility-label\) \{ color:var\(--palette-blue-600\); \}/);
+assert.match(style, /\.private-visibility-label \{ color:inherit; text-decoration:none; \}/);
+assert.match(style, /\.private-workspace \.private-visibility \{ position:absolute; left:50%; top:50%; transform:translate\(-50%,-50%\)/);
+assert.match(treeCss, /\.private-menu-label \{ color:var\(--palette-blue-600\); \}/);
+assert.match(treeCss, /\.private-menu-label > span:last-child \{ color:inherit; text-decoration:none; \}/);
