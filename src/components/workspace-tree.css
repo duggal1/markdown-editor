@@ -239,3 +239,8 @@
 .private-tree .pinned-page-open:focus-visible,.private-tree .page-pin-button:focus-visible { outline:1px solid currentColor; outline-offset:-1px; }
 @media(hover:none) { .private-tree .page-pin-button,.private-tree .pinned-pages .page-pin-button:not(:hover):not(:focus-visible) { opacity:1; } }
 @media(prefers-reduced-motion:reduce) { .private-tree .page-pin-button { transition:none; } }
+
+/* Pin is discoverable even before a page has ever been pinned. */
+.private-tree .page-pin-button:not(.is-pinned) { opacity:.55; }
+.private-tree .page-pin-button:not(.is-pinned):is(:hover,:focus-visible) { opacity:1; }
+.private-tree .pinned-pages .page-pin-button:not(:hover):not(:focus-visible) { opacity:.65; }

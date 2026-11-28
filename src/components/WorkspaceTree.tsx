@@ -195,7 +195,7 @@ function WorkspaceTree({
           onCancel={() => setEditing(null)}/> : <button type="button" className="filetree-label" onClick={() => onOpen(doc.id)} title={doc.title}>{doc.title || 'Untitled'}</button>}
         {!doc.asset && <button type="button" className="private-add-child" aria-label={'Add subpage to ' + doc.title}
           onClick={() => { expand(doc.id); onNewDocument(doc.workspaceId, doc.folderId, doc.id); }}><Icon name="plus" size={14}/></button>}
-        {doc.pinnedAt && pinButton(doc.id, doc.title, true)}
+        {pinButton(doc.id, doc.title, !!doc.pinnedAt)}
         {more(doc.id, 'page', doc.title)}
       </div>
       {expanded && children.length > 0 && <div role="group">{children.map(child => row(child, depth + 1))}</div>}

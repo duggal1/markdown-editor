@@ -42,6 +42,8 @@ import {
 } from './lib/store';
 
 const MarkdownPreview = lazy(() => import('./components/MarkdownPreview'));
+const ArchitecturePreview = lazy(() => import('./components/ArchitecturePreview'));
+import './components/architecture-preview.css';
 const PlannerPage = lazy(() => import('./components/PlannerPage'));
 
 type TreeActions = Pick<ComponentProps<typeof WorkspaceTree>,
@@ -162,6 +164,7 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>('dark');
   const [accentTheme, setAccentTheme] = useState<AccentTheme>(() => parseAccentTheme(readPrefs().accentTheme));
   const [mode, setMode] = useState<Mode>('write');
+  const [architecturePage, setArchitecturePage] = useState<string | null>(null);
   const [closingPreview, setClosingPreview] = useState(false);
   const [splitPercent, setSplitPercent] = useState(50);
   const [storedSplitPercent, setStoredSplitPercent] = useState(50);
@@ -1365,6 +1368,8 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
   const formatActionLabel = activeRepairLanguage === 'html' ? 'Auto HTML Fix'
     : 'Auto Python Fix';
   const activeHtml = useMemo(() => isHtmlPage(active), [active]);
+  const canShowArchitecture = !!active && !active.asset && !active.plannerKind && !activeHtml && (!activeFileLanguage || activeFileLanguage === 'markdown');
+  const architectureVisible = canShowArchitecture && architecturePage === activeId;
   useEffect(() => { setHtmlSurfaceTone('dark'); }, [activeId]);
   // Local previews never wait for cloud publishing.
   function openFullHtml() {
@@ -1759,6 +1764,9 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
           <span className="private-breadcrumb"><Icon name="file" size={15}/>{active
             ? active.plannerKind ? <span>{active.title}</span> : <LivePageTitle key={active.id} title={active.title || 'Untitled'} onRename={title => renameDocument(active.id, title)}/>
             : <span>Untitled</span>}</span>
+          {active && <button type="button" className="active-page-pin" aria-pressed={!!active.pinnedAt}
+            aria-label={active.pinnedAt ? 'Unpin current page' : 'Pin current page'} title={active.pinnedAt ? 'Unpin current page' : 'Pin current page'}
+            onClick={() => togglePagePin(active.id)}><Icon name="pin" size={15}/></button>}
           <span className="private-visibility"><SuppliedIcon kind="lock" size={14}/>{active && (readShareRecord(active.id) || readSiteRecord(active.id)) ? 'Shared' : <span className="private-visibility-label">Private</span>}</span>
 
         </div>
@@ -1839,8 +1847,12 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
             scope={folders.find(folder => folder.id === active.folderId)?.name || 'Workspace'} onEdit={editActivePlanner} /></Suspense> : active?.asset ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} theme={theme} /> : active && <MarkdownEditor key={active.id} documentId={active.id} initialText={active.markdown}
             fileLanguage={activeFileLanguage} viewRef={editorRef} onChange={onEditorChange} onPosition={onEditorPosition} />}
         </section>
-        <section className="preview-pane" inert={presentationMode === 'write'} data-glass={activeHtml ? htmlSurfaceTone : undefined}
+        <section className={'preview-pane' + (canShowArchitecture ? ' architecture-capable' : '')} inert={presentationMode === 'write'} data-glass={activeHtml ? htmlSurfaceTone : undefined}
           aria-label="Markdown preview">
+          {canShowArchitecture && presentationMode !== 'write' && <div className="architecture-mode-bar" role="group" aria-label="Preview type">
+            <button type="button" aria-pressed={!architectureVisible} onClick={() => setArchitecturePage(null)}>Markdown</button>
+            <button type="button" aria-pressed={architectureVisible} onClick={() => setArchitecturePage(activeId)}><Icon name="split" size={13}/> Architecture</button>
+          </div>}
           {activeHtml && presentationMode !== 'write' &&
             <button type="button" className="html-preview-popout"
               aria-label="Open full HTML in a new tab" title="Open full HTML in a new tab"
@@ -1851,11 +1863,12 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
             <Suspense fallback={<div className="preview-loading">Rendering…</div>}>
               {(presentationMode !== 'write' || (closingPreview && animatePaneLayout)) && (active?.asset
                 ? <AssetPreview document={active} src={assetView?.id === active.id ? assetView.url : null} onExport={() => exportDocument(active)} theme={theme} />
+                : architectureVisible ? <ArchitecturePreview key={activeId} markdown={previewText} onFallback={() => setArchitecturePage(null)}/>
                 : <MarkdownPreview key={active?.id || 'preview'} markdown={previewText} sourceLanguage={active?.language} scrollRef={previewScrollRef} theme={theme} onToggleTask={onToggleTask} onSvgEdit={onSvgEdit} />)}
             </Suspense>
           </motion.div>
         </section>
-        {active && !active.plannerKind && !active.asset && !activeHtml && (!activeFileLanguage || activeFileLanguage === 'markdown') &&
+        {active && !architectureVisible && !active.plannerKind && !active.asset && !activeHtml && (!activeFileLanguage || activeFileLanguage === 'markdown') &&
           <PageOutline key={active.id} documentId={active.id} getSource={outlineSource}
             getPosition={outlinePosition} onJump={jumpToHeading} />}
         {mode === 'split' && !compact && <div className="split-resizer" role="separator" tabIndex={0}
