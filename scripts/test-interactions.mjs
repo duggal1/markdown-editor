@@ -251,6 +251,12 @@ assert.match(shareDialogSource, /navigator\.clipboard\?\.writeText/);
 assert.match(shareDialogSource, /input\.select\(\);\s*try \{ successful = document\.execCommand\('copy'\); \}/);
 assert.match(shareDialogSource, /if \(!successful\) \{[\s\S]*?return;\s*\}[\s\S]*?setCopied\(true\)/);
 assert.match(shareDialogSource, /ref=\{linkInputRef\} data-dialog-initial-focus/);
+assert.match(css, /\.flow-dialog \.settings-sr-only \{[^}]*position:absolute[^}]*clip-path:inset\(50%\)/, 'Live announcements must not create visible duplicate labels');
+assert.doesNotMatch(shareDialogSource, /className="settings-sr-only">\{title\}/);
+assert.match(shareDialogSource, /\(!markdownNote \|\| backedUp\) && <button type="button" className="share-create"/, 'Only one primary action before cloud connection');
+assert.match(css, /#share-dialog \.share-url-row \{[^}]*grid-template-columns:minmax\(0,1fr\) 92px[^}]*border:0/);
+assert.match(css, /\.private-workspace \.private-title-input:focus \{[^}]*background:var\(--active\)[^}]*outline:0/);
+
 
 // A clean page visit must not trigger another write; recovered/edited copies are not committed by identity.
 const perfStore = read('src/lib/store.ts');
