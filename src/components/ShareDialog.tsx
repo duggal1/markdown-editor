@@ -125,7 +125,7 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose, on
       <Icon name="globe" size={17} />
       <div className="share-access-text">
         <strong>{record ? 'Anyone with the link' : 'Share a read-only link'}</strong>
-        <p id="share-dialog-description">{record ? 'Can view · Cannot edit' : 'Only this page will be visible after you create a link.'}</p>
+        <p id="share-dialog-description">{record ? 'Can view · Cannot edit' : 'Only this page will be shared.'}</p>
       </div>
     </div>
     {record ? <>
@@ -137,15 +137,15 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose, on
             <span className="share-copy-idle">Copy link</span>
             <span className="share-copy-success"><Icon name="check" size={14} />Copied</span>
           </span>
-          <span className="settings-sr-only" role="status">{copied ? 'Copied' : 'Copy link'}</span>
         </button>
       </div>
+      <span className="settings-sr-only" role="status">{copied ? 'Link copied' : ''}</span>
       <p className="share-status" role="status" aria-live="polite">
         {status === 'syncing' ? 'Syncing changes' + (progress === null ? '…' : ' · ' + progress + '%') : status === 'error'
-          ? 'Sync failed. Your local page is safe.' : 'Changes update automatically while Flow is open.'}
+          ? 'Sync failed. Your local page is safe.' : 'Updates automatically while Flow is open.'}
       </p>
     </> : <>
-      {markdownNote && !backedUp && <div className="share-cloud-connect"><p className="share-status">Connect private cloud sync once. Your notes stay private until you create a link.</p><button type="button" className="share-create" data-dialog-initial-focus disabled={busy} onClick={() => { void connectCloud(); }}>{connecting ? 'Connecting…' : 'Connect cloud sync'}</button></div>}
+      {markdownNote && !backedUp && <div className="share-cloud-connect"><p className="share-status">Connect cloud sync first. Notes stay private until shared.</p><button type="button" className="share-create" data-dialog-initial-focus disabled={busy} onClick={() => { void connectCloud(); }}>{connecting ? 'Connecting…' : 'Connect cloud sync'}</button></div>}
       {!markdownNote && !backedUp && <label className="share-consent">
         <span className="share-consent-control">
           <input type="checkbox" checked={consent} onChange={event => setConsent(event.target.checked)} disabled={busy} data-dialog-initial-focus />
@@ -153,15 +153,14 @@ export default function ShareDialog({ documentId, title, getCurrent, onClose, on
         </span>
         <span>Upload to cloud</span>
       </label>}
-      <button type="button" className="share-create" data-dialog-initial-focus={backedUp ? true : undefined} disabled={busy || (markdownNote ? !backedUp : !backedUp && !consent)} onClick={() => { void enable(); }}>
+      {(!markdownNote || backedUp) && <button type="button" className="share-create" data-dialog-initial-focus={backedUp ? true : undefined} disabled={busy || (markdownNote ? !backedUp : !backedUp && !consent)} onClick={() => { void enable(); }}>
         {operation === 'create' ? <span className="share-spinner" aria-hidden="true" /> : <Icon name="link" size={16} />}
         {operation === 'create' ? 'Creating link…' : error ? 'Retry' : 'Create link'}
-      </button>
+      </button>}
       {operation === 'create' && <p className="share-status" role="status">
         {progress !== null && progress < 100 ? 'Uploading · ' + progress + '%' : 'Checking cloud copy…'} You can close this window.
       </p>}
     </>}
     {error && <p className="share-error" role="alert">{error}</p>}
-    <span className="settings-sr-only">{title}</span>
   </DialogFrame>;
 }
