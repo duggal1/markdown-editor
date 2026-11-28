@@ -204,7 +204,7 @@ export function hitTestAnnotation(
     const lines = annotation.text.split('\n').slice(0, 6);
     ctx.font = '500 ' + font + 'px -apple-system, BlinkMacSystemFont, Arial, sans-serif';
     const boxWidth = Math.min(width,
-      Math.max(0, ...lines.map(line => ctx.measureText(line).width)) + padX * 2);
+      Math.max(0, ...lines.map(line => ctx!.measureText(line).width)) + padX * 2);
     const boxHeight = lines.length * lineHeight + padY * 2;
     const left = Math.max(0, Math.min(annotation.x * width, width - boxWidth));
     const top = Math.max(0, Math.min(annotation.y * height, height - boxHeight));
