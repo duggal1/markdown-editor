@@ -14,10 +14,10 @@ try {
   await migrate();
   await migrateSync();
   const manifestPath = 'backups/' + createHash('sha256').update(crypto.randomUUID()).digest('hex') + '/records/documents/batch-test.json';
-  const manifest = { meta: { title: 'Unicode ✓' }, bytes: 0 };
-  const written = await put(manifestPath, JSON.stringify(manifest), { allowOverwrite: false });
+  const batchManifest = { meta: { title: 'Unicode ✓' }, bytes: 0 };
+  const written = await put(manifestPath, JSON.stringify(batchManifest), { allowOverwrite: false });
   const snapshots = await readVersionedMany([manifestPath, manifestPath + '.missing', manifestPath]);
-  assert.deepEqual(snapshots, [{ etag: written.etag, value: manifest }, { etag: undefined, value: null }, { etag: written.etag, value: manifest }]);
+  assert.deepEqual(snapshots, [{ etag: written.etag, value: batchManifest }, { etag: undefined, value: null }, { etag: written.etag, value: batchManifest }]);
   await del(manifestPath);
   const tenant = createHash('sha256').update('sync-test-'+crypto.randomUUID()).digest('hex');
   const other = createHash('sha256').update('other-'+tenant).digest('hex');
