@@ -2613,8 +2613,8 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 
 #share-dialog.flow-dialog {
   --share-field:#161616; --share-field-hover:#101010; --share-control:#202020;
-  --share-control-hover:#151515; --share-primary:#f2f2f2; --share-primary-hover:#dcdcdc;
-  --share-primary-text:#111111; --share-url:#ededed; --share-disabled:#777777;
+  --share-control-hover:#151515; --share-primary:#242424; --share-primary-hover:#171717;
+  --share-primary-text:#f5f5f5; --share-url:#ededed; --share-disabled:#777777;
   width:min(352px,calc(100vw - 24px)); border:0; background:var(--flow-dialog-surface);
   border-radius:12px; font-family:'Geist Variable',sans-serif;
   -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
@@ -2622,8 +2622,8 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 }
 :root[data-theme='light'] #share-dialog.flow-dialog {
   --share-field:#efefef; --share-field-hover:#f8f8f8; --share-control:#e8e8e8;
-  --share-control-hover:#f5f5f5; --share-primary:#202020; --share-primary-hover:#343434;
-  --share-primary-text:#ffffff; --share-url:#222222; --share-disabled:#666666;
+  --share-control-hover:#f5f5f5; --share-primary:#dedede; --share-primary-hover:#f5f5f5;
+  --share-primary-text:#222222; --share-url:#222222; --share-disabled:#666666;
 }
 #share-dialog .flow-dialog-header { padding:0 12px 0 16px; height:40px; min-height:40px; }
 #share-dialog .flow-dialog-heading h2 { font-size:14px; line-height:20px; font-weight:450; letter-spacing:-.025em; }
@@ -2839,9 +2839,10 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 /* The page name is an editable breadcrumb, not a second document title. */
 .private-workspace .document-meta { min-width:0; }
 .private-workspace .private-breadcrumb { min-width:0; max-width:min(38vw,320px); }
-.private-workspace .private-title-input { min-width:0; width:clamp(72px,22ch,240px); max-width:100%; padding:3px 4px; border:0; border-radius:5px; outline:0; background:transparent; color:var(--text); font:inherit; text-overflow:ellipsis; }
+.private-workspace .private-title-input { min-width:0; width:clamp(72px,22ch,240px); max-width:100%; padding:4px 8px; border:0; border-radius:7px; outline:0; box-shadow:none; background:transparent; color:var(--text); font:inherit; text-overflow:ellipsis; }
 .private-workspace .private-title-input:hover { background:var(--hover); }
-.private-workspace .private-title-input:focus-visible { outline:1px solid var(--muted); outline-offset:-1px; text-overflow:clip; }
+.private-workspace .private-title-input:focus { background:var(--active); color:var(--strong); outline:0; box-shadow:none; text-overflow:clip; }
+@media(forced-colors:active) { .private-workspace .private-title-input:focus-visible { outline:1px solid Highlight; } }
 .private-workspace .private-visibility { margin-inline-start:10px; flex:none; }
 .private-visibility:has(.private-visibility-label) { color:var(--palette-blue-600); }
 .private-visibility-label { color:inherit; text-decoration:none; }
@@ -2872,13 +2873,39 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .share-cloud-connect { display:grid; gap:10px; }
 .share-cloud-connect .share-status { margin:0; }
 
-/* Compact sharing controls, scoped to Flow's two share dialogs. */
-#share-dialog .share-url-row,#html-site-dialog .flow-dialog-link { border-radius:24px; border:1px solid #202020; padding:8px; gap:6px; }
-#share-dialog .share-url-row { flex-wrap:nowrap; align-items:center; border-radius:999px; padding:4px 4px 4px 13px; }
-#share-dialog .share-url-row input { flex:1 1 0; width:0; height:28px; }
+/* Preserve HTML publishing geometry; Markdown has its own compact layout. */
+#html-site-dialog .flow-dialog-link { border-radius:24px; border:1px solid #202020; padding:8px; gap:6px; }
+:root[data-theme='light'] #html-site-dialog .flow-dialog-link { border-color:#e6e6e6; }
+
+/* Accessible announcements are not visible layout content. */
+.flow-dialog .settings-sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
+
+/* Markdown share: fixed action width, shrinking URL, one vertical stack. */
+#share-dialog.flow-dialog { width:min(400px,calc(100vw - 24px)); border:0; border-radius:14px; overflow:hidden; }
+#share-dialog .flow-dialog-body { display:flex; flex-direction:column; gap:14px; min-width:0; min-height:0; overflow-y:auto; overflow-x:hidden; padding:0 20px 16px; }
+#share-dialog .flow-share-document { margin:0; min-height:42px; padding:10px 12px; }
+#share-dialog .flow-share-document > .phosphor-icon { flex:none; }
+#share-dialog .share-access { margin:0; }
+#share-dialog .share-access-text strong { font-weight:450; }
+#share-dialog .share-access-text p { overflow-wrap:anywhere; }
+#share-dialog .share-url-row { display:grid; grid-template-columns:minmax(0,1fr) 92px; align-items:center; gap:6px; padding:4px 4px 4px 12px; border:0; box-shadow:none; border-radius:10px; background:var(--share-field); }
+#share-dialog .share-url-row:focus-within { background:var(--share-field-hover); }
+#share-dialog .share-url-row input { width:100%; min-width:0; height:32px; border:0; outline:0; box-shadow:none; }
 #share-dialog .share-url-row input:focus-visible { outline:0; }
-#share-dialog .share-url-row:focus-within { border-color:#343434; }
-#share-dialog .share-url-row .share-copy { flex:0 0 auto; width:auto; min-width:90px; height:30px; min-height:30px; padding:0 12px; }
-#share-dialog .share-create { width:fit-content; min-height:30px; height:30px; padding-inline:13px; font-size:12px; border-radius:999px; }
-:root[data-theme='light'] #share-dialog .share-url-row,:root[data-theme='light'] #html-site-dialog .flow-dialog-link { border-color:#e6e6e6; }
-@media(max-width:480px) { #share-dialog .share-url-row .share-copy,#share-dialog .share-create { min-height:44px; } }
+#share-dialog .share-url-row .share-copy { width:100%; min-width:0; height:32px; min-height:32px; padding:0 8px; border-radius:7px; background:var(--share-primary); color:var(--share-primary-text); font-weight:450; }
+#share-dialog .share-url-row .share-copy:hover:not(:disabled),#share-dialog .share-create:hover:not(:disabled) { opacity:1; background:var(--share-primary-hover); }
+#share-dialog .share-create { align-self:flex-start; width:fit-content; max-width:100%; min-height:34px; height:auto; padding:9px 13px; border-radius:8px; font-size:12px; line-height:1.25; white-space:normal; background:var(--share-primary); color:var(--share-primary-text); }
+#share-dialog .share-create:disabled { background:var(--share-field); color:var(--share-disabled); }
+#share-dialog .share-cloud-connect { gap:10px; justify-items:start; }
+#share-dialog .share-status,#share-dialog .share-error,#share-dialog .share-consent { margin:0; overflow-wrap:anywhere; }
+#share-dialog .share-status { font-size:12px; line-height:1.5; }
+#share-dialog .flow-dialog-footer { flex-wrap:nowrap; padding:0 20px 16px; }
+#share-dialog .share-done { border-radius:8px; min-width:62px; }
+#share-dialog .share-revoke { padding-inline:4px; border-radius:7px; }
+#share-dialog .share-revoke:hover:not(:disabled) { background:var(--share-control-hover); }
+#share-dialog :is(.share-copy,.share-create,.share-done,.share-revoke,.flow-dialog-close):focus-visible { outline:0; background:var(--share-control-hover); color:var(--flow-dialog-text); text-decoration:underline dotted; text-underline-offset:4px; }
+@media(max-width:480px) {
+  #share-dialog .flow-dialog-body,#share-dialog .flow-dialog-footer { padding-inline:16px; }
+  #share-dialog .share-url-row .share-copy,#share-dialog .share-create,#share-dialog .share-done,#share-dialog .share-revoke { min-height:44px; }
+}
+@media(forced-colors:active) { #share-dialog :is(button,input):focus-visible { outline:1px solid Highlight; outline-offset:2px; } }
