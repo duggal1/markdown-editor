@@ -16,14 +16,22 @@ async function prepare(file: File) {
     try {
       ctx.fillStyle = '#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
       ctx.drawImage(bitmap,x,y,width,height);
-      const data = canvas.toDataURL('image/jpeg',.86).split(',')[1];
+      const jpeg = await new Promise<Blob>((resolve,reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(Error('Could not encode screenshot')), 'image/jpeg',.86));
+      const data = await new Promise<string>((resolve,reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+        reader.onerror = () => reject(Error('Could not read screenshot'));
+        reader.readAsDataURL(jpeg);
+      });
       if (!data || data.length > 2_000_000) throw Error('Screenshot is too large to review');
       return { data, width, height, x, y, canvasWidth:canvas.width, canvasHeight:canvas.height };
     } finally { canvas.width=0; canvas.height=0; }
   } finally { bitmap.close(); }
 }
 export async function reviewScreenshot(file: File,intent: string,key: string,signal: AbortSignal): Promise<ReviewFinding[]> {
+  signal.throwIfAborted();
   const p=await prepare(file);
+  signal.throwIfAborted();
   const response=await fetch('/api/draw-review',{method:'POST',credentials:'same-origin',cache:'no-store',
     headers:{'Content-Type':'application/json','x-flow-draw-key':key},signal,body:JSON.stringify({image:p.data,intent})});
   const result=await response.json();

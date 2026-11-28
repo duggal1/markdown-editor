@@ -656,7 +656,12 @@
 .draw-page[data-draw-theme='paper'] { --draw-bg:#f5f3ef; --draw-panel:#faf9f6; --draw-hover:#eeebe5; --draw-active:#e5e1da; --draw-line:#e5e1da; }
 :root .draw-page:is([data-draw-theme='paper'],[data-draw-theme='graphite']) :is(.draw-header,.draw-toolbar,.draw-subbar,.draw-footer,.draw-rail,.draw-workspace) { background:var(--draw-panel); }
 :root .draw-page:is([data-draw-theme='paper'],[data-draw-theme='graphite']) .draw-stage { background:var(--draw-bg); }
-.draw-theme-select { flex:none; border:0; border-radius:999px; padding:7px 11px; background:var(--draw-hover); color:var(--draw-strong); font:inherit; cursor:pointer; }
+.draw-theme-picker { flex:none; position:relative; }
+.draw-theme-picker summary { display:flex; align-items:center; gap:6px; list-style:none; border:0; border-radius:999px; padding:7px 11px; background:var(--draw-hover); color:var(--draw-strong); cursor:pointer; }
+.draw-theme-picker summary::-webkit-details-marker { display:none; }
+.draw-theme-menu { position:absolute; top:calc(100% + 6px); right:0; z-index:30; min-width:132px; padding:4px; background:var(--draw-panel); border-radius:9px; box-shadow:0 6px 20px #0003; }
+.draw-theme-menu button { display:flex; justify-content:space-between; align-items:center; width:100%; padding:7px 9px; gap:8px; border:0; border-radius:6px; background:transparent; cursor:pointer; }
+.draw-theme-menu button:hover,.draw-theme-menu button[aria-pressed=true] { background:var(--draw-hover); }
 .draw-review-panel { flex:none; display:grid; gap:10px; padding:12px 20px; background:var(--draw-panel); }
 .draw-review-heading { display:flex; align-items:baseline; flex-wrap:wrap; gap:8px; }
 .draw-review-heading strong { font-weight:500; }

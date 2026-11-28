@@ -592,6 +592,7 @@ export default function DrawPage() {
     delete historyRef.current[id];
     exportCache.current.delete(id + ':webp');
     exportCache.current.delete(id + ':jpeg');
+    for (const key of reviewCache.current.keys()) if (key.startsWith(id + ':')) reviewCache.current.delete(key);
     setAnnotations({ ...annotationsRef.current });
     const remaining = images.filter(item => item.id !== id);
     const newIndex = at < index ? index - 1 : at === index
@@ -635,7 +636,7 @@ export default function DrawPage() {
   }
 
   async function downloadSingle(item: ImageItem) {
-    if (busy || singleBusyId) return;
+    if (busy || singleBusyId || reviewing) return;
     commitText();
     setSingleBusyId(item.id);
     setError('');
@@ -1098,9 +1099,16 @@ export default function DrawPage() {
                 onChange={event => setColor(event.target.value)} />
             </label>
           </div>
-          <select className="draw-theme-select" aria-label="Draw theme" value={drawTheme} onChange={event => setDrawTheme(event.target.value as typeof drawTheme)}>
-            <option value="system">Default</option><option value="dark">Dark</option><option value="light">Light</option><option value="graphite">Graphite</option><option value="paper">Paper</option>
-          </select>
+          <details className="draw-theme-picker">
+            <summary aria-label="Draw theme"><Icon name={drawTheme === 'light' || drawTheme === 'paper' ? 'sun' : 'moon'} size={14}/><span>{{ system: 'Default', dark: 'Dark', light: 'Light', graphite: 'Graphite', paper: 'Paper' }[drawTheme]}</span><Icon name="caretDown" size={11}/></summary>
+            <div className="draw-theme-menu" role="group" aria-label="Canvas theme">
+              {(['system','dark','light','graphite','paper'] as const).map(theme => <button type="button" key={theme} aria-pressed={drawTheme === theme}
+                onClick={event => { setDrawTheme(theme); event.currentTarget.closest('details')?.removeAttribute('open'); }}>
+                <span>{{ system: 'Default', dark: 'Dark', light: 'Light', graphite: 'Graphite', paper: 'Paper' }[theme]}</span>
+                {drawTheme === theme && <Icon name="check" size={13}/>}
+              </button>)}
+            </div>
+          </details>
           <div className="draw-format" role="group" aria-label="Export format">
             <motion.button {...hoverMotion} type="button" aria-pressed={format === 'webp'}
               className={format === 'webp' ? 'is-active' : ''}
