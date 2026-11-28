@@ -106,6 +106,14 @@ for (const patch of [{markdown:' '}, {markdown:'a'}, {titleAuto:false}, {title:'
   assert.equal(canExpireDraft({...draft,...patch}, 'other', [draft], false), false);
 }
 assert.equal(sameEmptyDraft(draft, draft), true);
+assert.equal(canExpireDraft({...draft, pinnedAt: 100}, 'other', [draft], false), false);
+assert.equal(sameEmptyDraft({...draft, pinnedAt: 100}, draft), false);
+assert.match(tree, /allDocuments\.filter\(doc => Number\.isFinite\(doc\.pinnedAt\)/);
+assert.ok(tree.indexOf('className="pinned-pages"') < tree.indexOf('tree.topLevelFolders.map(folder =>'));
+assert.match(tree, /onTogglePin\(menu\.id\)/);
+assert.match(app, /pinnedAt: current\.pinnedAt \? undefined : Date\.now\(\)/);
+assert.match(app, /pinnedAt: undefined, createdAt: stamp/);
+assert.match(read('src/lib/store.ts'), /pinnedAt\?: number/);
 assert.equal(sameEmptyDraft({...draft, updatedAt: 2}, draft), false);
 assert.equal(sameEmptyDraft({...draft, markdown: 'saved elsewhere'}, draft), false);
 assert.match(app, /Date.now\(\) \+ EMPTY_DRAFT_IDLE_MS/);
