@@ -198,7 +198,7 @@ export default async function handler(req, res) {
     }
     if (current?.deleted) return reply(res, 409, { error: 'Record was deleted' });
     if (req.method === 'POST' && body.action === 'inline') {
-      return commitInline(res, body, { kind, id, root, path, alias, aliasId, current, cas });
+      return await commitInline(res, body, { kind, id, root, path, alias, aliasId, current, cas });
     }
     if (req.method === 'POST' && body.action === 'begin') {
       const { meta, bytes, checksum } = body;

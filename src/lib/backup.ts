@@ -122,6 +122,16 @@ function flushInline() {
         item.resolve(); return;
       }
       const response = await request('POST', 'inline-batch', undefined, { records: items.map(item => item.payload) });
+      if (response.status === 400) {
+        const failure = await response.clone().json().catch(() => null);
+        if (failure?.error === 'Invalid record') {
+          await Promise.all(items.map(async item => {
+            try { await json(await request('POST', 'inline', item.payload, item.payload)); item.resolve(); }
+            catch (error) { item.reject(error); }
+          }));
+          return;
+        }
+      }
       const result = await json<{ results: { status: number; committed?: boolean; error?: string }[] }>(response);
       if (!Array.isArray(result.results) || result.results.length !== items.length) throw Error('Invalid backup batch acknowledgement');
       items.forEach((item, index) => {
