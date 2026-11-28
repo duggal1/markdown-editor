@@ -859,7 +859,7 @@ export default function DrawPage() {
   }
 
   async function autoReview() {
-    if (!images.length || reviewing || busy || singleBusyId || reviewAbort.current) return;
+    if (!reviewOpen || !images.length || reviewing || busy || singleBusyId || reviewAbort.current) return;
     commitText();
     const controller = new AbortController();
     reviewAbort.current = controller;
@@ -978,8 +978,8 @@ export default function DrawPage() {
         <motion.button {...hoverMotion} className="draw-button" type="button" onClick={() => input.current?.click()}>
           <Icon name="imageAdd" size={15} /> Add images
         </motion.button>
-        <button type="button" className="draw-button draw-review-toggle" aria-expanded={reviewOpen}
-          onClick={() => setReviewOpen(value => !value)}><Icon name="eye" size={15}/> AI review</button>
+        <button type="button" className="draw-button draw-review-toggle" role="switch" aria-checked={reviewOpen} aria-label="Enable Jev"
+          onClick={() => { if (reviewOpen) { reviewAbort.current?.abort(); setReviewKey(''); } setReviewOpen(!reviewOpen); }}><span className="jev-switch-track" aria-hidden="true"><i/></span> Jev {reviewOpen ? 'on' : 'off'}</button>
         <motion.button {...hoverMotion} className="draw-button draw-button-primary" type="button"
           disabled={!active || busy || !!singleBusyId || reviewing}
           onClick={() => { if (active) void downloadSingle(active); }}>

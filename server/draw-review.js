@@ -13,8 +13,8 @@ export function reviewRequest(data, intent) {
   const questions = {};
   for (const [id, issue] of Object.entries(issues)) {
     const target = id === 'intent' ? issue + '. If the intent has no specific defect, answer no.' : issue;
-    questions[id + '_present'] = { type: 'noul', instructions: 'In the screenshot, is there an unmistakable instance of: ' + target + '? Respect the review intent; if it names specific defects, only consider those defects. Do not infer hidden backend failures or subjective taste.' };
-    questions[id + '_box'] = { type: 'box', instructions: 'Locate the smallest screenshot region containing the most obvious instance of: ' + target + '. Respect the review intent; if it names specific defects, only consider those defects.' };
+    questions[id + '_present'] = { type: 'noul', instructions: 'In the image in `screenshot`, is there an unmistakable instance of: ' + target + '? Respect the review intent; if it names specific defects, only consider those defects. Do not infer hidden backend failures or subjective taste.' };
+    questions[id + '_box'] = { type: 'box', instructions: 'In `screenshot`, locate the smallest image region containing the most obvious instance of: ' + target + '. Respect the review intent; if it names specific defects, only consider those defects.' };
   }
   return { model: 'jev-1.14.0', state: { screenshot: ref, review_intent: intent },
     assets: { [ref]: { type: 'image', format: 'jpg', data_base64: data } }, questions };

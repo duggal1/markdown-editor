@@ -674,3 +674,9 @@
 .draw-image-item { contain:layout style; }
 .draw-image-item-select img { object-fit:cover; }
 @media(max-width:800px) { .draw-review-panel { padding:9px 10px; gap:6px; } .draw-review-heading span { font-size:10px; } }
+
+.jev-switch-track { display:inline-flex; align-items:center; width:26px; height:15px; padding:2px; background:var(--draw-active); border-radius:999px; }
+.jev-switch-track i { width:11px; height:11px; border-radius:50%; background:var(--draw-muted); transition:transform 140ms ease; }
+.draw-review-toggle[aria-checked=true] .jev-switch-track { background:var(--draw-accent); }
+.draw-review-toggle[aria-checked=true] .jev-switch-track i { background:white; transform:translateX(11px); }
+@media(prefers-reduced-motion:reduce) { .jev-switch-track i { transition:none; } }

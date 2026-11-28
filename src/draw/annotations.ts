@@ -100,7 +100,7 @@ export function drawAnnotation(
   const padY = font * 0.38;
   ctx.font = '500 ' + font + 'px -apple-system, BlinkMacSystemFont, Arial, sans-serif';
   ctx.textBaseline = 'top';
-  const maxText = Math.max(0, ...lines.map(line => ctx.measureText(line).width));
+  const maxText = Math.max(0, ...lines.map(line => ctx!.measureText(line).width));
   const boxW = Math.min(width, maxText + padX * 2);
   const boxH = lines.length * lineHeight + padY * 2;
   const x = Math.max(0, Math.min(annotation.x * width, width - boxW));
