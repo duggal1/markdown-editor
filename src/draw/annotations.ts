@@ -1,8 +1,9 @@
 export type Point = { x: number; y: number };
-export type ArrowStyle = 'pixel' | 'solid' | 'line' | 'fine';
+export type ArrowStyle = 'sketch' | 'solid' | 'line' | 'fine' | 'curve' | 'marker';
 export type ArrowAnnotation = {
   kind: 'arrow'; color: string; x1: number; y1: number; x2: number; y2: number;
   style?: ArrowStyle;
+  review?: { issue: string; probability: number; confidence: number; intent: string };
 };
 export type TextAnnotation = {
   kind: 'text'; color: string; x: number; y: number; text: string;
@@ -28,29 +29,28 @@ export function drawAnnotation(
     // Export and preview call this same renderer at native image coordinates.
     // Existing arrows without a style retain the previous solid appearance.
     const style = annotation.style || 'solid';
-    if (style === 'pixel') {
-      // A real integer cell lattice, not a pixel filter over a smooth arrow.
-      // Quantizing to full source pixels keeps the export crisp on any display.
-      const cell = Math.max(3, Math.min(8, Math.round(scale / 175)));
+    if (style === 'sketch' || style === 'curve' || style === 'marker') {
       const ux = (x2 - x1) / length, uy = (y2 - y1) / length;
       const nx = -uy, ny = ux;
-      const headLength = Math.min(length * 0.42, Math.max(18, Math.min(54, scale * 0.032)));
-      const snap = (value: number) => Math.round(value / cell) * cell;
-      ctx.fillStyle = annotation.color;
-      const pixel = (x: number, y: number) =>
-        ctx.fillRect(snap(x - cell / 2), snap(y - cell / 2), cell, cell);
-      for (let t = 0; t <= length - headLength; t += cell * 0.62) {
-        pixel(x1 + ux * t, y1 + uy * t);
-      }
-      // Stepped triangular head: one tip cell, expanding in discrete columns.
-      const steps = Math.max(2, Math.ceil(headLength / cell));
-      for (let i = 0; i <= steps; i++) {
-        const back = Math.min(headLength, i * cell);
-        const spread = Math.floor((back / headLength) * 3) * cell;
-        for (let offset = -spread; offset <= spread; offset += cell) {
-          pixel(x2 - ux * back + nx * offset, y2 - uy * back + ny * offset);
-        }
-      }
+      const bend = Math.min(length * .12, scale * .035);
+      const offset = style === 'marker' ? 0 : bend;
+      const cx = (x1 + x2) / 2 + nx * offset;
+      const cy = (y1 + y2) / 2 + ny * offset;
+      const tangent = Math.atan2(y2 - cy, x2 - cx);
+      const wing = Math.min(head, length * .35);
+      ctx.strokeStyle = annotation.color;
+      ctx.lineWidth = style === 'marker' ? widthPx * 1.8 : widthPx * .85;
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.beginPath(); ctx.moveTo(x1, y1);
+      if (style === 'sketch') {
+        ctx.bezierCurveTo(x1 + ux * length * .29 + nx * offset * .65,
+          y1 + uy * length * .29 + ny * offset * .65,
+          cx + ux * length * .16, cy + uy * length * .16, x2, y2);
+      } else ctx.quadraticCurveTo(cx, cy, x2, y2);
+      ctx.moveTo(x2 - wing * Math.cos(tangent - .55), y2 - wing * Math.sin(tangent - .55));
+      ctx.lineTo(x2, y2);
+      ctx.lineTo(x2 - wing * .87 * Math.cos(tangent + .58), y2 - wing * .87 * Math.sin(tangent + .58));
+      ctx.stroke();
     } else {
       const fine = style === 'fine';
       ctx.strokeStyle = annotation.color;
@@ -100,7 +100,7 @@ export function drawAnnotation(
   const padY = font * 0.38;
   ctx.font = '500 ' + font + 'px -apple-system, BlinkMacSystemFont, Arial, sans-serif';
   ctx.textBaseline = 'top';
-  const maxText = Math.max(0, ...lines.map(line => ctx.measureText(line).width));
+  const maxText = Math.max(0, ...lines.map(line => ctx!.measureText(line).width));
   const boxW = Math.min(width, maxText + padX * 2);
   const boxH = lines.length * lineHeight + padY * 2;
   const x = Math.max(0, Math.min(annotation.x * width, width - boxW));
@@ -172,7 +172,7 @@ export function hitTestAnnotation(
   const x = point.x * width;
   const y = point.y * height;
   const tolerance = 11 / Math.max(0.25, zoom);
-  const ctx = document.createElement('canvas').getContext('2d');
+  let ctx: CanvasRenderingContext2D | null | undefined;
   for (let index = annotations.length - 1; index >= 0; index--) {
     const annotation = annotations[index];
     if (annotation.kind === 'arrow') {
@@ -186,7 +186,7 @@ export function hitTestAnnotation(
       const len2 = dx * dx + dy * dy;
       const t = len2 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / len2)) : 0;
       const dist = Math.hypot(x - ax - t * dx, y - ay - t * dy);
-      if (dist <= tolerance + Math.max(2.6, Math.min(15, Math.min(width, height) * 0.0045)) / 2) {
+      if (dist <= tolerance + (annotation.style === 'sketch' || annotation.style === 'curve' ? Math.min(Math.sqrt(len2) * .12, Math.min(width, height) * .035) : 0) + Math.max(2.6, Math.min(15, Math.min(width, height) * 0.0045)) / 2) {
         const tipTolerance = tolerance * 1.1;
         if (Math.hypot(x - bx, y - by) < tipTolerance) return { index, part: 'end' };
         if (Math.hypot(x - ax, y - ay) < tipTolerance) return { index, part: 'start' };
@@ -194,6 +194,7 @@ export function hitTestAnnotation(
       }
       continue;
     }
+    ctx ??= document.createElement('canvas').getContext('2d');
     if (!ctx) continue;
     const scale = Math.min(width, height);
     const font = Math.max(14, Math.min(48, scale * 0.026));
@@ -203,7 +204,7 @@ export function hitTestAnnotation(
     const lines = annotation.text.split('\n').slice(0, 6);
     ctx.font = '500 ' + font + 'px -apple-system, BlinkMacSystemFont, Arial, sans-serif';
     const boxWidth = Math.min(width,
-      Math.max(0, ...lines.map(line => ctx.measureText(line).width)) + padX * 2);
+      Math.max(0, ...lines.map(line => ctx!.measureText(line).width)) + padX * 2);
     const boxHeight = lines.length * lineHeight + padY * 2;
     const left = Math.max(0, Math.min(annotation.x * width, width - boxWidth));
     const top = Math.max(0, Math.min(annotation.y * height, height - boxHeight));

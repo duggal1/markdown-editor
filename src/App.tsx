@@ -71,6 +71,7 @@ function useTreeActions(actions: TreeActions): TreeActions {
 
 // Warm the preview's module on idle without blocking the editor or changing
 // mobile layout. This removes a cold-import pause on the first preview.
+function warmDrawModule() { void import('./draw/DrawPage').catch(() => {}); }
 function warmPreviewModule() {
   void import('./components/MarkdownPreview');
 }
@@ -1727,7 +1728,7 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
           {...treeActions}
         />
         <div className="sidebar-bottom">
-          <a className="draw-sidebar-entry" href="/draw"><Icon name="edit" size={16} /> Draw screenshots</a>
+          <a className="draw-sidebar-entry" href="/draw" onPointerEnter={warmDrawModule} onPointerDown={warmDrawModule} onFocus={warmDrawModule}><Icon name="edit" size={16} /> Draw screenshots</a>
           {cloudState === 'off' ? <button className="sidebar-bottom-action" disabled={!loaded}
             title="Privately back up every workspace and page to cloud storage. No public links are created."
             onClick={() => { void turnOnBackup(); }}><Icon name="download" size={16} /> Enable cloud sync</button>
@@ -1773,7 +1774,7 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
               <span className="mode-label">{item.charAt(0).toUpperCase() + item.slice(1)}</span>
             </motion.button>)}
           </div>
-          <motion.a href="/draw" className="draw-entry" title="Open Draw screenshot annotator" aria-label="Open Draw screenshot annotator"
+          <motion.a href="/draw" onPointerEnter={warmDrawModule} onPointerDown={warmDrawModule} onFocus={warmDrawModule} className="draw-entry" title="Open Draw screenshot annotator" aria-label="Open Draw screenshot annotator"
             whileHover={motionOff || compact ? undefined : { y: -1 }}
             whileTap={motionOff ? undefined : { scale: 0.985 }}
             transition={motionOff ? { duration: 0 } : { duration: 0.17, ease: [0.22, 1, 0.36, 1] }}>

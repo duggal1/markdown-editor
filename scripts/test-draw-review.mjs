@@ -1,0 +1,26 @@
+import assert from 'node:assert/strict';
+import { reviewRequest,extractFindings,analyzeScreenshot } from '../server/draw-review.js';
+const req=reviewRequest('abc','Fix overflow');
+assert.equal(req.model,'jev-1.14.0');
+assert.equal(Object.keys(req.assets).length,1);
+assert.equal(Object.keys(req.questions).length,12);
+const answers={};
+for(const [id,q] of Object.entries(req.questions)) answers[id]=q.type==='noul'?{type:'noul',noul:.1}:{type:'box',confidence:.9,box:{left:.2,right:.4,top:.3,bottom:.5}};
+assert.deepEqual(extractFindings(answers),[]);
+answers.clipping_present.noul=.96;
+answers.overlap_present.noul=.90;
+assert.equal(extractFindings(answers).length,1);
+answers.clipping_box.confidence=.1;
+assert.equal(extractFindings(answers)[0].issue,'Unintentional overlapping UI elements or obscured content');
+answers.overlap_box.box.right=2;
+assert.deepEqual(extractFindings(answers),[]);
+assert.throws(()=>extractFindings({}),/Incomplete/);
+let requested=false;
+await analyzeScreenshot('abc','Fix overflow','test',undefined,async(url,options)=>{
+  assert.equal(url,'https://api.typesafe.ai/v1/systemone');
+  assert.equal(options.headers['TypeSafe-Danger-Zone-Images'],'true');
+  requested=true;
+  return {ok:true,json:async()=>({answers})};
+});
+assert.ok(requested);
+console.log('Jev request contract, absence gate, confidence, malformed geometry and deduplication passed.');

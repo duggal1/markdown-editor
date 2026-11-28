@@ -427,7 +427,7 @@
 .draw-back:hover { background: var(--draw-hover); }
 .draw-wordmark { display: inline-flex; align-items: center; gap: 9px; font-size: 18px; font-weight: 500 !important; letter-spacing: -.055em; }
 .draw-logo { display: inline-grid; place-items: center; width: 31px; height: 31px; color: var(--draw-ink-on-accent); background: var(--draw-accent); border-radius: 0; clip-path: polygon(0 4px,4px 4px,4px 0,calc(100% - 4px) 0,calc(100% - 4px) 4px,100% 4px,100% calc(100% - 4px),calc(100% - 4px) calc(100% - 4px),calc(100% - 4px) 100%,4px 100%,4px calc(100% - 4px),0 calc(100% - 4px)); }
-.draw-wordmark-stop { margin-left: -8px; color: var(--draw-accent); }
+
 .draw-heading-separator { height: 18px; width: 1px; background: var(--draw-line); }
 .draw-project-label { color: var(--draw-muted); }
 .draw-project-input { min-height: 34px; padding: 0 11px; border: 0; border-radius: 7px; background: var(--draw-hover); color: var(--draw-strong); font-size: 12px; }
@@ -650,3 +650,33 @@
     transition:none !important; animation:none !important;
   }
 }
+
+/* Draw review and alternate neutral canvas themes. */
+.draw-page[data-draw-theme='graphite'] { --draw-bg:#161616; --draw-panel:#1d1d1d; --draw-hover:#242424; --draw-active:#303030; --draw-line:#303030; }
+.draw-page[data-draw-theme='paper'] { --draw-bg:#f5f3ef; --draw-panel:#faf9f6; --draw-hover:#eeebe5; --draw-active:#e5e1da; --draw-line:#e5e1da; }
+:root .draw-page:is([data-draw-theme='paper'],[data-draw-theme='graphite']) :is(.draw-header,.draw-toolbar,.draw-subbar,.draw-footer,.draw-rail,.draw-workspace) { background:var(--draw-panel); }
+:root .draw-page:is([data-draw-theme='paper'],[data-draw-theme='graphite']) .draw-stage { background:var(--draw-bg); }
+.draw-theme-picker { flex:none; position:relative; }
+.draw-theme-picker summary { display:flex; align-items:center; gap:6px; list-style:none; border:0; border-radius:999px; padding:7px 11px; background:var(--draw-hover); color:var(--draw-strong); cursor:pointer; }
+.draw-theme-picker summary::-webkit-details-marker { display:none; }
+.draw-theme-menu { position:absolute; top:calc(100% + 6px); right:0; z-index:30; min-width:132px; padding:4px; background:var(--draw-panel); border-radius:9px; box-shadow:0 6px 20px #0003; }
+.draw-theme-menu button { display:flex; justify-content:space-between; align-items:center; width:100%; padding:7px 9px; gap:8px; border:0; border-radius:6px; background:transparent; cursor:pointer; }
+.draw-theme-menu button:hover,.draw-theme-menu button[aria-pressed=true] { background:var(--draw-hover); }
+.draw-review-panel { flex:none; display:grid; gap:10px; padding:12px 20px; background:var(--draw-panel); }
+.draw-review-heading { display:flex; align-items:baseline; flex-wrap:wrap; gap:8px; }
+.draw-review-heading strong { font-weight:500; }
+.draw-review-heading span,.draw-review-actions span { color:var(--draw-muted); font-size:11px; }
+.draw-review-panel textarea,.draw-review-panel input { min-width:0; border:0; border-radius:9px; background:var(--draw-hover); color:var(--draw-strong); padding:9px 12px; font:inherit; }
+.draw-review-panel textarea { min-height:54px; resize:vertical; }
+.draw-review-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.draw-review-actions input { width:180px; }
+.draw-review-toggle { cursor:pointer; }
+.draw-image-item { contain:layout style; }
+.draw-image-item-select img { object-fit:cover; }
+@media(max-width:800px) { .draw-review-panel { padding:9px 10px; gap:6px; } .draw-review-heading span { font-size:10px; } }
+
+.jev-switch-track { display:inline-flex; align-items:center; width:26px; height:15px; padding:2px; background:var(--draw-active); border-radius:999px; }
+.jev-switch-track i { width:11px; height:11px; border-radius:50%; background:var(--draw-muted); transition:transform 140ms ease; }
+.draw-review-toggle[aria-checked=true] .jev-switch-track { background:var(--draw-accent); }
+.draw-review-toggle[aria-checked=true] .jev-switch-track i { background:white; transform:translateX(11px); }
+@media(prefers-reduced-motion:reduce) { .jev-switch-track i { transition:none; } }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent, type PointerEvent } from 'react';
-import { createImageZip, type ZipEntry } from './zip';
+import type { ZipEntry } from './zip';
+import { reviewScreenshot, type ReviewFinding } from './review';
 import { drawAnnotation, hitTestAnnotation, renderExport, type Annotation, type AnnotationHit, type ArrowAnnotation, type ArrowStyle, type OutputFormat, type Point, type TextAnnotation } from './annotations';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { FlowMark, Icon } from '../components/Icons';
@@ -53,13 +54,13 @@ function moveAnnotation(
 function initialName(): string { return ''; }
 
 function packZip(entries: ZipEntry[]): Promise<Blob> {
-  if (typeof Worker === 'undefined') return createImageZip(entries);
+  if (typeof Worker === 'undefined') return import('./zip').then(module => module.createImageZip(entries));
   return new Promise((resolve, reject) => {
     let worker: Worker;
     try {
       worker = new Worker(new URL('./zip.worker.ts', import.meta.url), { type: 'module' });
     } catch {
-      void createImageZip(entries).then(resolve, reject);
+      void import('./zip').then(module => module.createImageZip(entries)).then(resolve, reject);
       return;
     }
     worker.onmessage = (event: MessageEvent<{ zip?: Blob; error?: string }>) => {
@@ -76,9 +77,8 @@ function packZip(entries: ZipEntry[]): Promise<Blob> {
 }
 
 function ArrowStylePreview({ style }: { style: ArrowStyle }) {
-  if (style === 'pixel') return <svg aria-hidden="true" viewBox="0 0 52 24" width="39" height="19"
-    shapeRendering="crispEdges" fill="currentColor">
-    <path d="M3 18h8v-3h8v-3h8V9h8V6h5V3l10 9-10 9v-3h-5v-3h-8v-3h-8v-3h-8z" />
+  if (style === 'sketch' || style === 'curve' || style === 'marker') return <svg aria-hidden="true" viewBox="0 0 52 24" width="39" height="19" fill="none" stroke="currentColor" strokeWidth={style === 'marker' ? 3.5 : 2} strokeLinecap="round" strokeLinejoin="round">
+    <path d={style === 'marker' ? 'M5 19 46 5M34 4l12 1-5 12' : 'M4 20Q28 25 46 5M33 7l13-2-3 12'}/>
   </svg>;
   if (style === 'line') return <svg aria-hidden="true" viewBox="0 0 52 24" width="39" height="19"
     fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="butt">
@@ -97,11 +97,33 @@ export default function DrawPage() {
   const [index, setIndex] = useState(0);
   const [annotations, setAnnotations] = useState<Record<string, Annotation[]>>({});
   const [tool, setTool] = useState<Tool>('arrow');
-  const [arrowStyle, setArrowStyle] = useState<ArrowStyle>('pixel');
+  const [arrowStyle, setArrowStyle] = useState<ArrowStyle>('sketch');
   const [styleOpen, setStyleOpen] = useState(false);
   const [color, setColor] = useState(COLORS[0]);
   const [format, setFormat] = useState<OutputFormat>('webp');
   const [projectName, setProjectName] = useState(initialName);
+  const [reviewIntent, setReviewIntent] = useState('');
+  const [reviewKey, setReviewKey] = useState('');
+  const [reviewing, setReviewing] = useState(false);
+  const [reviewProgress, setReviewProgress] = useState('');
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [drawTheme, setDrawTheme] = useState<'system' | 'dark' | 'light' | 'graphite' | 'paper'>(() => {
+    try {
+      const saved = localStorage.getItem('flow.draw.theme');
+      if (saved === 'dark' || saved === 'light' || saved === 'graphite' || saved === 'paper') return saved;
+    } catch { /* Optional preferences. */ }
+    return 'system';
+  });
+  const reviewAbort = useRef<AbortController | null>(null);
+  const reviewCache = useRef(new Map<string, ReviewFinding[]>());
+  useEffect(() => () => reviewAbort.current?.abort(), []);
+  useEffect(() => {
+    const root = document.documentElement;
+    const original = root.dataset.theme;
+    if (drawTheme !== 'system') root.dataset.theme = drawTheme === 'light' || drawTheme === 'paper' ? 'light' : 'dark';
+    try { localStorage.setItem('flow.draw.theme', drawTheme); } catch { /* Optional preferences. */ }
+    return () => { if (original) root.dataset.theme = original; else delete root.dataset.theme; };
+  }, [drawTheme]);
   const [textDraft, setTextDraft] = useState<TextDraft | null>(null);
   const [selected, setSelected] = useState<Selection | null>(null);
   const [singleBusyId, setSingleBusyId] = useState<string | null>(null);
@@ -557,7 +579,7 @@ export default function DrawPage() {
   }
 
   function removeImage(id: string) {
-    if (busy || singleBusyId) return;
+    if (busy || singleBusyId || reviewing) return;
     const at = images.findIndex(item => item.id === id);
     if (at === -1) return;
     const removed = images[at];
@@ -570,6 +592,7 @@ export default function DrawPage() {
     delete historyRef.current[id];
     exportCache.current.delete(id + ':webp');
     exportCache.current.delete(id + ':jpeg');
+    for (const key of reviewCache.current.keys()) if (key.startsWith(id + ':')) reviewCache.current.delete(key);
     setAnnotations({ ...annotationsRef.current });
     const remaining = images.filter(item => item.id !== id);
     const newIndex = at < index ? index - 1 : at === index
@@ -613,7 +636,7 @@ export default function DrawPage() {
   }
 
   async function downloadSingle(item: ImageItem) {
-    if (busy || singleBusyId) return;
+    if (busy || singleBusyId || reviewing) return;
     commitText();
     setSingleBusyId(item.id);
     setError('');
@@ -835,8 +858,62 @@ export default function DrawPage() {
     selectAnnotation(null);
   }
 
+  async function autoReview() {
+    if (!reviewOpen || !images.length || reviewing || busy || singleBusyId || reviewAbort.current) return;
+    commitText();
+    const controller = new AbortController();
+    reviewAbort.current = controller;
+    setReviewing(true); setError('');
+    const batch = [...images];
+    const intent = reviewIntent.trim() || 'Find visible, actionable design defects only; do not flag deliberate stylistic choices.';
+    const key = reviewKey.trim();
+    let cursor = 0, completed = 0, failures = 0, conflicts = 0, marked = 0;
+    let lastError = '';
+    setReviewProgress('Reviewing 0 / ' + batch.length);
+    try {
+      await Promise.all(Array.from({ length: Math.min(2, batch.length) }, async () => {
+        while (!controller.signal.aborted && cursor < batch.length) {
+          const item = batch[cursor++];
+          const before = annotationsRef.current[item.id];
+          try {
+            const cacheKey = item.id + ':' + intent;
+            let findings = reviewCache.current.get(cacheKey);
+            if (!findings) {
+              findings = await reviewScreenshot(item.file, intent, key, controller.signal);
+              if (reviewCache.current.size >= 48) reviewCache.current.delete(reviewCache.current.keys().next().value!);
+              reviewCache.current.set(cacheKey, findings);
+            }
+            if (controller.signal.aborted) break;
+            // Never replace a manual edit made while inference was running.
+            if (annotationsRef.current[item.id] !== before) { conflicts++; continue; }
+            const next: Annotation[] = [...(before || []).filter(note => note.kind !== 'arrow' || !note.review)];
+            for (const finding of findings) {
+              next.push({ kind: 'arrow', color, style: 'sketch', ...finding.arrow,
+                review: { issue: finding.issue, probability: finding.probability, confidence: finding.confidence, intent } });
+            }
+            if (findings.length || (before || []).some(note => note.kind === 'arrow' && note.review)) {
+              updateAnnotations({ ...annotationsRef.current, [item.id]: next });
+              if (selectedRef.current?.imageId === item.id) selectAnnotation(null);
+            }
+            marked += findings.length;
+          } catch (cause) {
+            if (!controller.signal.aborted) { failures++; lastError = cause instanceof Error ? cause.message : 'Review failed'; }
+          } finally {
+            completed++;
+            if (!controller.signal.aborted) setReviewProgress('Reviewing ' + completed + ' / ' + batch.length);
+          }
+        }
+      }));
+      if (controller.signal.aborted) setReviewProgress('Review stopped · completed marks kept');
+      else setReviewProgress(marked + ' suggestions · ' + completed + ' images' + (conflicts ? ' · ' + conflicts + ' edited during review' : ''));
+      if (failures) setError(failures + ' image(s) could not be reviewed. ' + lastError);
+    } finally {
+      if (reviewAbort.current === controller) { reviewAbort.current = null; setReviewing(false); }
+    }
+  }
+
   async function download() {
-    if (!images.length || busy || singleBusyId) return;
+    if (!images.length || busy || singleBusyId || reviewing) return;
     commitText();
     setBusy(true);
     setError('');
@@ -858,6 +935,9 @@ export default function DrawPage() {
         }
       }));
       setProgress('Packing ZIP…');
+      const review = images.flatMap((item, i) => (annotationsRef.current[item.id] || []).flatMap(note =>
+        note.kind === 'arrow' && note.review ? [{ file: entries[i].name, target: { x: note.x2, y: note.y2 }, ...note.review }] : []));
+      if (review.length) entries.push({ name: 'review.json', file: new Blob([JSON.stringify({ project: projectName, suggestions: review }, null, 2)], { type: 'application/json' }) });
       const zip = await packZip(entries);
       saveBlob(zip, (projectName.trim().replace(/[/\\:*?"<>|\u0000-\u001f]/g, '_').slice(0, 90) ||
         'Screenshots') + ' screenshots.zip');
@@ -880,13 +960,13 @@ export default function DrawPage() {
     whileTap: { scale: 0.985 },
     transition: { duration: 0.17, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
   };
-  return <div className="draw-page">
+  return <div className="draw-page" data-draw-theme={drawTheme}>
     <header className="draw-header">
       <div className="draw-heading">
         <a href="/" className="draw-back" aria-label="Back to Flow"><Icon name="back" size={17} /></a>
-        <span className="draw-wordmark"><span className="draw-logo"><FlowMark size={22} /></span>Draw<span className="draw-wordmark-stop">.</span></span>
+        <span className="draw-wordmark"><span className="draw-logo"><FlowMark size={22} /></span>Draw</span>
         <span className="draw-heading-separator" aria-hidden="true" />
-        <label className="draw-project-label" htmlFor="draw-project">Project</label>
+        <label className="draw-project-label" htmlFor="draw-project">Project name</label>
         <input id="draw-project" className="draw-project-input" value={projectName}
           maxLength={90} spellCheck={false} aria-label="Project name for screenshot export"
           onChange={event => { setProjectName(event.target.value); downloaded.current = false; }}
@@ -898,18 +978,31 @@ export default function DrawPage() {
         <motion.button {...hoverMotion} className="draw-button" type="button" onClick={() => input.current?.click()}>
           <Icon name="imageAdd" size={15} /> Add images
         </motion.button>
+        <button type="button" className="draw-button draw-review-toggle" role="switch" aria-checked={reviewOpen} aria-label="Enable Jev"
+          onClick={() => { if (reviewOpen) { reviewAbort.current?.abort(); setReviewKey(''); } setReviewOpen(!reviewOpen); }}><span className="jev-switch-track" aria-hidden="true"><i/></span> Jev {reviewOpen ? 'on' : 'off'}</button>
         <motion.button {...hoverMotion} className="draw-button draw-button-primary" type="button"
-          disabled={!active || busy || !!singleBusyId}
+          disabled={!active || busy || !!singleBusyId || reviewing}
           onClick={() => { if (active) void downloadSingle(active); }}>
           <Icon name="download" size={15} /> {singleBusyId === active?.id ? 'Exporting…' : 'Export image'}
         </motion.button>
         <motion.button {...hoverMotion} className="draw-button" type="button"
-          disabled={!images.length || busy || !!singleBusyId}
+          disabled={!images.length || busy || !!singleBusyId || reviewing}
           onClick={() => { void download(); }}>
           <Icon name="download" size={15} /> {busy ? progress || 'Exporting…' : 'Export all'}
         </motion.button>
       </div>
     </header>
+    {reviewOpen && <section className="draw-review-panel" aria-label="AI screenshot review">
+      <div className="draw-review-heading"><strong>Review with Jev</strong><span>Experimental · screenshots are sent to TypeSafe only when you run review.</span></div>
+      <textarea aria-label="What should the AI review?" value={reviewIntent} maxLength={1500}
+        onChange={event => setReviewIntent(event.target.value)} placeholder="What needs fixing? e.g. alignment, clipping, broken spacing, visible error states." disabled={reviewing}/>
+      <div className="draw-review-actions">
+        <input type="password" autoComplete="off" aria-label="Private Draw access key" placeholder="Private access key" value={reviewKey} onChange={event => setReviewKey(event.target.value)} disabled={reviewing}/>
+        <button className="draw-button draw-button-primary" type="button" disabled={!images.length || busy || !!singleBusyId || (!reviewing && !reviewKey.trim())}
+          onClick={() => reviewing ? reviewAbort.current?.abort() : void autoReview()}>{reviewing ? 'Stop' : 'Review all ' + images.length}</button>
+        <span role="status">{reviewProgress}</span>
+      </div>
+    </section>}
 
     <main className="draw-layout" onDragOver={event => {
       event.preventDefault();
@@ -926,17 +1019,12 @@ export default function DrawPage() {
       <aside className="draw-rail" aria-label="Uploaded screenshots">
         <div className="draw-rail-heading"><span>Files</span> <span>{images.length}</span></div>
         <div className="draw-image-list">
-          {images.map((item, i) => <motion.div key={item.id}
-            className={'draw-image-item' + (index === i ? ' is-selected' : '')}
-            whileHover={reducedMotion ? undefined : { x: 1 }}
-            transition={{ duration: reducedMotion ? 0 : 0.21, ease: [0.22, 1, 0.36, 1] }}>
-            {index === i && <motion.span className="draw-row-selection"
-              layoutId="draw-active-screenshot" initial={false}
-              transition={{ duration: reducedMotion ? 0 : 0.24, ease: [0.22, 1, 0.36, 1] }} />}
+          {images.map((item, i) => <div key={item.id} className={'draw-image-item' + (index === i ? ' is-selected' : '')}>
+            {index === i && <span className="draw-row-selection" />}
             <button type="button" className="draw-image-item-select"
               onClick={() => select(i)} aria-current={index === i ? 'true' : undefined}
               title={item.name} aria-label={'Open ' + filename(projectName, item, i, format)}>
-              <img src={item.url} alt="" loading="lazy" />
+              <img src={item.url} alt="" loading="lazy" decoding="async" />
               <span className="draw-image-item-info">
                 <span className="draw-image-item-name">{item.name}</span>
                 <span className="draw-image-item-count">{(annotations[item.id] || []).length} note{(annotations[item.id] || []).length === 1 ? '' : 's'}</span>
@@ -944,18 +1032,18 @@ export default function DrawPage() {
             </button>
             <div className="draw-image-item-actions">
               <motion.button {...hoverMotion} type="button" className="draw-image-item-action"
-                disabled={busy || !!singleBusyId}
+                disabled={busy || !!singleBusyId || reviewing}
                 aria-label={'Download ' + filename(projectName, item, i, format)}
                 title={'Download ' + filename(projectName, item, i, format)}
                 onClick={() => { void downloadSingle(item); }}>
                 {singleBusyId === item.id ? '…' : <Icon name="download" size={14} />}
               </motion.button>
               <motion.button {...hoverMotion} type="button" className="draw-image-item-action draw-image-remove"
-                disabled={busy || !!singleBusyId}
+                disabled={busy || !!singleBusyId || reviewing}
                 aria-label={'Remove ' + item.name} title={'Remove ' + item.name}
                 onClick={() => removeImage(item.id)}><Icon name="close" size={14} /></motion.button>
             </div>
-          </motion.div>)}
+          </div>)}
           {!images.length && <span className="draw-rail-empty">No screenshots yet.</span>}
         </div>
       </aside>
@@ -982,7 +1070,7 @@ export default function DrawPage() {
               aria-label={'Arrow style: ' + arrowStyle}
               onClick={() => { commitText(); setTool('arrow'); setStyleOpen(open => !open); }}>
               <ArrowStylePreview style={arrowStyle} />
-              <span>{({ pixel: 'Pixel', solid: 'Solid', line: 'Open', fine: 'Fine' } as const)[arrowStyle]}</span>
+              <span>{({ sketch: 'Sketch', solid: 'Solid', line: 'Open', fine: 'Fine', curve: 'Curve', marker: 'Marker' } as const)[arrowStyle]}</span>
               <span className="draw-style-chevron" aria-hidden="true">⌄</span>
             </motion.button>
             <AnimatePresence>
@@ -990,13 +1078,13 @@ export default function DrawPage() {
                 initial={reducedMotion ? false : { opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -3 }}
                 transition={{ duration: reducedMotion ? 0 : 0.2, ease: [0.22, 1, 0.36, 1] }}>
-                {(['pixel', 'solid', 'line', 'fine'] as ArrowStyle[]).map(style =>
+                {(['sketch', 'solid', 'line', 'fine', 'curve', 'marker'] as ArrowStyle[]).map(style =>
                   <button key={style} type="button" role="menuitemradio"
                     aria-checked={arrowStyle === style}
                     className={arrowStyle === style ? 'is-selected' : ''}
                     onClick={() => chooseArrowStyle(style)}>
                     <ArrowStylePreview style={style} />
-                    <span>{({ pixel: 'Pixel arrow', solid: 'Solid arrow', line: 'Open arrow', fine: 'Fine arrow' } as const)[style]}</span>
+                    <span>{({ sketch: 'Sketch arrow', solid: 'Solid arrow', line: 'Open arrow', fine: 'Fine arrow', curve: 'Curved arrow', marker: 'Marker arrow' } as const)[style]}</span>
                   </button>)}
               </motion.div>}
             </AnimatePresence>
@@ -1011,6 +1099,16 @@ export default function DrawPage() {
                 onChange={event => setColor(event.target.value)} />
             </label>
           </div>
+          <details className="draw-theme-picker">
+            <summary aria-label="Draw theme"><Icon name={drawTheme === 'light' || drawTheme === 'paper' ? 'sun' : 'moon'} size={14}/><span>{{ system: 'Default', dark: 'Dark', light: 'Light', graphite: 'Graphite', paper: 'Paper' }[drawTheme]}</span><Icon name="caretDown" size={11}/></summary>
+            <div className="draw-theme-menu" role="group" aria-label="Canvas theme">
+              {(['system','dark','light','graphite','paper'] as const).map(theme => <button type="button" key={theme} aria-pressed={drawTheme === theme}
+                onClick={event => { setDrawTheme(theme); event.currentTarget.closest('details')?.removeAttribute('open'); }}>
+                <span>{{ system: 'Default', dark: 'Dark', light: 'Light', graphite: 'Graphite', paper: 'Paper' }[theme]}</span>
+                {drawTheme === theme && <Icon name="check" size={13}/>}
+              </button>)}
+            </div>
+          </details>
           <div className="draw-format" role="group" aria-label="Export format">
             <motion.button {...hoverMotion} type="button" aria-pressed={format === 'webp'}
               className={format === 'webp' ? 'is-active' : ''}
