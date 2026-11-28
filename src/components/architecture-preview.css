@@ -1,0 +1,23 @@
+.active-page-pin { flex:none; display:grid; place-items:center; width:28px; height:28px; padding:0; border:0; border-radius:7px; background:transparent; color:var(--muted); cursor:pointer; }
+.active-page-pin[aria-pressed=true] { color:#81aaff; }
+:root[data-theme=light] .active-page-pin[aria-pressed=true] { color:#245ac7; }
+.active-page-pin:hover { background:var(--hover); }
+.active-page-pin:focus-visible { outline:1px solid currentColor; }
+.architecture-capable { display:flex; flex-direction:column; }
+.architecture-capable > .preview-scroll { flex:1; height:auto; min-height:0; }
+.architecture-mode-bar,.architecture-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:7px; }
+.architecture-mode-bar { flex:none; padding:8px 16px 6px; }
+.architecture-mode-bar button,.architecture-toolbar button,.architecture-empty button { display:inline-flex; align-items:center; justify-content:center; gap:5px; padding:6px 11px; border:0; border-radius:999px; background:transparent; color:var(--muted); font:450 12px/1.4 'Instrument Sans Variable',sans-serif; cursor:pointer; }
+.architecture-mode-bar button[aria-pressed=true],.architecture-toolbar button[aria-pressed=true],.architecture-mode-bar button:hover,.architecture-toolbar button:hover,.architecture-empty button:hover { background:var(--hover); color:var(--strong); }
+.architecture-preview { --arch-blue:#83adff; --arch-green:#75c99a; --arch-orange:#f1b279; --arch-violet:#bfa0fa; --arch-red:#f08d98; --arch-line:#506078; --arch-card:#10141c; --arch-ink:#eff2f7; --arch-muted:#a3afc2; min-width:0; color:var(--arch-ink); font-family:'Instrument Sans Variable',sans-serif; }
+:root[data-theme=light] .architecture-preview { --arch-blue:#2563eb; --arch-green:#20834e; --arch-orange:#b45309; --arch-violet:#7544b5; --arch-red:#bc354d; --arch-line:#a9b8ce; --arch-card:#f8faff; --arch-ink:#172033; --arch-muted:#52637b; }
+.architecture-toolbar { margin:8px 0 16px; justify-content:space-between; }
+.architecture-toolbar > div { display:flex; flex-wrap:wrap; gap:2px; background:var(--hover); border-radius:999px; padding:3px; }
+.architecture-toolbar button[aria-pressed=true] { color:var(--arch-blue); background:var(--arch-card); }
+.architecture-summary,.architecture-legend { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; color:var(--arch-muted); font-size:11px; }
+.architecture-canvas { overflow:auto; margin:12px 0; border-radius:12px; background:transparent; overscroll-behavior:contain; }
+.architecture-svg { display:block; max-width:none; font-family:inherit; }
+.architecture-empty { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:24px 0; color:var(--arch-muted); font-size:13px; }
+.architecture-empty strong,.architecture-empty p { width:100%; margin:0; }
+.architecture-limit { color:var(--arch-orange); font-size:12px; }
+@media(max-width:800px) { .architecture-mode-bar { padding-inline:8px; } .architecture-toolbar { gap:5px; } }
