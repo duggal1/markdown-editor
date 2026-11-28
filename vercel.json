@@ -1,5 +1,12 @@
 {
-  "functions": { "api/planner.js": { "maxDuration": 90 } },
+  "functions": {
+    "api/planner.js": {
+      "maxDuration": 90
+    },
+    "api/draw-review.js": {
+      "maxDuration": 45
+    }
+  },
   "rewrites": [
     {
       "source": "/slug/:id",
