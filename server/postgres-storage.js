@@ -27,6 +27,7 @@ export async function migrate() {
       etag text not null, content_type text not null, expires_at timestamptz,
       check (octet_length(body) = size))`);
     await tx.execute(sql`create index if not exists flow_cloud_objects_path_prefix on flow_cloud_objects (path text_pattern_ops)`);
+    await tx.execute(sql`create index if not exists flow_cloud_objects_path_c on flow_cloud_objects (path collate "C")`);
     await tx.execute(sql`create index if not exists flow_cloud_objects_expiry on flow_cloud_objects (expires_at) where expires_at is not null`);
   });
 }
@@ -83,11 +84,12 @@ export async function setTtlMany(paths, options) {
   if (paths.length) await database().update(objects).set({ expiresAt: expiry(options.ttlDays) }).where(inArray(objects.path, paths));
 }
 export async function list({ prefix, limit = 1000, cursor }) {
+  const orderedPath = sql`${objects.path} collate "C"`;
   const predicate = and(live(), sql`left(${objects.path}, ${prefix.length}) = ${prefix}`,
     // All existing Flow storage paths are ASCII. A prefix range uses the primary-key index.
     sql`${objects.path} collate "C" >= ${prefix} and ${objects.path} collate "C" < ${prefix + '\uffff'}`,
-    cursor ? gt(objects.path, cursor) : undefined);
-  const rows = await database().select(fields).from(objects).where(predicate).orderBy(objects.path).limit(limit + 1);
+    cursor ? sql`${orderedPath} > ${cursor}` : undefined);
+  const rows = await database().select(fields).from(objects).where(predicate).orderBy(orderedPath).limit(limit + 1);
   const hasMore = rows.length > limit;
   const blobs = rows.slice(0, limit);
   return { blobs, hasMore, cursor: hasMore ? blobs.at(-1).pathname : undefined };
@@ -100,6 +102,18 @@ export async function heads(paths) {
     { readOnly: true, isolation: 'repeatable read', ...(process.env.FLOW_DB_METRICS === '1' ? { metrics: 'us' } : {}) });
   if (result.metrics) console.info('Flow storage head batch', { total: result.metrics.total, roundTrips: result.metrics.roundTrips });
   return result.map(rows => rows[0] || null);
+}
+let preparedVersioned;
+const versionedQuery = () => preparedVersioned ||= database().select({
+  etag: objects.etag, data: sql`convert_from(${objects.body}, 'UTF8')`,
+}).from(objects).where(and(eq(objects.path, sql.placeholder('path')),
+  or(isNull(objects.expiresAt), sql`${objects.expiresAt} > now()`))).limit(1).prepare('flow_versioned_json_v1');
+/** Batch independent manifest reads; do not fetch note bodies or lose CAS tokens. */
+export async function readVersionedMany(paths) {
+  if (!paths.length) return [];
+  const results = await database().batch(paths.map(path => versionedQuery().bind({ path })),
+    { readOnly: true, isolation: 'repeatable read' });
+  return results.map(rows => rows[0] ? { etag: rows[0].etag, value: JSON.parse(rows[0].data) } : { etag: undefined, value: null });
 }
 /** Import immutable legacy objects; reject differing data rather than overwriting. */
 export async function importObject(path, data, options = {}) {

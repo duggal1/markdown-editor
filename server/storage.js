@@ -24,6 +24,9 @@ export async function readVersioned(path) {
   const object = await get(path, { access: 'private', useCache: false });
   return { etag, value: object?.statusCode === 200 && object.stream ? await new Response(object.stream).json() : null };
 }
+export async function readVersionedMany(paths) {
+  return postgresMode() ? (await backend()).readVersionedMany(paths) : Promise.all(paths.map(readVersioned));
+}
 const MAX_PART = 2 * 1024 * 1024;
 const pathPattern = /^(?:shares|backups|html-sites)\/[A-Za-z0-9_./-]+$/;
 function validPath(path) { return typeof path === 'string' && path.length <= 512 && pathPattern.test(path) && !path.split('/').some(p => p === '..' || p === '.'); }

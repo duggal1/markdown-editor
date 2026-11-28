@@ -15,7 +15,8 @@ import { downloadMarkdown } from './lib/document';
 import ShareDialog from './components/ShareDialog';
 import HtmlSiteDialog from './components/HtmlSiteDialog';
 import DialogFrame from './components/DialogFrame';
-import { backupStatus, backupScope, enableBackup, getRecoveryKey, recoverWithKey, resumeBackup, queueImportedHtmlBackup } from './lib/backup';
+import './components/settings.css';
+import { backupStatus, backupScope, enableBackup, retryBackup, getRecoveryKey, recoverWithKey, resumeBackup, queueImportedHtmlBackup } from './lib/backup';
 import { queueSharedSync, readShareRecord, revokeCloudShare } from './lib/sharing';
 import { isHtmlPage, localHtmlUrl, queueSiteSync, readSiteRecord, revokeHtml } from './lib/siteHosting';
 import { detectRawCode, isMarkdownFile, languageForFile, normalizeMixedContent } from './lib/code';
@@ -1705,11 +1706,15 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
           {cloudState === 'off' ? <button className="sidebar-bottom-action" disabled={!loaded}
             title="Privately back up every workspace and page to cloud storage. No public links are created."
             onClick={() => { void turnOnBackup(); }}><Icon name="download" size={16} /> Enable cloud sync</button>
-            : <div className="sidebar-bottom-action" role="status" title="Private cloud backup; public sharing is separate">
+            : <button type="button" className="sidebar-bottom-action cloud-sync-action" disabled={!loaded}
+              data-sync-state={cloudState} title="Sync private notes now" onClick={() => {
+                resumeBackup({ workspaces, folders, documents: [...live.current.values()] });
+                retryBackup();
+              }}>
               <Icon name={cloudState === 'synced' ? 'check' : 'history'} size={16} />
-              {cloudState === 'synced' ? (backupScope() === 'html' ? 'HTML backup synced' : 'Cloud synced') : cloudState === 'error' ? 'Cloud sync failed · retrying' : 'Syncing…'}
-            </div>}
-          {cloudState !== 'off' && backupScope() === 'html' && <button className="sidebar-bottom-action" disabled={!loaded} onClick={() => { void turnOnBackup(); }}><Icon name="download" size={16} /> Sync all notes</button>}
+              <span className="cloud-sync-label" role="status">{cloudState === 'synced' ? (backupScope() === 'html' ? 'HTML backup synced' : 'Cloud synced') : cloudState === 'error' ? 'Sync failed · retry' : 'Syncing…'}</span>
+            </button>}
+          {cloudState !== 'off' && backupScope() === 'html' && <button className="sidebar-bottom-action cloud-sync-action" disabled={!loaded} onClick={() => { void turnOnBackup(); }}><Icon name="download" size={16} /> Sync all notes</button>}
           {cloudState === 'off'
             ? <button className="sidebar-bottom-action" onClick={() => { void recoverCloudWorkspace(); }}>
                 <Icon name="history" size={16} /> Restore cloud backup</button>
@@ -1877,29 +1882,31 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
             getCurrent={() => live.current.get(active.id) || null}
             onClose={() => setShareOpen(false)} />)}
       {settingsOpen && <DialogFrame id="settings-dialog" title="Settings" icon="settings"
-        describedBy="settings-description" onClose={() => setSettingsOpen(false)} footer={<button type="button" className="flow-dialog-button flow-dialog-done" onClick={() => setSettingsOpen(false)}>Done</button>}>
-        <p id="settings-description" className="flow-dialog-copy settings-sr-only">Appearance is saved automatically on this device.</p>
-        <section className="flow-settings-section">
-          <h3>Appearance</h3>
-          <div className="flow-appearance" role="group" aria-label="Appearance">
+        describedBy="settings-description" onClose={() => setSettingsOpen(false)}
+        footer={<><span className="settings-saved"><Icon name="check" size={13} /> Saved automatically</span><button type="button" className="settings-done" onClick={() => setSettingsOpen(false)}>Done</button></>}>
+        <p id="settings-description" className="settings-description">Make Flow feel like yours.</p>
+        <section className="settings-group" aria-labelledby="settings-appearance-title">
+          <h3 id="settings-appearance-title">Appearance</h3>
+          <div className="settings-themes" role="group" aria-label="Appearance">
             {(['dark', 'light'] as const).map(option => {
               const selected = theme === option;
               return <button key={option} type="button" data-dialog-initial-focus={selected ? '' : undefined}
-                aria-pressed={selected} onClick={() => setTheme(option)}>
-                {selected && <motion.span layoutId="settings-appearance" className="flow-appearance-highlight"
-                  transition={{ duration: motionOff ? 0 : .18, ease: [0.22, 1, 0.36, 1] }} />}
-                <span className={'flow-appearance-chip tone-' + option} aria-hidden="true" />
-                <span>{option === 'dark' ? 'Dark' : 'Light'}</span>
+                aria-pressed={selected} onClick={() => setTheme(option)} className="settings-theme">
+                <span className={'settings-theme-preview settings-theme-' + option} aria-hidden="true">
+                  <span className="settings-preview-sidebar"><i /><i /><i /></span>
+                  <span className="settings-preview-editor"><i /><i /><i /><i /></span>
+                </span>
+                <span className="settings-theme-label">{option === 'dark' ? 'Dark' : 'Light'}<span className="settings-selection">{selected && <Icon name="check" size={13} />}</span></span>
               </button>;
             })}
           </div>
         </section>
-        <section className="flow-settings-section">
-          <div className="flow-settings-label"><h3>Accent color</h3><span>{ACCENT_THEMES.find(option => option.id === accentTheme)?.label}</span></div>
-          <div className="flow-accent-palette" role="group" aria-label="Accent color">
+        <section className="settings-group" aria-labelledby="settings-accent-title">
+          <div className="settings-group-heading"><h3 id="settings-accent-title">Accent color</h3><span>{ACCENT_THEMES.find(option => option.id === accentTheme)?.label}</span></div>
+          <div className="settings-palette" role="group" aria-label="Accent color">
             {ACCENT_THEMES.map(option => <button key={option.id} type="button" title={option.label}
               aria-label={option.label} aria-pressed={option.id === accentTheme} onClick={() => setAccentTheme(option.id)}>
-              <span className="flow-settings-swatch" style={{ backgroundColor: `var(--palette-${option.id}-600)` }} />
+              <span className="settings-color" style={{ backgroundColor: `var(--palette-${option.id}-600)` }}>{option.id === accentTheme && <Icon name="check" size={13} />}</span>
             </button>)}
           </div>
         </section>
