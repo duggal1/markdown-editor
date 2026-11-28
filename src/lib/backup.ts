@@ -12,6 +12,8 @@ const LIMIT = 100 * 1024 * 1024;
 const RECORD_CONCURRENCY = 6;
 const PART_CONCURRENCY = 6;
 const INLINE_BYTES = 128 * 1024;
+const INLINE_BATCH_BYTES = 190_000;
+const INLINE_BATCH_COUNT = 12;
 const INDEX = 'flow.backup.index.v1';
 const TOMBSTONES = 'flow.backup.deletions.v1';
 const FORCE_RESTORE = 'flow.backup.restore.v1';
@@ -93,6 +95,49 @@ async function uploadPart(url: string, blob: Blob) {
   }
   throw new Error('Backup part upload failed');
 }
+type InlinePayload = Entry & { meta: object; markdown: string; bytes: number; checksum: string };
+type InlineRequest = { payload: InlinePayload; resolve: () => void; reject: (error: unknown) => void };
+let inlineQueue: InlineRequest[] = [];
+let inlineTimer: number | undefined;
+function flushInline() {
+  inlineTimer = undefined;
+  const queued = inlineQueue;
+  inlineQueue = [];
+  const groups: InlineRequest[][] = [];
+  let group: InlineRequest[] = [];
+  let size = 40;
+  for (const item of queued) {
+    const bytes = new Blob([JSON.stringify(item.payload)]).size + 1;
+    if (group.length && (group.length >= INLINE_BATCH_COUNT || size + bytes > INLINE_BATCH_BYTES)) {
+      groups.push(group); group = []; size = 40;
+    }
+    group.push(item); size += bytes;
+  }
+  if (group.length) groups.push(group);
+  for (const items of groups) void (async () => {
+    try {
+      if (items.length === 1) {
+        const item = items[0];
+        await json(await request('POST', 'inline', item.payload, item.payload));
+        item.resolve(); return;
+      }
+      const response = await request('POST', 'inline-batch', undefined, { records: items.map(item => item.payload) });
+      const result = await json<{ results: { status: number; committed?: boolean; error?: string }[] }>(response);
+      if (!Array.isArray(result.results) || result.results.length !== items.length) throw Error('Invalid backup batch acknowledgement');
+      items.forEach((item, index) => {
+        const ack = result.results[index];
+        if (ack?.status === 200 && ack.committed === true) item.resolve();
+        else item.reject(Error(ack?.error || 'Cloud backup failed'));
+      });
+    } catch (error) { items.forEach(item => item.reject(error)); }
+  })();
+}
+function sendInline(payload: InlinePayload): Promise<void> {
+  return new Promise((resolve, reject) => {
+    inlineQueue.push({ payload, resolve, reject });
+    inlineTimer ??= window.setTimeout(flushInline, 8);
+  });
+}
 async function sync(job: Job) {
   if (!job.value) {
     synced.delete(key(job));
@@ -117,7 +162,7 @@ async function sync(job: Job) {
     const markdown = job.kind === 'documents' ? (job.value as FlowDocument).markdown : '';
     const payload = { meta, markdown, bytes: blob.size, checksum: hash };
     if (new Blob([JSON.stringify(payload)]).size <= 180_000) {
-      await json(await request('POST', 'inline', job, payload));
+      await sendInline({ kind: job.kind, id: job.id, ...payload });
       updateEntries(INDEX, job, true);
       synced.set(key(job), job.value);
       return;
@@ -152,6 +197,13 @@ function run(job: Job): Promise<void> {
   runningValues.set(id, job.value);
   void next.finally(() => { if (running.get(id) === next) { running.delete(id); runningValues.delete(id); } }).catch(() => {});
   return next;
+}
+/** User-triggered retry bypasses the error backoff without duplicating in-flight jobs. */
+export function retryBackup() {
+  if (!backupEnabled()) return;
+  if (timer !== undefined) { window.clearTimeout(timer); timer = undefined; }
+  if (pending.size || running.size) announce('pending');
+  if (!draining && pending.size) void drain();
 }
 function schedule(delay = 250) {
   if (timer !== undefined || draining) return;
@@ -236,7 +288,7 @@ export function resumeBackup(data: Restored) {
     for (const value of scoped[kind]) {
       const job = { kind, id: value.id, value };
       const id = key(job);
-      if (!deleted.has(id) && !pending.has(id) && synced.get(id) !== value) pending.set(id, job);
+      if (!deleted.has(id) && !pending.has(id) && runningValues.get(id) !== value && synced.get(id) !== value) pending.set(id, job);
     }
   }
   if (pending.size) { announce('pending'); schedule(); }

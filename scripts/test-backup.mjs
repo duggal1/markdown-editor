@@ -29,7 +29,7 @@ function loadHandler(file) {
   const source = readFileSync(new URL(file, import.meta.url), 'utf8')
     .replace(/^import .*;\s*$/gm, '').replace('export default async function handler', 'async function handler');
   return new Function('deps', 'Response', 'Buffer', 'process', 'console',
-    'const { createHash, randomBytes, timingSafeEqual, del, get, head, issueSignedToken, list, presignUrl, put, setTtl } = deps; const headMany = paths => Promise.all(paths.map(head)); const setTtlMany = (paths, opts) => Promise.all(paths.map(path => setTtl(path,opts))); const readVersioned = async path => { const meta = await head(path); const object = await get(path); return {etag:meta?.etag,value:object?.stream ? await new Response(object.stream).json():null}; };\n' +
+    'const { createHash, randomBytes, timingSafeEqual, del, get, head, issueSignedToken, list, presignUrl, put, setTtl } = deps; const headMany = paths => Promise.all(paths.map(head)); const setTtlMany = (paths, opts) => Promise.all(paths.map(path => setTtl(path,opts))); const readVersioned = async path => { const meta = await head(path); const object = await get(path); return {etag:meta?.etag,value:object?.stream ? await new Response(object.stream).json():null}; }; const readVersionedMany = paths => Promise.all(paths.map(readVersioned));\n' +
     source + '\nreturn handler;')(deps, Response, Buffer, { env: { BLOB_READ_WRITE_TOKEN: 'test' } }, console);
 }
 const backup = loadHandler('../api/backup.js');
@@ -127,4 +127,14 @@ assert.equal(blobs.get(new URL(inlineManifest.urls[0]).pathname.slice(1)).body, 
 assert.equal((await req('GET', {}, stranger, { ...inlineDoc, action: 'read' })).status, 404);
 assert.equal((await req('DELETE', { ...inlineDoc, action: 'delete' }, owner)).status, 200);
 assert.equal((await req('POST', inlineBody, owner)).status, 409);
+const batchA = { ...inlineBody, id: 'batch-a', meta: { ...inlineMeta, id: 'batch-a' } };
+const batchB = { ...inlineBody, id: 'batch-b', meta: { ...inlineMeta, id: 'batch-b' }, checksum: '0'.repeat(64) };
+const batch = await req('POST', { action: 'inline-batch', records: [batchA, batchB] }, owner);
+assert.equal(batch.status, 200);
+assert.equal(batch.data.results[0].committed, true);
+assert.equal(batch.data.results[1].status, 400);
+assert.equal((await req('GET', {}, owner, { kind: 'documents', id: 'batch-a', action: 'read' })).status, 200);
+assert.equal((await req('GET', {}, stranger, { kind: 'documents', id: 'batch-a', action: 'read' })).status, 404);
+assert.equal((await req('POST', { action: 'inline-batch', records: [batchA, batchA] }, owner)).status, 400);
+assert.equal((await req('POST', { action: 'inline-batch', records: [batchA] }, owner)).data.results[0].unchanged, true);
 console.log('Private backup isolation, recovery, 100 MB uploads, stable share aliases, revocation and deletion passed.');

@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { del, get, headMany, issueSignedToken, list, presignUrl, put, setTtlMany, readVersioned } from '../server/storage.js';
+import { del, get, headMany, issueSignedToken, list, presignUrl, put, setTtlMany, readVersioned, readVersionedMany } from '../server/storage.js';
 
 const LIMIT = 100 * 1024 * 1024;
 const LEGACY_PART = 5 * 1024 * 1024;
@@ -54,6 +54,37 @@ function validMeta(kind, id, meta) {
     !('markdown' in meta) && !('asset' in meta);
 }
 
+async function commitInline(res, body, { kind, id, root, path, alias, aliasId, current, cas }) {
+      const { meta, markdown, bytes, checksum } = body;
+      if (body.publish && kind !== 'documents') return reply(res, 400, { error: 'Only documents may be published' });
+      const finish = async extra => {
+        if (body.publish) await write(alias, { backupPath: path, backupRoot: root }, { allowOverwrite: true });
+        return reply(res, 200, { committed: true, ...extra, ...(body.publish ? { id: aliasId } : {}) });
+      };
+      if (!validMeta(kind, id, meta) || typeof markdown !== 'string' ||
+          (kind !== 'documents' && markdown !== '') || meta.assetType !== undefined ||
+          !Number.isSafeInteger(bytes) || bytes < 0 || bytes > INLINE_BYTES ||
+          Buffer.byteLength(markdown, 'utf8') !== bytes || !HASH.test(checksum || '') ||
+          digest(markdown) !== checksum)
+        return reply(res, 400, { error: 'Invalid inline backup' });
+      if (kind === 'documents' && current?.meta.updatedAt > meta.updatedAt)
+        return reply(res, 409, { error: 'A newer backup exists' });
+      if (current && current.checksum === checksum && JSON.stringify(current.meta) === JSON.stringify(meta))
+        return await finish({ unchanged: true });
+      const version = randomBytes(12).toString('base64url');
+      const paths = partPaths(root, version, bytes);
+      // Same manifest and private paths as multipart uploads. Keep the part
+      // on an ambiguous commit failure: a lost response may hide a successful write.
+      if (paths.length) await put(paths[0], markdown, {
+        access: 'private', addRandomSuffix: false, allowOverwrite: false,
+        contentType: 'application/octet-stream', cacheControlMaxAge: 60,
+      });
+      await write(path, { meta, bytes, checksum, version, partBytes: PART }, cas);
+      await retire(root, current);
+      return await finish({});
+
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'private, no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -103,6 +134,29 @@ export default async function handler(req, res) {
       } while (cursor);
       return reply(res, 200, { entries });
     }
+    if (req.method === 'POST' && body.action === 'inline-batch') {
+      const records = body.records;
+      if (!Array.isArray(records) || records.length < 1 || records.length > 12 ||
+          records.some(record => !record || !kinds.has(record.kind) || typeof record.id !== 'string' || !ID.test(record.id) || record.publish) ||
+          new Set(records.map(record => record.kind + '/' + record.id)).size !== records.length)
+        return reply(res, 400, { error: 'Invalid backup batch' });
+      const paths = records.map(record => prefix + 'records/' + record.kind + '/' + record.id + '.json');
+      const snapshots = await readVersionedMany(paths);
+      const results = await Promise.all(records.map(async (record, index) => {
+        const { kind, id } = record;
+        const { etag, value: current } = snapshots[index];
+        if (current?.deleted || (current && !etag)) return { status: 409, error: 'Backup changed or deleted' };
+        const cas = current ? { allowOverwrite: true, ifMatch: etag } : { allowOverwrite: false };
+        const root = prefix + 'data/' + kind + '/' + id;
+        const localResponse = { status: status => ({ json: data => ({ status, ...data }) }) };
+        try {
+          return await commitInline(localResponse, record, { kind, id, root, path: paths[index], current, cas });
+        } catch (error) {
+          return { status: Number(error.statusCode || error.code) === 409 ? 409 : 500, error: 'Backup commit failed; retry' };
+        }
+      }));
+      return reply(res, 200, { results });
+    }
     const { kind, id } = body;
     if (!kinds.has(kind) || typeof id !== 'string' || !ID.test(id)) return reply(res, 400, { error: 'Invalid record' });
     const root = prefix + 'data/' + kind + '/' + id;
@@ -144,33 +198,7 @@ export default async function handler(req, res) {
     }
     if (current?.deleted) return reply(res, 409, { error: 'Record was deleted' });
     if (req.method === 'POST' && body.action === 'inline') {
-      const { meta, markdown, bytes, checksum } = body;
-      if (body.publish && kind !== 'documents') return reply(res, 400, { error: 'Only documents may be published' });
-      const finish = async extra => {
-        if (body.publish) await write(alias, { backupPath: path, backupRoot: root }, { allowOverwrite: true });
-        return reply(res, 200, { committed: true, ...extra, ...(body.publish ? { id: aliasId } : {}) });
-      };
-      if (!validMeta(kind, id, meta) || typeof markdown !== 'string' ||
-          (kind !== 'documents' && markdown !== '') || meta.assetType !== undefined ||
-          !Number.isSafeInteger(bytes) || bytes < 0 || bytes > INLINE_BYTES ||
-          Buffer.byteLength(markdown, 'utf8') !== bytes || !HASH.test(checksum || '') ||
-          digest(markdown) !== checksum)
-        return reply(res, 400, { error: 'Invalid inline backup' });
-      if (kind === 'documents' && current?.meta.updatedAt > meta.updatedAt)
-        return reply(res, 409, { error: 'A newer backup exists' });
-      if (current && current.checksum === checksum && JSON.stringify(current.meta) === JSON.stringify(meta))
-        return await finish({ unchanged: true });
-      const version = randomBytes(12).toString('base64url');
-      const paths = partPaths(root, version, bytes);
-      // Same manifest and private paths as multipart uploads. Keep the part
-      // on an ambiguous commit failure: a lost response may hide a successful write.
-      if (paths.length) await put(paths[0], markdown, {
-        access: 'private', addRandomSuffix: false, allowOverwrite: false,
-        contentType: 'application/octet-stream', cacheControlMaxAge: 60,
-      });
-      await write(path, { meta, bytes, checksum, version, partBytes: PART }, cas);
-      await retire(root, current);
-      return await finish({});
+      return commitInline(res, body, { kind, id, root, path, alias, aliasId, current, cas });
     }
     if (req.method === 'POST' && body.action === 'begin') {
       const { meta, bytes, checksum } = body;
