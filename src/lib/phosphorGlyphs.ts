@@ -38,6 +38,7 @@ const glyphs = {
   "history": "M3 11a9 9 0 119 10m-9-16v6h6 M12 7v5l4 2",
   "copy": "M8 8h12v13H8z M16 8V3H3v13h5",
   "check": "m5 12 4 4L19 6",
+  "pin": "M9 3h6l-1 5 4 4v2H6v-2l4-4-1-5 M12 14v7",
   "bookmark": "M6 3h12v18l-6-4-6 4z",
   "svg": "M3 4h18v16H3z M3 16l5-5 4 4 4-6 5 6M8 8h.1",
   "terminal": "M3 4h18v16H3z m4 5 4 3-4 3m6 0h4",

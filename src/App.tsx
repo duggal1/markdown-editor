@@ -46,7 +46,7 @@ const PlannerPage = lazy(() => import('./components/PlannerPage'));
 
 type TreeActions = Pick<ComponentProps<typeof WorkspaceTree>,
   'onOpen' | 'onOpenPlanner' | 'onSelectFolder' | 'onNewPageInSelection' | 'onNewDocument' | 'onNewFolder' | 'onRenameFolder' | 'onRenameDocument' |
-  'onDuplicateDocument' | 'onMovePage' | 'onDeleteFolder' | 'onDeleteDocument'>;
+  'onDuplicateDocument' | 'onTogglePin' | 'onMovePage' | 'onDeleteFolder' | 'onDeleteDocument'>;
 // Keep callback identities stable for the memoized tree, but dispatch to the
 // latest committed closures (workspace, folders and delete state can change).
 function useTreeActions(actions: TreeActions): TreeActions {
@@ -62,6 +62,7 @@ function useTreeActions(actions: TreeActions): TreeActions {
     onRenameFolder: (...args) => latest.current.onRenameFolder(...args),
     onRenameDocument: (...args) => latest.current.onRenameDocument(...args),
     onDuplicateDocument: (...args) => latest.current.onDuplicateDocument(...args),
+    onTogglePin: (...args) => latest.current.onTogglePin(...args),
     onMovePage: (...args) => latest.current.onMovePage(...args),
     onDeleteFolder: (...args) => latest.current.onDeleteFolder(...args),
     onDeleteDocument: (...args) => latest.current.onDeleteDocument(...args),
@@ -690,6 +691,7 @@ export default function App() {
       return current.map(item => live.current.get(item.id) || item);
     });
     setPreviewText(doc.markdown);
+    if (doc.plannerKind && modeRef.current === 'preview') { modeRef.current = 'write'; setMode('write'); }
     setSaveState('idle');
     if (window.innerWidth < 800) setSidebarOpen(false);
   }, [flush, cancelHeadingMotion, scheduleSave]);
@@ -715,6 +717,29 @@ export default function App() {
     if (modeRef.current === 'preview') { modeRef.current = 'write'; setMode('write'); }
     flush(id);
   }, [workspaces, folders, selectDocument, scheduleSave, flush]);
+
+  function togglePagePin(id: string, planner?: { kind: PlannerKind; workspaceId: string; folderId?: string }) {
+    if (deletionsInFlight.current.has('document:' + id)) return;
+    let current = live.current.get(id);
+    if (!current && planner) {
+      const { kind, workspaceId: targetWorkspace, folderId } = planner;
+      if (id !== plannerId(kind, targetWorkspace, folderId) || !workspaces.some(ws => ws.id === targetWorkspace)) return;
+      const folder = folderId ? folders.find(item => item.id === folderId && item.workspaceId === targetWorkspace) : undefined;
+      if (folderId && !folder) return;
+      const stamp = Date.now();
+      const label = kind === 'todo' ? 'To-do' : 'Memory';
+      current = { id, workspaceId: targetWorkspace, folderId, title: folder ? label + ' · ' + folder.name : label,
+        titleAuto: false, plannerKind: kind, markdown: '', createdAt: stamp, updatedAt: stamp };
+    }
+    if (!current) return;
+    // A pin is durable document metadata, not a duplicated body or a tree move.
+    // Keep the live revision authoritative, including unsaved editor content.
+    const next: FlowDocument = { ...current, pinnedAt: current.pinnedAt ? undefined : Date.now(),
+      updatedAt: Math.max(Date.now(), current.updatedAt + 1) };
+    scheduleSave(next);
+    setDocs(items => items.some(item => item.id === id) ? items.map(item => item.id === id ? next : item) : [next, ...items]);
+    flush(id);
+  }
 
   const editPlanner = useCallback((id: string, change: (source: string) => string) => {
     const current = live.current.get(id);
@@ -760,7 +785,7 @@ export default function App() {
     const stamp = Date.now();
     const source = id === activeIdRef.current ? editorRef.current?.state.doc.toString() ?? original.markdown : original.markdown;
     const doc: FlowDocument = { ...original, id: uid(), markdown: source, title: original.title + ' (copy)',
-      titleAuto: false, fileName: undefined, createdAt: stamp, updatedAt: stamp };
+      titleAuto: false, fileName: undefined, pinnedAt: undefined, createdAt: stamp, updatedAt: stamp };
     live.current.set(doc.id, doc);
     setDocs(items => [doc, ...items]);
     setQuery('');
@@ -1661,7 +1686,7 @@ async function eraseDocument(doc: FlowDocument, automatic = false) {
   const treeActions = useTreeActions({
     onOpen: selectDocument, onOpenPlanner: openPlanner, onSelectFolder: setSelectedFolderId, onNewPageInSelection: createPageInSelection,
     onNewFolder: createFolder, onNewDocument: makeDocument,
-    onRenameFolder: renameFolder, onRenameDocument: renameDocument, onDuplicateDocument: duplicateDocument,
+    onRenameFolder: renameFolder, onRenameDocument: renameDocument, onDuplicateDocument: duplicateDocument, onTogglePin: togglePagePin,
     onMovePage: movePage, onDeleteFolder: id => { void eraseFolder(id); },
     onDeleteDocument: id => { if (live.current.has(id)) void deleteTarget({ kind: 'document', id }); },
   });

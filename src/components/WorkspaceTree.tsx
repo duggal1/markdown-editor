@@ -20,6 +20,7 @@ type Props = {
   onRenameFolder: (id: string, name: string) => void;
   onRenameDocument: (id: string, name: string) => void;
   onDuplicateDocument: (id: string) => void;
+  onTogglePin: (id: string, planner?: { kind: PlannerKind; workspaceId: string; folderId?: string }) => void;
   onMovePage: (id: string, parentId?: string, folderId?: string) => void;
   onDeleteFolder: (id: string) => void;
   onDeleteDocument: (id: string) => void;
@@ -58,7 +59,7 @@ function Rename({ title, onSave, onCancel }: { title: string; onSave: (s: string
 }
 function WorkspaceTree({
   workspaces, folders, documents, allDocuments, activeId, activeWorkspaceId, selectedFolderId, search, searchHits, searchPending, newFolderId, reveal,
-  onOpen, onOpenPlanner, onSelectFolder, onNewPageInSelection, onNewDocument, onNewFolder, onRenameFolder, onRenameDocument, onDuplicateDocument, onMovePage, onDeleteFolder, onDeleteDocument,
+  onOpen, onOpenPlanner, onSelectFolder, onNewPageInSelection, onNewDocument, onNewFolder, onRenameFolder, onRenameDocument, onDuplicateDocument, onTogglePin, onMovePage, onDeleteFolder, onDeleteDocument,
 }: Props) {
   const [closed, setClosed] = useState<Set<string>>(() => readClosedTree());
   const closedRef = useRef(closed);
@@ -69,6 +70,8 @@ function WorkspaceTree({
   const [moving, setMoving] = useState<string | null>(null);
   const byId = useMemo(() => new Map(documents.map(doc => [doc.id, doc])), [documents]);
   const allById = useMemo(() => new Map(allDocuments.map(doc => [doc.id, doc])), [allDocuments]);
+  const pinned = useMemo(() => allDocuments.filter(doc => Number.isFinite(doc.pinnedAt) && (doc.pinnedAt ?? 0) > 0)
+    .sort((a, b) => (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0) || a.id.localeCompare(b.id)), [allDocuments]);
   const folderNames = useMemo(() => new Map(folders.map(folder => [folder.id, folder.name])), [folders]);
   const hitsById = useMemo(() => new Map(searchHits.map(hit => [hit.id, hit])), [searchHits]);
   const folderIds = useMemo(() => new Set(folders.map(folder => folder.id)), [folders]);
@@ -148,6 +151,13 @@ function WorkspaceTree({
     return <button type="button" className="filetree-more" aria-label={'Actions for ' + title} aria-haspopup="menu"
       aria-expanded={menu?.id === id} onClick={e => openMenu(e, id, kind)}><Icon name="more" size={16}/></button>;
   }
+  function pinButton(id: string, title: string, selected: boolean, planner?: { kind: PlannerKind; workspaceId: string; folderId?: string }) {
+    const label = (selected ? 'Unpin ' : 'Pin ') + title;
+    return <button type="button" className={'page-pin-button' + (selected ? ' is-pinned' : '')}
+      aria-label={label} aria-pressed={selected} title={label} onClick={() => onTogglePin(id, planner)}>
+      <Icon name="pin" size={14}/>
+    </button>;
+  }
   function breadcrumb(doc: FlowDocument): string {
     const parts: string[] = [];
     const seen = new Set([doc.id]);
@@ -185,6 +195,7 @@ function WorkspaceTree({
           onCancel={() => setEditing(null)}/> : <button type="button" className="filetree-label" onClick={() => onOpen(doc.id)} title={doc.title}>{doc.title || 'Untitled'}</button>}
         {!doc.asset && <button type="button" className="private-add-child" aria-label={'Add subpage to ' + doc.title}
           onClick={() => { expand(doc.id); onNewDocument(doc.workspaceId, doc.folderId, doc.id); }}><Icon name="plus" size={14}/></button>}
+        {doc.pinnedAt && pinButton(doc.id, doc.title, true)}
         {more(doc.id, 'page', doc.title)}
       </div>
       {expanded && children.length > 0 && <div role="group">{children.map(child => row(child, depth + 1))}</div>}
@@ -192,10 +203,14 @@ function WorkspaceTree({
   }
   function plannerLink(kind: PlannerKind, workspaceId: string, folderId?: string, depth = 1) {
     const id = plannerId(kind, workspaceId, folderId);
-    return <button type="button" className="planner-tree-row" style={{ paddingInlineStart: 5 + depth * 14 }}
-      aria-current={activeId === id ? 'page' : undefined} onClick={() => onOpenPlanner(kind, workspaceId, folderId)}>
-      <Icon name={kind === 'todo' ? 'check' : 'history'} size={15}/><span>{kind === 'todo' ? 'To-do' : 'Memory'}</span>
-    </button>;
+    const label = kind === 'todo' ? 'To-do' : 'Memory';
+    return <div className="planner-pin-row">
+      <button type="button" className="planner-tree-row" style={{ paddingInlineStart: 5 + depth * 14 }}
+        aria-current={activeId === id ? 'page' : undefined} onClick={() => onOpenPlanner(kind, workspaceId, folderId)}>
+        <Icon name={kind === 'todo' ? 'check' : 'history'} size={15}/><span>{label}</span>
+      </button>
+      {pinButton(id, label, !!allById.get(id)?.pinnedAt, { kind, workspaceId, folderId })}
+    </div>;
   }
   function plannerFolder(folder: Folder) {
     const id = 'planner-folder-' + folder.id;
@@ -209,6 +224,8 @@ function WorkspaceTree({
           onClick={() => onOpenPlanner('todo', folder.workspaceId, folder.id)}>
           <TreeGlyph kind="folder" open={open}/><span>To-do</span>
         </button>
+        {pinButton(plannerId('todo', folder.workspaceId, folder.id), 'To-do · ' + folder.name,
+          !!allById.get(plannerId('todo', folder.workspaceId, folder.id))?.pinnedAt, { kind: 'todo', workspaceId: folder.workspaceId, folderId: folder.id })}
       </div>
       {open && <div role="group">{plannerLink('memory', folder.workspaceId, folder.id, 2)}</div>}
     </div>;
@@ -228,9 +245,20 @@ function WorkspaceTree({
             <span className="filetree-result-copy"><span className="filetree-result-title">{doc.title}</span>
               <span className="filetree-result-path" title={breadcrumb(doc)}>{breadcrumb(doc)}</span>
               <span className="filetree-result-snippet">{hitsById.get(doc.id)?.snippet}</span></span>
-          </button></div>)}
+          </button>{pinButton(doc.id, doc.title, !!doc.pinnedAt)}</div>)}
         {!documents.length && <div className="filetree-empty">{searchPending ? 'Searching…' : 'No matching pages'}</div>}
       </> : <>
+        {pinned.length > 0 && <div className="pinned-pages" role="group" aria-label="Pinned pages">
+          <div className="pinned-pages-heading" aria-hidden="true">Pinned</div>
+          {pinned.map(doc => <div key={doc.id} role="treeitem" aria-level={1} aria-selected={doc.id === activeId}
+            className={'filetree-row pinned-page-row' + (doc.id === activeId ? ' is-active' : '')}>
+            <button type="button" className="pinned-page-open" title={doc.title} aria-current={doc.id === activeId ? 'page' : undefined}
+              onClick={() => onOpen(doc.id)}>
+              <Icon name="pin" size={15}/><span>{doc.title || 'Untitled'}</span>
+            </button>
+            {pinButton(doc.id, doc.title, true)}
+          </div>)}
+        </div>}
         {tree.topLevelFolders.map(folder => {
           const open = !closed.has(folder.id);
           return <div key={folder.id} className="workspace-sibling-folder" role="treeitem" aria-level={1} aria-expanded={open} aria-selected={selectedFolderId === folder.id}>
@@ -281,6 +309,9 @@ function WorkspaceTree({
       {menu.kind === 'page' && <button type="button" role="menuitem" onClick={() => {
         const page = byId.get(menu.id); if (page && !page.asset) { expand(page.id); onNewDocument(page.workspaceId, page.folderId, page.id); } setMenu(null);
       }}><Icon name="plus" size={15}/> Add subpage</button>}
+      {menu.kind === 'page' && <button type="button" role="menuitem" className="page-pin-menu" onClick={() => { onTogglePin(menu.id); setMenu(null); }}>
+        <Icon name="pin" size={15}/> {allById.get(menu.id)?.pinnedAt ? 'Unpin page' : 'Pin page'}
+      </button>}
       <button type="button" role="menuitem" onClick={() => { setEditing(menu.id); setMenu(null); }}><Icon name="edit" size={15}/> Rename</button>
       {menu.kind === 'page' && !byId.get(menu.id)?.asset && <button type="button" role="menuitem" onClick={() => { onDuplicateDocument(menu.id); setMenu(null); }}><Icon name="copy" size={15}/> Duplicate</button>}
       {menu.kind === 'page' && <button type="button" role="menuitem" onClick={() => { onMovePage(menu.id); setMenu(null); }}><TreeGlyph kind="folder"/> Move to root</button>}
