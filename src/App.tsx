@@ -691,6 +691,7 @@ export default function App() {
       return current.map(item => live.current.get(item.id) || item);
     });
     setPreviewText(doc.markdown);
+    if (doc.plannerKind && modeRef.current === 'preview') { modeRef.current = 'write'; setMode('write'); }
     setSaveState('idle');
     if (window.innerWidth < 800) setSidebarOpen(false);
   }, [flush, cancelHeadingMotion, scheduleSave]);

@@ -232,10 +232,10 @@
 :root[data-theme='light'] .private-tree .page-pin-button.is-pinned { color:#245ac7; }
 .private-tree .page-pin-button:hover { background:var(--hover); }
 .private-tree :is(.filetree-row,.filetree-result,.planner-pin-row,.planner-tree-branch):is(:hover,:focus-within) > .page-pin-button,.private-tree .page-pin-button.is-pinned { opacity:1; }
-.pinned-pages .page-pin-button:not(:hover):not(:focus-visible) { opacity:0; }
-.pinned-pages .pinned-page-row:hover .page-pin-button,.pinned-pages .pinned-page-row:focus-within .page-pin-button { opacity:1; }
+.private-tree .pinned-pages .page-pin-button:not(:hover):not(:focus-visible) { opacity:0; }
+.private-tree .pinned-pages .pinned-page-row:hover .page-pin-button,.private-tree .pinned-pages .pinned-page-row:focus-within .page-pin-button { opacity:1; }
 .planner-pin-row,.private-tree .filetree-result { display:flex; align-items:center; min-width:0; }
 .planner-pin-row > .planner-tree-row,.filetree-result > .filetree-result-open { flex:1; min-width:0; }
 .private-tree .pinned-page-open:focus-visible,.private-tree .page-pin-button:focus-visible { outline:1px solid currentColor; outline-offset:-1px; }
-@media(hover:none) { .private-tree .page-pin-button,.pinned-pages .page-pin-button:not(:hover):not(:focus-visible) { opacity:1; } }
+@media(hover:none) { .private-tree .page-pin-button,.private-tree .pinned-pages .page-pin-button:not(:hover):not(:focus-visible) { opacity:1; } }
 @media(prefers-reduced-motion:reduce) { .private-tree .page-pin-button { transition:none; } }

@@ -253,7 +253,7 @@ function WorkspaceTree({
           {pinned.map(doc => <div key={doc.id} role="treeitem" aria-level={1} aria-selected={doc.id === activeId}
             className={'filetree-row pinned-page-row' + (doc.id === activeId ? ' is-active' : '')}>
             <button type="button" className="pinned-page-open" title={doc.title} aria-current={doc.id === activeId ? 'page' : undefined}
-              onClick={() => doc.plannerKind ? onOpenPlanner(doc.plannerKind, doc.workspaceId, doc.folderId) : onOpen(doc.id)}>
+              onClick={() => onOpen(doc.id)}>
               <Icon name="pin" size={15}/><span>{doc.title || 'Untitled'}</span>
             </button>
             {pinButton(doc.id, doc.title, true)}
